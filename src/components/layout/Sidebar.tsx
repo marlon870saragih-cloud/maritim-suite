@@ -47,7 +47,25 @@ const navItems = [
   },
 ] as const
 
-export function Sidebar({ modulesEnabled }: { modulesEnabled: string[] }) {
+export type ChromeUser = {
+  name: string
+  initials: string
+  roleLabel: string
+  planLabel: string
+  trialDaysLeft: number | null
+}
+
+export function Sidebar({
+  modulesEnabled,
+  vesselCount,
+  principalCount,
+  user,
+}: {
+  modulesEnabled: string[]
+  vesselCount: number
+  principalCount: number
+  user: ChromeUser
+}) {
   const pathname = usePathname()
 
   return (
@@ -162,13 +180,13 @@ export function Sidebar({ modulesEnabled }: { modulesEnabled: string[] }) {
           {
             href: '/settings/vessels',
             label: 'Vessel Database',
-            sublabel: '23 kapal',
+            sublabel: `${vesselCount} kapal`,
             icon: Database,
           },
           {
             href: '/settings/principals',
             label: 'Principal & Kontak',
-            sublabel: '8 principal',
+            sublabel: `${principalCount} principal`,
             icon: Building2,
           },
         ].map((item) => {
@@ -218,16 +236,16 @@ export function Sidebar({ modulesEnabled }: { modulesEnabled: string[] }) {
             className="w-8 h-8 rounded-full bg-[#0D3060] border border-[#1A3A6A]
                        flex items-center justify-center text-[11px] font-semibold text-accent-blue flex-shrink-0"
           >
-            MS
+            {user.initials}
           </div>
           <div>
-            <p className="text-[11px] font-medium text-[#4A7A9A]">Marlon S.</p>
-            <p className="text-[9px] text-[#1E3A5F]">Branch Manager</p>
+            <p className="text-[11px] font-medium text-[#4A7A9A]">{user.name}</p>
+            <p className="text-[9px] text-[#1E3A5F]">{user.roleLabel}</p>
             <span
               className="text-[9px] bg-[#041E38] text-accent-teal px-2 py-0.5 rounded-full
                          border border-[#0D4A3A] uppercase tracking-wider font-mono mt-1 inline-block"
             >
-              Full Suite
+              {user.planLabel}
             </span>
           </div>
         </div>

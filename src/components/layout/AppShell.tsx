@@ -1,19 +1,30 @@
 import type { ReactNode } from 'react'
-import { Sidebar } from './Sidebar'
+import { Sidebar, type ChromeUser } from './Sidebar'
 import { TopBar } from './TopBar'
 
 export function AppShell({
   modulesEnabled,
+  user,
+  vesselCount,
+  principalCount,
   children,
 }: {
   modulesEnabled: string[]
+  user: ChromeUser
+  vesselCount: number
+  principalCount: number
   children: ReactNode
 }) {
   return (
     <div className="min-h-screen bg-background">
-      <Sidebar modulesEnabled={modulesEnabled} />
+      <Sidebar
+        modulesEnabled={modulesEnabled}
+        user={user}
+        vesselCount={vesselCount}
+        principalCount={principalCount}
+      />
       <div className="ml-[240px] min-h-screen flex flex-col">
-        <TopBar />
+        <TopBar user={user} />
         <main className="flex-1">{children}</main>
       </div>
     </div>
