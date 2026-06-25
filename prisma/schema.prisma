@@ -1,0 +1,215 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Tenant {
+  id                 String    @id @default(cuid())
+  companyName        String
+  companyTagline     String?
+  companyAddress     String?
+  companyPhone       String?
+  companyEmail       String?
+  npwp               String?
+  logoUrl            String?
+  bankName           String?
+  bankAccount        String?
+  bankHolder         String?
+  bankSwift          String?
+  plan               Plan      @default(TRIAL)
+  modulesEnabled     String[]
+  trialEndsAt        DateTime?
+  subscriptionEndsAt DateTime?
+  defaultAgencyPct   Float     @default(2.5)
+  defaultCurrency    String    @default("IDR")
+  docLanguage        String    @default("EN")
+  defaultDAFormat    String    @default("FPDA")
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  users      User[]
+  vessels    Vessel[]
+  principals Principal[]
+  portCalls  PortCall[]
+  documents  MaritimeDocument[]
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      Role     @default(OPERATOR)
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Vessel {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name       String
+  imoNumber  String?
+  flag       String?
+  callSign   String?
+  vesselType String?
+  gt         Float?
+  nrt        Float?
+  loa        Float?
+  beam       Float?
+  maxDraft   Float?
+  yearBuilt  Int?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  portCalls PortCall[]
+  documents MaritimeDocument[]
+
+  @@index([tenantId])
+}
+
+model Principal {
+  id              String   @id @default(cuid())
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name            String
+  address         String?
+  email           String?
+  phone           String?
+  contactPerson   String?
+  preferredFormat String   @default("FPDA")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  portCalls PortCall[]
+  documents MaritimeDocument[]
+
+  @@index([tenantId])
+}
+
+model PortCall {
+  id          String         @id @default(cuid())
+  tenantId    String
+  tenant      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vesselId    String
+  vessel      Vessel         @relation(fields: [vesselId], references: [id])
+  principalId String?
+  principal   Principal?     @relation(fields: [principalId], references: [id])
+  port        String
+  portCode    String?
+  eta         DateTime?
+  etd         DateTime?
+  ata         DateTime?
+  atd         DateTime?
+  cargo       String?
+  cargoQty    String?
+  cargoUnit   String?
+  status      PortCallStatus @default(UPCOMING)
+  notes       String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  documents MaritimeDocument[]
+
+  @@index([tenantId])
+  @@index([status])
+}
+
+model MaritimeDocument {
+  id           String     @id @default(cuid())
+  tenantId     String
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vesselId     String?
+  vessel       Vessel?    @relation(fields: [vesselId], references: [id])
+  principalId  String?
+  principal    Principal? @relation(fields: [principalId], references: [id])
+  portCallId   String?
+  portCall     PortCall?  @relation(fields: [portCallId], references: [id])
+  docType      DocType
+  docNumber    String
+  port         String?
+  currency     String     @default("IDR")
+  exchangeRate Float?
+  lineItems    Json?
+  subtotals    Json?
+  grandTotal   Float?
+  agencyPct    Float      @default(2.5)
+  agencyAmt    Float?
+  status       DocStatus  @default(DRAFT)
+  notes        String?
+  issuedAt     DateTime   @default(now())
+  validUntil   DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([tenantId])
+  @@index([docType])
+  @@index([status])
+}
+
+enum Role {
+  ADMIN
+  OPERATOR
+  FINANCE
+  VIEWER
+}
+
+enum Plan {
+  TRIAL
+  STARTER
+  PRO
+  FULL_SUITE
+}
+
+enum PortCallStatus {
+  UPCOMING
+  IN_PORT
+  DEPARTED
+  CANCELLED
+}
+
+enum DocType {
+  FAL_BUNDLE
+  FAL_1
+  FAL_2
+  FAL_3
+  FAL_4
+  FAL_5
+  FAL_6
+  FAL_7
+  NOR
+  SOF
+  ARRIVAL_REPORT
+  DEPARTURE_REPORT
+  PORT_CALL_SUMMARY
+  SIB
+  AGENCY_APPOINTMENT
+  LETTER_OF_PROTEST
+  CREW_CHANGE_NOTICE
+  CREW_SIGN_ON
+  CREW_SIGN_OFF
+  SHORE_PASS
+  EPDA
+  FPDA
+  FOA
+  INVOICE
+  PURCHASE_REQUISITION
+  BDN
+  DEBIT_NOTE
+  CREDIT_NOTE
+}
+
+enum DocStatus {
+  DRAFT
+  FINAL
+  SENT
+  PAID
+  CANCELLED
+}
