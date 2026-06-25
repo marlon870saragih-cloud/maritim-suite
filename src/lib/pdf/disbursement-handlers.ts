@@ -6,7 +6,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { DisbursementDocument } from '@/lib/pdf/EpdaDocument'
 import { computeTotals, type EpdaData, type EpdaTenant } from '@/lib/pdf/epda-data'
-import { epdaTenantFromTenant } from '@/lib/pdf/tenant'
+import { epdaTenantForSession } from '@/lib/pdf/tenant'
 
 type Variant = 'EPDA' | 'FPDA'
 
@@ -59,10 +59,10 @@ export function makeDisbursementHandlers(opts: { variant: Variant; docType: DocT
       if (!doc) return new Response('Not found', { status: 404 })
       const stored = (doc.lineItems ?? {}) as Partial<EpdaData>
       if (asJson) return Response.json(stored)
-      return pdfResponse(mergeData(stored, epdaTenantFromTenant(session.user.tenant)), download)
+      return pdfResponse(mergeData(stored, await epdaTenantForSession(session.user.tenantId)), download)
     }
 
-    const tenant = session?.user?.tenant ? epdaTenantFromTenant(session.user.tenant) : null
+    const tenant = await epdaTenantForSession(session?.user?.tenantId)
     return pdfResponse(mergeData(sample, tenant), download)
   }
 
@@ -72,7 +72,7 @@ export function makeDisbursementHandlers(opts: { variant: Variant; docType: DocT
     const download = url.searchParams.get('download') === '1'
     const body = (await req.json().catch(() => ({}))) as Partial<EpdaData>
     const session = await getServerSession(authOptions)
-    const tenant = session?.user?.tenant ? epdaTenantFromTenant(session.user.tenant) : null
+    const tenant = await epdaTenantForSession(session?.user?.tenantId)
     const data = mergeData(body, tenant)
 
     if (save) {
