@@ -8,7 +8,7 @@ import { DisbursementDocument } from '@/lib/pdf/EpdaDocument'
 import { computeTotals, type EpdaData, type EpdaTenant } from '@/lib/pdf/epda-data'
 import { epdaTenantFromTenant } from '@/lib/pdf/tenant'
 
-type Variant = 'EPDA' | 'FPDA' | 'FOA'
+type Variant = 'EPDA' | 'FPDA'
 
 /**
  * Factory handler untuk dokumen disbursement (EPDA & FPDA) — struktur identik,

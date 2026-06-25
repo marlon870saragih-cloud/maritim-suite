@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { getServerSession } from 'next-auth'
-import { Receipt, FileText, Calculator, Wallet, Eye, Plus, Download, FileEdit, type LucideIcon } from 'lucide-react'
+import { Receipt, FileText, Calculator, Eye, Plus, Download, FileEdit, type LucideIcon } from 'lucide-react'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -48,16 +48,6 @@ const FINANCE_DOCS: FinanceDoc[] = [
     pdfHref: '/api/documents/fpda',
   },
   {
-    id: 'foa',
-    title: 'FOA',
-    desc: 'Final Outturn Account',
-    icon: Wallet,
-    bar: 'bg-accent-amber',
-    iconText: 'text-accent-amber',
-    formHref: '/finance/foa/baru',
-    pdfHref: '/api/documents/foa',
-  },
-  {
     id: 'invoice',
     title: 'Invoice',
     desc: 'Tagihan jasa keagenan (PPN 11%)',
@@ -73,7 +63,7 @@ export default async function FinancePage() {
   const session = await getServerSession(authOptions)
   const savedDocs = session?.user
     ? await prisma.maritimeDocument.findMany({
-        where: { tenantId: session.user.tenantId, docType: { in: ['EPDA', 'FPDA', 'FOA', 'INVOICE'] } },
+        where: { tenantId: session.user.tenantId, docType: { in: ['EPDA', 'FPDA', 'INVOICE'] } },
         orderBy: { createdAt: 'desc' },
         take: 30,
       })
@@ -84,7 +74,7 @@ export default async function FinancePage() {
       <PageHeader
         kicker="Generator Keuangan"
         title="Buat dokumen keuangan"
-        description="EPDA · FPDA · FOA · Invoice — perhitungan agency fee & disbursement otomatis."
+        description="EPDA · FPDA · Invoice — perhitungan agency fee & disbursement otomatis."
       />
 
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -170,9 +160,7 @@ export default async function FinancePage() {
                       ? 'text-accent-teal border-accent-teal/30 bg-accent-teal/10'
                       : d.docType === 'INVOICE'
                         ? 'text-accent-purple border-accent-purple/30 bg-accent-purple/10'
-                        : d.docType === 'FOA'
-                          ? 'text-accent-amber border-accent-amber/30 bg-accent-amber/10'
-                          : 'text-accent-blue border-accent-blue/30 bg-accent-blue/10'
+                        : 'text-accent-blue border-accent-blue/30 bg-accent-blue/10'
                   return (
                     <tr
                       key={d.id}
@@ -224,7 +212,7 @@ export default async function FinancePage() {
 
       <div className="bg-card-bg border border-card-border rounded-lg p-6 text-center">
         <p className="text-text-secondary text-sm">
-          Keempat dokumen keuangan (EPDA · FPDA · FOA · Invoice) sudah bisa dibuat, disimpan &amp;
+          Ketiga dokumen keuangan (EPDA · FPDA · Invoice) sudah bisa dibuat, disimpan &amp;
           diunduh — format resmi, kop &amp; rekening otomatis dari profil perusahaan Anda.
         </p>
       </div>

@@ -123,7 +123,7 @@ function Particular({ label, value, border }: { label: string; value: string; bo
   )
 }
 
-type Variant = 'EPDA' | 'FPDA' | 'FOA'
+type Variant = 'EPDA' | 'FPDA'
 
 const VARIANT: Record<
   Variant,
@@ -142,13 +142,6 @@ const VARIANT: Record<
     subtitle: 'Statement of Actual Port Call Charges',
     validLabel: 'Payment due',
     totalLabel: 'Total Disbursements',
-  },
-  FOA: {
-    kicker: 'Final · Outturn',
-    title: 'Final Outturn Account',
-    subtitle: 'Final Statement of Port Call Charges',
-    validLabel: 'Settled',
-    totalLabel: 'Total Outturn',
   },
 }
 

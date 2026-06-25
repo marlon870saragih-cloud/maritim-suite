@@ -169,20 +169,3 @@ export const SAMPLE_FPDA: EpdaData = {
     'Government tariffs applied follow PP/PM rates prevailing at the time of the call.',
   ],
 }
-
-// ====== DATA CONTOH FOA (Final Outturn Account) ======
-// Akun final port call (total outturn) — tanpa rekonsiliasi dana muka (itu ranah FPDA).
-export const SAMPLE_FOA: EpdaData = {
-  ...SAMPLE_EPDA,
-  sections: JSON.parse(JSON.stringify(SAMPLE_EPDA.sections)),
-  docNumber: 'FOA/2026/07/0142',
-  issuedAt: '04 Jul 2026',
-  validUntil: '04 Jul 2026',
-  advanceReceived: undefined,
-  notes: [
-    'This Final Outturn Account states the final, actual charges for the port call, supported by original receipts.',
-    'It supersedes the proforma estimate (EPDA) and constitutes the final account for the call.',
-    'Any funding balance is settled via the Final Disbursement Account (FPDA) issued separately.',
-    'Government tariffs applied follow PP/PM rates prevailing at the time of the call.',
-  ],
-}

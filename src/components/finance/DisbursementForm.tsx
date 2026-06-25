@@ -6,14 +6,13 @@ import { ArrowLeft, Plus, Trash2, Download, Eye, Loader2, Save, Check } from 'lu
 import {
   SAMPLE_EPDA,
   SAMPLE_FPDA,
-  SAMPLE_FOA,
   computeTotals,
   sectionSubtotal,
   type EpdaData,
   type EpdaSection,
 } from '@/lib/pdf/epda-data'
 
-type DocKind = 'epda' | 'fpda' | 'foa'
+type DocKind = 'epda' | 'fpda'
 
 type Meta = Pick<
   EpdaData,
@@ -77,13 +76,6 @@ const CONFIG: Record<
     lead: 'Laporan biaya aktual (final) — direkonsiliasi dengan dana muka yang sudah diterima.',
     validDocLabel: 'Jatuh tempo bayar',
     summaryTotalLabel: 'Total Disbursements',
-  },
-  foa: {
-    label: 'FOA',
-    sample: SAMPLE_FOA,
-    lead: 'Akun final (outturn) port call — total biaya aktual sebagai akun penutup.',
-    validDocLabel: 'Tanggal settle',
-    summaryTotalLabel: 'Total Outturn',
   },
 }
 

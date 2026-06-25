@@ -6,7 +6,7 @@ const str = (v: unknown): string | null => {
   return t === '' ? null : t
 }
 
-export const DA_FORMATS = ['EPDA', 'FPDA', 'FOA'] as const
+export const DA_FORMATS = ['EPDA', 'FPDA'] as const
 
 export type PrincipalInput = {
   name: string
