@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { getServerSession } from 'next-auth'
-import { Receipt, ReceiptText, FileText, Calculator, Eye, Plus, Download, FileEdit, ArrowRight, PlusCircle, MinusCircle, ClipboardList, ShoppingCart, Fuel, type LucideIcon } from 'lucide-react'
+import { Receipt, ReceiptText, FileText, Calculator, Eye, Plus, Download, FileEdit, ArrowRight, PlusCircle, MinusCircle, ClipboardList, ShoppingCart, Fuel, BarChart3, type LucideIcon } from 'lucide-react'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -157,11 +157,20 @@ export default async function FinancePage() {
 
   return (
     <div className="p-margin-page max-w-[1600px] mx-auto space-y-8">
-      <PageHeader
-        kicker="Generator Keuangan"
-        title="Buat dokumen keuangan"
-        description="EPDA · FPDA · Invoice — perhitungan agency fee & disbursement otomatis."
-      />
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <PageHeader
+          kicker="Generator Keuangan"
+          title="Buat dokumen keuangan"
+          description="EPDA · FPDA · Invoice — perhitungan agency fee & disbursement otomatis."
+        />
+        <Link
+          href="/finance/analisa"
+          className="inline-flex items-center gap-2 bg-card-bg border border-card-border hover:border-accent-blue/60 hover:bg-surface-tertiary text-text-primary rounded-lg px-4 py-2.5 text-sm font-medium transition-colors whitespace-nowrap"
+        >
+          <BarChart3 className="w-4 h-4 text-accent-blue" />
+          Analisa Laba &amp; Variance
+        </Link>
+      </div>
 
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {FINANCE_DOCS.map((doc) => {
