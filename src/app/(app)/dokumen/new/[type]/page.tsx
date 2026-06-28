@@ -1,9 +1,14 @@
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
+import { NorForm } from '@/components/dokumen/NorForm'
+import { SofForm } from '@/components/dokumen/SofForm'
 
 export default function NewDocumentPage({ params }: { params: { type: string } }) {
-  const label = params.type.replace(/_/g, ' ')
+  // Dokumen operasional yang sudah punya generator.
+  if (params.type === 'NOR') return <NorForm />
+  if (params.type === 'SOF') return <SofForm />
 
+  const label = params.type.replace(/_/g, ' ')
   return (
     <div className="p-margin-page max-w-[1600px] mx-auto space-y-6">
       <Link
@@ -15,12 +20,13 @@ export default function NewDocumentPage({ params }: { params: { type: string } }
       </Link>
 
       <div className="bg-card-bg border border-card-border rounded-lg p-8">
-        <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-2">
-          Dokumen Baru
-        </p>
+        <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-2">Dokumen Baru</p>
         <h1 className="font-display text-2xl text-white mb-2">{label}</h1>
         <p className="text-text-secondary text-sm">
-          Form pembuatan dokumen ini sedang disiapkan (Step 5 lanjutan).
+          Generator dokumen ini sedang disiapkan. Yang sudah aktif:{' '}
+          <Link href="/dokumen/new/NOR" className="text-accent-blue hover:underline">NOR</Link> &amp;{' '}
+          <Link href="/dokumen/new/SOF" className="text-accent-blue hover:underline">SOF</Link>{' '}
+          (Port Call Ops).
         </p>
       </div>
     </div>

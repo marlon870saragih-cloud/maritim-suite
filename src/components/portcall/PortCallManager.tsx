@@ -23,10 +23,12 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 const DOC_LINKS = [
-  { type: 'epda', label: 'EPDA — Estimasi (proforma)' },
-  { type: 'fpda', label: 'FPDA — Final disbursement' },
-  { type: 'invoice', label: 'Invoice — Tagihan jasa' },
-  { type: 'bdn', label: 'BDN — Bunker delivery note' },
+  { path: '/finance/epda/baru', label: 'EPDA — Estimasi (proforma)' },
+  { path: '/finance/fpda/baru', label: 'FPDA — Final disbursement' },
+  { path: '/finance/invoice/baru', label: 'Invoice — Tagihan jasa' },
+  { path: '/finance/bdn/baru', label: 'BDN — Bunker delivery note' },
+  { path: '/dokumen/new/NOR', label: 'NOR — Notice of Readiness' },
+  { path: '/dokumen/new/SOF', label: 'SOF — Statement of Facts' },
 ] as const
 
 export type VesselOption = {
@@ -291,8 +293,8 @@ export function PortCallManager({
                             <DropdownMenuSeparator />
                             {DOC_LINKS.map((d) => (
                               <DropdownMenuItem
-                                key={d.type}
-                                onClick={() => router.push(`/finance/${d.type}/baru?portcall=${pc.id}`)}
+                                key={d.path}
+                                onClick={() => router.push(`${d.path}?portcall=${pc.id}`)}
                                 className="cursor-pointer text-sm"
                               >
                                 {d.label}
