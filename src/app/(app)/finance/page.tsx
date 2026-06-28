@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { getServerSession } from 'next-auth'
-import { Receipt, ReceiptText, FileText, Calculator, Eye, Plus, Download, FileEdit, ArrowRight, PlusCircle, MinusCircle, ClipboardList, ShoppingCart, type LucideIcon } from 'lucide-react'
+import { Receipt, ReceiptText, FileText, Calculator, Eye, Plus, Download, FileEdit, ArrowRight, PlusCircle, MinusCircle, ClipboardList, ShoppingCart, Fuel, type LucideIcon } from 'lucide-react'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -107,6 +107,16 @@ const FINANCE_DOCS: FinanceDoc[] = [
     formHref: '/finance/po/baru',
     pdfHref: '/api/documents/po',
   },
+  {
+    id: 'bdn',
+    title: 'Bunker Delivery Note',
+    desc: 'Bukti serah bunker ke kapal (MARPOL Annex VI)',
+    icon: Fuel,
+    bar: 'bg-accent-amber',
+    iconText: 'text-accent-amber',
+    formHref: '/finance/bdn/baru',
+    pdfHref: '/api/documents/bdn',
+  },
 ]
 
 // Pemetaan DocType DB → segmen route/endpoint & label badge.
@@ -116,6 +126,7 @@ const DOC_KIND: Record<string, string> = {
   CREDIT_NOTE: 'credit-note',
   PURCHASE_REQUISITION: 'pr',
   PURCHASE_ORDER: 'po',
+  BDN: 'bdn',
 }
 const DOC_LABEL: Record<string, string> = {
   OFFICIAL_RECEIPT: 'KWITANSI',
@@ -123,6 +134,7 @@ const DOC_LABEL: Record<string, string> = {
   CREDIT_NOTE: 'NOTA KREDIT',
   PURCHASE_REQUISITION: 'PR',
   PURCHASE_ORDER: 'PO',
+  BDN: 'BDN',
 }
 
 export default async function FinancePage() {
@@ -134,7 +146,7 @@ export default async function FinancePage() {
           docType: {
             in: [
               'EPDA', 'FPDA', 'INVOICE', 'OFFICIAL_RECEIPT', 'DEBIT_NOTE', 'CREDIT_NOTE',
-              'PURCHASE_REQUISITION', 'PURCHASE_ORDER',
+              'PURCHASE_REQUISITION', 'PURCHASE_ORDER', 'BDN',
             ],
           },
         },
@@ -243,7 +255,9 @@ export default async function FinancePage() {
                               ? 'text-status-success border-status-success/30 bg-status-success/10'
                               : d.docType === 'PURCHASE_ORDER'
                                 ? 'text-accent-teal border-accent-teal/30 bg-accent-teal/10'
-                                : 'text-accent-blue border-accent-blue/30 bg-accent-blue/10'
+                                : d.docType === 'BDN'
+                                  ? 'text-accent-amber border-accent-amber/30 bg-accent-amber/10'
+                                  : 'text-accent-blue border-accent-blue/30 bg-accent-blue/10'
                   return (
                     <tr
                       key={d.id}

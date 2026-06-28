@@ -26,6 +26,7 @@ const DOC_LINKS = [
   { type: 'epda', label: 'EPDA — Estimasi (proforma)' },
   { type: 'fpda', label: 'FPDA — Final disbursement' },
   { type: 'invoice', label: 'Invoice — Tagihan jasa' },
+  { type: 'bdn', label: 'BDN — Bunker delivery note' },
 ] as const
 
 export type VesselOption = {
