@@ -206,6 +206,7 @@ enum DocType {
   DEBIT_NOTE
   CREDIT_NOTE
   OFFICIAL_RECEIPT
+  STATEMENT_OF_ACCOUNT
 }
 
 enum DocStatus {

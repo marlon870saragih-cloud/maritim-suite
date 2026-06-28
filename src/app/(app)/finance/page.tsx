@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { getServerSession } from 'next-auth'
-import { Receipt, ReceiptText, FileText, Calculator, Eye, Plus, Download, FileEdit, ArrowRight, PlusCircle, MinusCircle, ClipboardList, ShoppingCart, Fuel, BarChart3, type LucideIcon } from 'lucide-react'
+import { Receipt, ReceiptText, FileText, Calculator, Eye, Plus, Download, FileEdit, ArrowRight, PlusCircle, MinusCircle, ClipboardList, ShoppingCart, Fuel, BarChart3, BookText, FileSpreadsheet, type LucideIcon } from 'lucide-react'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -117,6 +117,16 @@ const FINANCE_DOCS: FinanceDoc[] = [
     formHref: '/finance/bdn/baru',
     pdfHref: '/api/documents/bdn',
   },
+  {
+    id: 'soa',
+    title: 'Statement of Account',
+    desc: 'Rekap tagihan & saldo per principal langganan',
+    icon: BookText,
+    bar: 'bg-accent-purple',
+    iconText: 'text-accent-purple',
+    formHref: '/finance/soa/baru',
+    pdfHref: '/api/documents/soa',
+  },
 ]
 
 // Pemetaan DocType DB → segmen route/endpoint & label badge.
@@ -127,6 +137,7 @@ const DOC_KIND: Record<string, string> = {
   PURCHASE_REQUISITION: 'pr',
   PURCHASE_ORDER: 'po',
   BDN: 'bdn',
+  STATEMENT_OF_ACCOUNT: 'soa',
 }
 const DOC_LABEL: Record<string, string> = {
   OFFICIAL_RECEIPT: 'KWITANSI',
@@ -135,6 +146,7 @@ const DOC_LABEL: Record<string, string> = {
   PURCHASE_REQUISITION: 'PR',
   PURCHASE_ORDER: 'PO',
   BDN: 'BDN',
+  STATEMENT_OF_ACCOUNT: 'SOA',
 }
 
 export default async function FinancePage() {
@@ -146,7 +158,7 @@ export default async function FinancePage() {
           docType: {
             in: [
               'EPDA', 'FPDA', 'INVOICE', 'OFFICIAL_RECEIPT', 'DEBIT_NOTE', 'CREDIT_NOTE',
-              'PURCHASE_REQUISITION', 'PURCHASE_ORDER', 'BDN',
+              'PURCHASE_REQUISITION', 'PURCHASE_ORDER', 'BDN', 'STATEMENT_OF_ACCOUNT',
             ],
           },
         },
@@ -163,13 +175,22 @@ export default async function FinancePage() {
           title="Buat dokumen keuangan"
           description="EPDA · FPDA · Invoice — perhitungan agency fee & disbursement otomatis."
         />
-        <Link
-          href="/finance/analisa"
-          className="inline-flex items-center gap-2 bg-card-bg border border-card-border hover:border-accent-blue/60 hover:bg-surface-tertiary text-text-primary rounded-lg px-4 py-2.5 text-sm font-medium transition-colors whitespace-nowrap"
-        >
-          <BarChart3 className="w-4 h-4 text-accent-blue" />
-          Analisa Laba &amp; Variance
-        </Link>
+        <div className="flex items-center gap-2 flex-wrap">
+          <a
+            href="/api/efaktur/export"
+            className="inline-flex items-center gap-2 bg-card-bg border border-card-border hover:border-status-success/60 hover:bg-surface-tertiary text-text-primary rounded-lg px-4 py-2.5 text-sm font-medium transition-colors whitespace-nowrap"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-status-success" />
+            Ekspor e-Faktur (CSV)
+          </a>
+          <Link
+            href="/finance/analisa"
+            className="inline-flex items-center gap-2 bg-card-bg border border-card-border hover:border-accent-blue/60 hover:bg-surface-tertiary text-text-primary rounded-lg px-4 py-2.5 text-sm font-medium transition-colors whitespace-nowrap"
+          >
+            <BarChart3 className="w-4 h-4 text-accent-blue" />
+            Analisa Laba &amp; Variance
+          </Link>
+        </div>
       </div>
 
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -248,7 +269,7 @@ export default async function FinancePage() {
               </thead>
               <tbody>
                 {savedDocs.map((d) => {
-                  const li = (d.lineItems ?? {}) as { vesselName?: string; vesselVoyage?: string; receivedFrom?: string }
+                  const li = (d.lineItems ?? {}) as { vesselName?: string; vesselVoyage?: string; receivedFrom?: string; toName?: string }
                   const kind = DOC_KIND[d.docType] ?? d.docType.toLowerCase() // 'epda' | 'fpda' | 'invoice' | 'receipt'
                   const typeLabel = DOC_LABEL[d.docType] ?? d.docType
                   const badge =
@@ -266,7 +287,9 @@ export default async function FinancePage() {
                                 ? 'text-accent-teal border-accent-teal/30 bg-accent-teal/10'
                                 : d.docType === 'BDN'
                                   ? 'text-accent-amber border-accent-amber/30 bg-accent-amber/10'
-                                  : 'text-accent-blue border-accent-blue/30 bg-accent-blue/10'
+                                  : d.docType === 'STATEMENT_OF_ACCOUNT'
+                                    ? 'text-accent-purple border-accent-purple/30 bg-accent-purple/10'
+                                    : 'text-accent-blue border-accent-blue/30 bg-accent-blue/10'
                   return (
                     <tr
                       key={d.id}
@@ -278,7 +301,7 @@ export default async function FinancePage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 font-mono text-text-primary whitespace-nowrap">{d.docNumber}</td>
-                      <td className="px-4 py-3 text-text-primary">{li.vesselName ?? li.vesselVoyage ?? li.receivedFrom ?? '—'}</td>
+                      <td className="px-4 py-3 text-text-primary">{li.vesselName ?? li.vesselVoyage ?? li.receivedFrom ?? li.toName ?? '—'}</td>
                       <td className="px-4 py-3 text-right font-mono text-text-primary whitespace-nowrap">
                         {d.currency} {fmt(d.grandTotal)}
                       </td>
