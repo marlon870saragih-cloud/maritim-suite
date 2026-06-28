@@ -1,35 +1,62 @@
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+
 // Baris dokumen untuk tabel "Dokumen Terbaru".
 export type DocRow = {
+  id: string
   docNumber: string
   type: string
   vessel: string
   port: string
   status: string
+  editHref?: string
+  viewHref?: string
+  downloadHref?: string
 }
 
-// Data contoh (dari mockup Stitch) — dipakai sampai DB Supabase + NextAuth aktif.
-export const SAMPLE_RECENT_DOCS: DocRow[] = [
-  { docNumber: 'DOC-2023-8901', type: 'FAL 1', vessel: 'MV Ocean Blue', port: 'Tanjung Priok', status: 'FINAL' },
-  { docNumber: 'DOC-2023-8902', type: 'SOF', vessel: 'MT Pacific Pearl', port: 'Belawan', status: 'SENT' },
-  { docNumber: 'DOC-2023-8903', type: 'SIB', vessel: 'MV Star Liner', port: 'Tanjung Perak', status: 'DRAFT' },
-  { docNumber: 'DOC-2023-8904', type: 'Crew Change', vessel: 'SS Horizon', port: 'Makassar', status: 'OVERDUE' },
-  { docNumber: 'DOC-2023-8905', type: 'FAL 5', vessel: 'MV Ocean Blue', port: 'Tanjung Priok', status: 'FINAL' },
-]
+// Pemetaan DocType DB → label + rute form (edit) + segmen API (view/download PDF).
+const DOC_META: Record<string, { label: string; edit: string; api: string }> = {
+  EPDA: { label: 'EPDA', edit: '/finance/epda/baru', api: 'epda' },
+  FPDA: { label: 'FPDA', edit: '/finance/fpda/baru', api: 'fpda' },
+  INVOICE: { label: 'Invoice', edit: '/finance/invoice/baru', api: 'invoice' },
+  OFFICIAL_RECEIPT: { label: 'Kwitansi', edit: '/finance/receipt/baru', api: 'receipt' },
+  DEBIT_NOTE: { label: 'Nota Debit', edit: '/finance/debit-note/baru', api: 'debit-note' },
+  CREDIT_NOTE: { label: 'Nota Kredit', edit: '/finance/credit-note/baru', api: 'credit-note' },
+  PURCHASE_REQUISITION: { label: 'PR', edit: '/finance/pr/baru', api: 'pr' },
+  PURCHASE_ORDER: { label: 'PO', edit: '/finance/po/baru', api: 'po' },
+  BDN: { label: 'BDN', edit: '/finance/bdn/baru', api: 'bdn' },
+  STATEMENT_OF_ACCOUNT: { label: 'SOA', edit: '/finance/soa/baru', api: 'soa' },
+  NOR: { label: 'NOR', edit: '/dokumen/new/NOR', api: 'nor' },
+  SOF: { label: 'SOF', edit: '/dokumen/new/SOF', api: 'sof' },
+}
 
-/**
- * TODO(db): setelah Supabase + NextAuth aktif, ganti isi fungsi ini dengan query Prisma
- * ter-scope tenantId dari session, contoh:
- *
- *   const docs = await prisma.maritimeDocument.findMany({
- *     where: { tenantId: session.user.tenantId },
- *     include: { vessel: true, principal: true },
- *     orderBy: { createdAt: 'desc' },
- *     take: 10,
- *   })
- *   return docs.map((d) => ({ ... }))
- *
- * Untuk sekarang mengembalikan data contoh agar UI bisa dirender tanpa DB.
- */
+type Stored = { vesselName?: string; vesselVoyage?: string; toName?: string; party?: string }
+
+/** 10 dokumen terbaru milik tenant (semua jenis: finance + maritime). */
 export async function getRecentDocuments(): Promise<DocRow[]> {
-  return SAMPLE_RECENT_DOCS
+  const session = await getServerSession(authOptions)
+  if (!session?.user) return []
+
+  const docs = await prisma.maritimeDocument.findMany({
+    where: { tenantId: session.user.tenantId },
+    orderBy: { createdAt: 'desc' },
+    take: 10,
+  })
+
+  return docs.map((d) => {
+    const m = DOC_META[d.docType]
+    const li = (d.lineItems ?? {}) as Stored
+    return {
+      id: d.id,
+      docNumber: d.docNumber,
+      type: m?.label ?? d.docType.replace(/_/g, ' '),
+      vessel: li.vesselName ?? li.vesselVoyage ?? li.toName ?? li.party ?? '—',
+      port: d.port ?? '—',
+      status: d.status,
+      editHref: m ? `${m.edit}?id=${d.id}` : undefined,
+      viewHref: m ? `/api/documents/${m.api}?id=${d.id}` : undefined,
+      downloadHref: m ? `/api/documents/${m.api}?id=${d.id}&download=1` : undefined,
+    }
+  })
 }

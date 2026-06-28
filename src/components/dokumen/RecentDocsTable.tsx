@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { Eye, Pencil, Download } from 'lucide-react'
 import { StatusBadge } from '@/components/shared/StatusBadge'
 import type { DocRow } from '@/lib/documents'
@@ -24,7 +25,7 @@ export function RecentDocsTable({ documents }: { documents: DocRow[] }) {
           <tbody className="text-sm">
             {documents.map((doc, i) => (
               <tr
-                key={doc.docNumber}
+                key={doc.id}
                 className={cn(
                   'hover:bg-surface-tertiary/30 transition-colors',
                   i < documents.length - 1 && 'border-b border-card-border/50'
@@ -43,27 +44,30 @@ export function RecentDocsTable({ documents }: { documents: DocRow[] }) {
                 </td>
                 <td className="px-5 py-4">
                   <div className="flex items-center justify-end gap-1">
-                    <button
-                      type="button"
-                      aria-label="Lihat"
-                      className="p-1.5 rounded text-text-secondary hover:text-accent-blue hover:bg-surface-tertiary transition-colors"
-                    >
-                      <Eye className="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="Edit"
-                      className="p-1.5 rounded text-text-secondary hover:text-accent-teal hover:bg-surface-tertiary transition-colors"
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="Unduh"
-                      className="p-1.5 rounded text-text-secondary hover:text-accent-amber hover:bg-surface-tertiary transition-colors"
-                    >
-                      <Download className="w-4 h-4" />
-                    </button>
+                    {doc.viewHref ? (
+                      <a href={doc.viewHref} target="_blank" rel="noopener noreferrer" aria-label="Lihat" title="Lihat PDF"
+                        className="p-1.5 rounded text-text-secondary hover:text-accent-blue hover:bg-surface-tertiary transition-colors">
+                        <Eye className="w-4 h-4" />
+                      </a>
+                    ) : (
+                      <span className="p-1.5 text-text-secondary/25" title="Generator belum tersedia"><Eye className="w-4 h-4" /></span>
+                    )}
+                    {doc.editHref ? (
+                      <Link href={doc.editHref} aria-label="Buka / edit" title="Buka / edit"
+                        className="p-1.5 rounded text-text-secondary hover:text-accent-teal hover:bg-surface-tertiary transition-colors">
+                        <Pencil className="w-4 h-4" />
+                      </Link>
+                    ) : (
+                      <span className="p-1.5 text-text-secondary/25"><Pencil className="w-4 h-4" /></span>
+                    )}
+                    {doc.downloadHref ? (
+                      <a href={doc.downloadHref} aria-label="Unduh" title="Unduh PDF"
+                        className="p-1.5 rounded text-text-secondary hover:text-accent-amber hover:bg-surface-tertiary transition-colors">
+                        <Download className="w-4 h-4" />
+                      </a>
+                    ) : (
+                      <span className="p-1.5 text-text-secondary/25"><Download className="w-4 h-4" /></span>
+                    )}
                   </div>
                 </td>
               </tr>
