@@ -204,6 +204,7 @@ enum DocType {
   BDN
   DEBIT_NOTE
   CREDIT_NOTE
+  OFFICIAL_RECEIPT
 }
 
 enum DocStatus {

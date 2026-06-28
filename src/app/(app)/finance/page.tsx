@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { getServerSession } from 'next-auth'
-import { Receipt, FileText, Calculator, Eye, Plus, Download, FileEdit, ArrowRight, type LucideIcon } from 'lucide-react'
+import { Receipt, ReceiptText, FileText, Calculator, Eye, Plus, Download, FileEdit, ArrowRight, type LucideIcon } from 'lucide-react'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -57,13 +57,27 @@ const FINANCE_DOCS: FinanceDoc[] = [
     formHref: '/finance/invoice/baru',
     pdfHref: '/api/documents/invoice',
   },
+  {
+    id: 'receipt',
+    title: 'Kwitansi',
+    desc: 'Tanda terima pembayaran (terbilang otomatis)',
+    icon: ReceiptText,
+    bar: 'bg-accent-amber',
+    iconText: 'text-accent-amber',
+    formHref: '/finance/receipt/baru',
+    pdfHref: '/api/documents/receipt',
+  },
 ]
+
+// Pemetaan DocType DB → segmen route/endpoint & label badge.
+const DOC_KIND: Record<string, string> = { OFFICIAL_RECEIPT: 'receipt' }
+const DOC_LABEL: Record<string, string> = { OFFICIAL_RECEIPT: 'KWITANSI' }
 
 export default async function FinancePage() {
   const session = await getServerSession(authOptions)
   const savedDocs = session?.user
     ? await prisma.maritimeDocument.findMany({
-        where: { tenantId: session.user.tenantId, docType: { in: ['EPDA', 'FPDA', 'INVOICE'] } },
+        where: { tenantId: session.user.tenantId, docType: { in: ['EPDA', 'FPDA', 'INVOICE', 'OFFICIAL_RECEIPT'] } },
         orderBy: { createdAt: 'desc' },
         take: 30,
       })
@@ -153,14 +167,17 @@ export default async function FinancePage() {
               </thead>
               <tbody>
                 {savedDocs.map((d) => {
-                  const li = (d.lineItems ?? {}) as { vesselName?: string; vesselVoyage?: string }
-                  const kind = d.docType.toLowerCase() // 'epda' | 'fpda' | 'invoice'
+                  const li = (d.lineItems ?? {}) as { vesselName?: string; vesselVoyage?: string; receivedFrom?: string }
+                  const kind = DOC_KIND[d.docType] ?? d.docType.toLowerCase() // 'epda' | 'fpda' | 'invoice' | 'receipt'
+                  const typeLabel = DOC_LABEL[d.docType] ?? d.docType
                   const badge =
                     d.docType === 'FPDA'
                       ? 'text-accent-teal border-accent-teal/30 bg-accent-teal/10'
                       : d.docType === 'INVOICE'
                         ? 'text-accent-purple border-accent-purple/30 bg-accent-purple/10'
-                        : 'text-accent-blue border-accent-blue/30 bg-accent-blue/10'
+                        : d.docType === 'OFFICIAL_RECEIPT'
+                          ? 'text-accent-amber border-accent-amber/30 bg-accent-amber/10'
+                          : 'text-accent-blue border-accent-blue/30 bg-accent-blue/10'
                   return (
                     <tr
                       key={d.id}
@@ -168,11 +185,11 @@ export default async function FinancePage() {
                     >
                       <td className="px-4 py-3">
                         <span className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded border ${badge}`}>
-                          {d.docType}
+                          {typeLabel}
                         </span>
                       </td>
                       <td className="px-4 py-3 font-mono text-text-primary whitespace-nowrap">{d.docNumber}</td>
-                      <td className="px-4 py-3 text-text-primary">{li.vesselName ?? li.vesselVoyage ?? '—'}</td>
+                      <td className="px-4 py-3 text-text-primary">{li.vesselName ?? li.vesselVoyage ?? li.receivedFrom ?? '—'}</td>
                       <td className="px-4 py-3 text-right font-mono text-text-primary whitespace-nowrap">
                         {d.currency} {fmt(d.grandTotal)}
                       </td>
@@ -201,6 +218,15 @@ export default async function FinancePage() {
                               className="inline-flex items-center gap-1 px-2 py-1 rounded border border-accent-purple/30 text-accent-purple text-[10px] font-medium hover:bg-accent-purple/10 transition-colors whitespace-nowrap"
                             >
                               Invoice <ArrowRight className="w-3 h-3" />
+                            </Link>
+                          )}
+                          {d.docType === 'INVOICE' && (
+                            <Link
+                              href={`/finance/receipt/baru?from=${d.id}`}
+                              title="Buat Kwitansi dari Invoice ini"
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded border border-accent-amber/30 text-accent-amber text-[10px] font-medium hover:bg-accent-amber/10 transition-colors whitespace-nowrap"
+                            >
+                              Kwitansi <ArrowRight className="w-3 h-3" />
                             </Link>
                           )}
                           <Link
