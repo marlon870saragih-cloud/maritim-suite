@@ -27,6 +27,7 @@ const DOC_LINKS = [
   { path: '/finance/fpda/baru', label: 'FPDA — Final disbursement' },
   { path: '/finance/invoice/baru', label: 'Invoice — Tagihan jasa' },
   { path: '/finance/bdn/baru', label: 'BDN — Bunker delivery note' },
+  { path: '/dokumen/new/FAL_1', label: 'General Declaration — FAL 1' },
   { path: '/dokumen/new/NOR', label: 'NOR — Notice of Readiness' },
   { path: '/dokumen/new/SOF', label: 'SOF — Statement of Facts' },
   { path: '/dokumen/new/FAL_5', label: 'Crew List — FAL 5' },

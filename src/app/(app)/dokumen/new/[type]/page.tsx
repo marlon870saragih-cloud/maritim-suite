@@ -3,12 +3,14 @@ import { ArrowLeft } from 'lucide-react'
 import { NorForm } from '@/components/dokumen/NorForm'
 import { SofForm } from '@/components/dokumen/SofForm'
 import { CrewListForm } from '@/components/dokumen/CrewListForm'
+import { GenDecForm } from '@/components/dokumen/GenDecForm'
 
 export default function NewDocumentPage({ params }: { params: { type: string } }) {
   // Dokumen operasional yang sudah punya generator.
   if (params.type === 'NOR') return <NorForm />
   if (params.type === 'SOF') return <SofForm />
   if (params.type === 'FAL_5' || params.type === 'CREW_LIST') return <CrewListForm />
+  if (params.type === 'FAL_1' || params.type === 'FAL_BUNDLE') return <GenDecForm />
 
   const label = params.type.replace(/_/g, ' ')
   return (
@@ -26,6 +28,7 @@ export default function NewDocumentPage({ params }: { params: { type: string } }
         <h1 className="font-display text-2xl text-white mb-2">{label}</h1>
         <p className="text-text-secondary text-sm">
           Generator dokumen ini sedang disiapkan. Yang sudah aktif:{' '}
+          <Link href="/dokumen/new/FAL_1" className="text-accent-blue hover:underline">General Declaration</Link>,{' '}
           <Link href="/dokumen/new/NOR" className="text-accent-blue hover:underline">NOR</Link>,{' '}
           <Link href="/dokumen/new/SOF" className="text-accent-blue hover:underline">SOF</Link> &amp;{' '}
           <Link href="/dokumen/new/FAL_5" className="text-accent-blue hover:underline">Crew List</Link>.

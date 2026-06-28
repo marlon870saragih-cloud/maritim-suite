@@ -30,6 +30,7 @@ const DOC_META: Record<string, { label: string; edit: string; api: string }> = {
   NOR: { label: 'NOR', edit: '/dokumen/new/NOR', api: 'nor' },
   SOF: { label: 'SOF', edit: '/dokumen/new/SOF', api: 'sof' },
   FAL_5: { label: 'Crew List', edit: '/dokumen/new/FAL_5', api: 'crew-list' },
+  FAL_1: { label: 'General Declaration', edit: '/dokumen/new/FAL_1', api: 'gendec' },
 }
 
 type Stored = { vesselName?: string; vesselVoyage?: string; toName?: string; party?: string }
