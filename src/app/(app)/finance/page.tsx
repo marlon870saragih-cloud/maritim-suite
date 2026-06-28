@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { getServerSession } from 'next-auth'
-import { Receipt, ReceiptText, FileText, Calculator, Eye, Plus, Download, FileEdit, ArrowRight, type LucideIcon } from 'lucide-react'
+import { Receipt, ReceiptText, FileText, Calculator, Eye, Plus, Download, FileEdit, ArrowRight, PlusCircle, MinusCircle, type LucideIcon } from 'lucide-react'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -67,17 +67,48 @@ const FINANCE_DOCS: FinanceDoc[] = [
     formHref: '/finance/receipt/baru',
     pdfHref: '/api/documents/receipt',
   },
+  {
+    id: 'debit-note',
+    title: 'Nota Debit',
+    desc: 'Tambahan tagihan di luar FDA / koreksi naik',
+    icon: PlusCircle,
+    bar: 'bg-status-danger',
+    iconText: 'text-status-danger',
+    formHref: '/finance/debit-note/baru',
+    pdfHref: '/api/documents/debit-note',
+  },
+  {
+    id: 'credit-note',
+    title: 'Nota Kredit',
+    desc: 'Pengurangan / pengembalian kelebihan tagihan',
+    icon: MinusCircle,
+    bar: 'bg-status-success',
+    iconText: 'text-status-success',
+    formHref: '/finance/credit-note/baru',
+    pdfHref: '/api/documents/credit-note',
+  },
 ]
 
 // Pemetaan DocType DB → segmen route/endpoint & label badge.
-const DOC_KIND: Record<string, string> = { OFFICIAL_RECEIPT: 'receipt' }
-const DOC_LABEL: Record<string, string> = { OFFICIAL_RECEIPT: 'KWITANSI' }
+const DOC_KIND: Record<string, string> = {
+  OFFICIAL_RECEIPT: 'receipt',
+  DEBIT_NOTE: 'debit-note',
+  CREDIT_NOTE: 'credit-note',
+}
+const DOC_LABEL: Record<string, string> = {
+  OFFICIAL_RECEIPT: 'KWITANSI',
+  DEBIT_NOTE: 'NOTA DEBIT',
+  CREDIT_NOTE: 'NOTA KREDIT',
+}
 
 export default async function FinancePage() {
   const session = await getServerSession(authOptions)
   const savedDocs = session?.user
     ? await prisma.maritimeDocument.findMany({
-        where: { tenantId: session.user.tenantId, docType: { in: ['EPDA', 'FPDA', 'INVOICE', 'OFFICIAL_RECEIPT'] } },
+        where: {
+          tenantId: session.user.tenantId,
+          docType: { in: ['EPDA', 'FPDA', 'INVOICE', 'OFFICIAL_RECEIPT', 'DEBIT_NOTE', 'CREDIT_NOTE'] },
+        },
         orderBy: { createdAt: 'desc' },
         take: 30,
       })
@@ -177,7 +208,11 @@ export default async function FinancePage() {
                         ? 'text-accent-purple border-accent-purple/30 bg-accent-purple/10'
                         : d.docType === 'OFFICIAL_RECEIPT'
                           ? 'text-accent-amber border-accent-amber/30 bg-accent-amber/10'
-                          : 'text-accent-blue border-accent-blue/30 bg-accent-blue/10'
+                          : d.docType === 'DEBIT_NOTE'
+                            ? 'text-status-danger border-status-danger/30 bg-status-danger/10'
+                            : d.docType === 'CREDIT_NOTE'
+                              ? 'text-status-success border-status-success/30 bg-status-success/10'
+                              : 'text-accent-blue border-accent-blue/30 bg-accent-blue/10'
                   return (
                     <tr
                       key={d.id}
@@ -221,13 +256,29 @@ export default async function FinancePage() {
                             </Link>
                           )}
                           {d.docType === 'INVOICE' && (
-                            <Link
-                              href={`/finance/receipt/baru?from=${d.id}`}
-                              title="Buat Kwitansi dari Invoice ini"
-                              className="inline-flex items-center gap-1 px-2 py-1 rounded border border-accent-amber/30 text-accent-amber text-[10px] font-medium hover:bg-accent-amber/10 transition-colors whitespace-nowrap"
-                            >
-                              Kwitansi <ArrowRight className="w-3 h-3" />
-                            </Link>
+                            <>
+                              <Link
+                                href={`/finance/receipt/baru?from=${d.id}`}
+                                title="Buat Kwitansi dari Invoice ini"
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded border border-accent-amber/30 text-accent-amber text-[10px] font-medium hover:bg-accent-amber/10 transition-colors whitespace-nowrap"
+                              >
+                                Kwitansi <ArrowRight className="w-3 h-3" />
+                              </Link>
+                              <Link
+                                href={`/finance/debit-note/baru?from=${d.id}`}
+                                title="Buat Nota Debit dari Invoice ini"
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded border border-status-danger/30 text-status-danger text-[10px] font-medium hover:bg-status-danger/10 transition-colors whitespace-nowrap"
+                              >
+                                Debit <ArrowRight className="w-3 h-3" />
+                              </Link>
+                              <Link
+                                href={`/finance/credit-note/baru?from=${d.id}`}
+                                title="Buat Nota Kredit dari Invoice ini"
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded border border-status-success/30 text-status-success text-[10px] font-medium hover:bg-status-success/10 transition-colors whitespace-nowrap"
+                              >
+                                Kredit <ArrowRight className="w-3 h-3" />
+                              </Link>
+                            </>
                           )}
                           <Link
                             href={`/finance/${kind}/baru?id=${d.id}`}
