@@ -360,7 +360,7 @@ export function DisbursementForm({ type }: { type: DocKind }) {
               <Field label={cfg.validDocLabel} value={meta.validUntil} onChange={setMetaF('validUntil')} />
               <Field label="Mata uang" value={meta.currency} onChange={setMetaF('currency')} />
               <Field label="Agency handling (%)" type="number" value={meta.agencyPct} onChange={setMetaF('agencyPct')} />
-              <Field label="Kurs USD (indikatif)" type="number" value={meta.usdRate} onChange={setMetaF('usdRate')} />
+              <Field label="Kurs USD (indikatif)" type="number" value={meta.usdRate ?? 0} onChange={setMetaF('usdRate')} />
               {type === 'fpda' && (
                 <Field
                   label="Dana muka diterima"

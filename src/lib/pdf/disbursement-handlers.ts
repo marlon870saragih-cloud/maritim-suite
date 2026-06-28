@@ -1,5 +1,5 @@
 import React from 'react'
-import { renderToBuffer } from '@react-pdf/renderer'
+import { renderToBuffer, type DocumentProps } from '@react-pdf/renderer'
 import { getServerSession } from 'next-auth'
 import type { DocType } from '@prisma/client'
 import { authOptions } from '@/lib/auth'
@@ -19,9 +19,10 @@ export function makeDisbursementHandlers(opts: { variant: Variant; docType: DocT
 
   function pdfResponse(data: EpdaData, download: boolean) {
     const filename = `${(data.docNumber || variant).replace(/[\\/]/g, '-')}.pdf`
-    return renderToBuffer(React.createElement(DisbursementDocument, { data, variant })).then(
+    const element = React.createElement(DisbursementDocument, { data, variant }) as React.ReactElement<DocumentProps>
+    return renderToBuffer(element).then(
       (buffer) =>
-        new Response(buffer, {
+        new Response(new Uint8Array(buffer), {
           headers: {
             'Content-Type': 'application/pdf',
             'Content-Disposition': `${download ? 'attachment' : 'inline'}; filename="${filename}"`,

@@ -1,5 +1,5 @@
 import React from 'react'
-import { renderToBuffer } from '@react-pdf/renderer'
+import { renderToBuffer, type DocumentProps } from '@react-pdf/renderer'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
@@ -13,9 +13,10 @@ export const dynamic = 'force-dynamic'
 
 function pdfResponse(data: InvoiceData, download: boolean) {
   const filename = `${(data.docNumber || 'INVOICE').replace(/[\\/]/g, '-')}.pdf`
-  return renderToBuffer(React.createElement(InvoiceDocument, { data })).then(
+  const element = React.createElement(InvoiceDocument, { data }) as React.ReactElement<DocumentProps>
+  return renderToBuffer(element).then(
     (buffer) =>
-      new Response(buffer, {
+      new Response(new Uint8Array(buffer), {
         headers: {
           'Content-Type': 'application/pdf',
           'Content-Disposition': `${download ? 'attachment' : 'inline'}; filename="${filename}"`,
