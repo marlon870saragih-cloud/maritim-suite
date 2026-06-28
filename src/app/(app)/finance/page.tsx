@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { getServerSession } from 'next-auth'
-import { Receipt, FileText, Calculator, Eye, Plus, Download, FileEdit, type LucideIcon } from 'lucide-react'
+import { Receipt, FileText, Calculator, Eye, Plus, Download, FileEdit, ArrowRight, type LucideIcon } from 'lucide-react'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -185,6 +185,24 @@ export default async function FinancePage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1.5">
+                          {d.docType === 'EPDA' && (
+                            <Link
+                              href={`/finance/fpda/baru?from=${d.id}`}
+                              title="Buat FPDA dari EPDA ini"
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded border border-accent-teal/30 text-accent-teal text-[10px] font-medium hover:bg-accent-teal/10 transition-colors whitespace-nowrap"
+                            >
+                              FPDA <ArrowRight className="w-3 h-3" />
+                            </Link>
+                          )}
+                          {d.docType === 'FPDA' && (
+                            <Link
+                              href={`/finance/invoice/baru?from=${d.id}`}
+                              title="Buat Invoice dari FPDA ini"
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded border border-accent-purple/30 text-accent-purple text-[10px] font-medium hover:bg-accent-purple/10 transition-colors whitespace-nowrap"
+                            >
+                              Invoice <ArrowRight className="w-3 h-3" />
+                            </Link>
+                          )}
                           <Link
                             href={`/finance/${kind}/baru?id=${d.id}`}
                             title="Buka / edit"

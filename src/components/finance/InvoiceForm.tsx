@@ -81,6 +81,7 @@ export function InvoiceForm() {
   const [savedId, setSavedId] = useState<string | null>(null)
   const [savedMsg, setSavedMsg] = useState('')
   const [fromPortCall, setFromPortCall] = useState(false)
+  const [fromSource, setFromSource] = useState<string | null>(null)
 
   const numeric: (keyof Head)[] = ['agencyPct', 'vatPct']
   const setF = (k: keyof Head) => (v: string) =>
@@ -109,6 +110,59 @@ export function InvoiceForm() {
     const params = new URLSearchParams(window.location.search)
     const id = params.get('id')
     const portCallId = params.get('portcall')
+    const fromId = params.get('from')
+
+    // Rantai dokumen: Invoice disalin dari FPDA tersimpan (?from=fpdaId).
+    if (!id && fromId) {
+      type SourceFpda = {
+        docNumber?: string
+        currency?: string
+        agencyPct?: number
+        principal?: string
+        vesselName?: string
+        port?: string
+        portCode?: string
+        eta?: string
+        sections?: { letter: string; title: string; items: { amount?: number }[] }[]
+      }
+      fetch(`/api/documents/fpda?id=${fromId}&json=1`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((p: SourceFpda | null) => {
+          if (!p) return
+          const callRef = [
+            [p.port, p.portCode ? `(${p.portCode})` : ''].filter(Boolean).join(' '),
+            p.eta ? `ETA ${p.eta}` : '',
+          ]
+            .filter(Boolean)
+            .join(' — ')
+          setHead((h) => ({
+            ...h,
+            docNumber: '', // nomor invoice baru
+            currency: p.currency ?? h.currency,
+            agencyPct: p.agencyPct ?? h.agencyPct,
+            billToName: p.principal ?? h.billToName,
+            // FPDA tak menyimpan alamat/NPWP principal — kosongkan agar tak salah pakai contoh.
+            billToAddress: '',
+            billToNpwp: '',
+            billToAttn: '',
+            vesselVoyage: p.vesselName ?? h.vesselVoyage,
+            portCall: callRef || h.portCall,
+            refFda: p.docNumber ?? h.refFda,
+          }))
+          const fdaNo = p.docNumber ?? ''
+          const fromSections = (p.sections ?? [])
+            .map((s) => ({
+              description: s.title,
+              detail: `as per FDA ${fdaNo} Sec. ${s.letter}`,
+              qty: 1,
+              unitPrice: s.items.reduce((a, it) => a + (it.amount || 0), 0),
+            }))
+            .filter((l) => l.unitPrice > 0)
+          setLines(fromSections.length ? fromSections : [{ description: '', detail: '', qty: 1, unitPrice: 0 }])
+          setFromSource(`FPDA ${fdaNo}`.trim())
+        })
+      return
+    }
 
     // Prefill bill-to & vessel dari Port Call (invoice baru, hanya isi baris tagihan).
     if (!id && portCallId) {
@@ -225,6 +279,11 @@ export function InvoiceForm() {
           {fromPortCall && (
             <div className="rounded-md border border-accent-teal/30 bg-accent-teal/5 px-4 py-2.5 text-xs text-accent-teal">
               Data principal &amp; kapal terisi otomatis dari Port Call. Tinggal isi baris tagihan di bawah.
+            </div>
+          )}
+          {fromSource && (
+            <div className="rounded-md border border-accent-purple/30 bg-accent-purple/5 px-4 py-2.5 text-xs text-accent-purple">
+              Baris tagihan &amp; bill-to disalin dari {fromSource} (subtotal per seksi). Periksa, isi nomor invoice, lalu unduh.
             </div>
           )}
 

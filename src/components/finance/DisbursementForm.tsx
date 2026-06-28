@@ -114,6 +114,7 @@ export function DisbursementForm({ type }: { type: DocKind }) {
   const [savedId, setSavedId] = useState<string | null>(null)
   const [savedMsg, setSavedMsg] = useState('')
   const [fromPortCall, setFromPortCall] = useState(false)
+  const [fromSource, setFromSource] = useState<string | null>(null)
 
   const numericMeta: (keyof Meta)[] = ['agencyPct', 'usdRate', 'advanceReceived']
   const setMetaF = (k: keyof Meta) => (v: string) =>
@@ -157,6 +158,42 @@ export function DisbursementForm({ type }: { type: DocKind }) {
     const params = new URLSearchParams(window.location.search)
     const id = params.get('id')
     const portCallId = params.get('portcall')
+    const fromId = params.get('from')
+
+    // Rantai dokumen: FPDA disalin dari EPDA tersimpan (?from=epdaId).
+    if (!id && fromId && type === 'fpda') {
+      fetch(`/api/documents/epda?id=${fromId}&json=1`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((p: Partial<EpdaData> | null) => {
+          if (!p) return
+          setMeta((m) => ({
+            ...m,
+            docNumber: '', // nomor FPDA baru — diisi user
+            currency: p.currency ?? m.currency,
+            agencyPct: p.agencyPct ?? m.agencyPct,
+            usdRate: p.usdRate ?? m.usdRate,
+            advanceReceived: 0, // dana muka aktual diisi user
+          }))
+          setPar((c) => ({
+            vesselName: p.vesselName ?? c.vesselName,
+            principal: p.principal ?? c.principal,
+            imo: p.imo ?? c.imo,
+            flag: p.flag ?? c.flag,
+            port: p.port ?? c.port,
+            portCode: p.portCode ?? c.portCode,
+            gt: p.gt ?? c.gt,
+            nrt: p.nrt ?? c.nrt,
+            eta: p.eta ?? c.eta,
+            etd: p.etd ?? c.etd,
+            loa: p.loa ?? c.loa,
+            draft: p.draft ?? c.draft,
+            cargo: p.cargo ?? c.cargo,
+          }))
+          if (Array.isArray(p.sections)) setSections(p.sections)
+          setFromSource(`EPDA ${p.docNumber ?? ''}`.trim())
+        })
+      return
+    }
 
     // Prefill partikular dari Port Call (dokumen baru, hanya isi baris biaya).
     if (!id && portCallId) {
@@ -286,6 +323,11 @@ export function DisbursementForm({ type }: { type: DocKind }) {
           {fromPortCall && (
             <div className="rounded-md border border-accent-teal/30 bg-accent-teal/5 px-4 py-2.5 text-xs text-accent-teal">
               Partikular kapal &amp; call terisi otomatis dari Port Call. Tinggal isi baris biaya di bawah.
+            </div>
+          )}
+          {fromSource && (
+            <div className="rounded-md border border-accent-teal/30 bg-accent-teal/5 px-4 py-2.5 text-xs text-accent-teal">
+              Partikular &amp; baris biaya disalin dari {fromSource}. Ubah jadi nilai aktual, isi nomor &amp; dana muka, lalu simpan sebagai FPDA baru.
             </div>
           )}
 
