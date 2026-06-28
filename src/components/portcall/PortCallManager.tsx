@@ -29,6 +29,7 @@ const DOC_LINKS = [
   { path: '/finance/bdn/baru', label: 'BDN — Bunker delivery note' },
   { path: '/dokumen/new/NOR', label: 'NOR — Notice of Readiness' },
   { path: '/dokumen/new/SOF', label: 'SOF — Statement of Facts' },
+  { path: '/dokumen/new/FAL_5', label: 'Crew List — FAL 5' },
 ] as const
 
 export type VesselOption = {
