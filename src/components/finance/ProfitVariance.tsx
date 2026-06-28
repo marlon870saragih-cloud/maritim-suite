@@ -1,7 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { TrendingUp, TrendingDown, Scale, Wallet } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { TrendingUp, TrendingDown, Scale, Wallet, Link2 } from 'lucide-react'
 
 export type DisbDoc = {
   id: string
@@ -53,6 +53,26 @@ export function ProfitVariance({
   const fpda = fpdas.find((d) => d.id === fpdaId) ?? null
   const plFpda = fpdas.find((d) => d.id === plFpdaId) ?? null
   const inv = invoices.find((d) => d.id === invId) ?? null
+
+  // Auto-pasangkan dokumen sekapal: nama kapal dinormalkan (buang voyage "· V.118").
+  const sameVessel = (a: string, b: string) =>
+    !!a && !!b && a.split('·')[0].trim().toLowerCase() === b.split('·')[0].trim().toLowerCase()
+
+  // EPDA dipilih → FPDA sekapal otomatis terpilih (untuk Variance).
+  useEffect(() => {
+    if (!epda) return
+    const m = fpdas.find((f) => sameVessel(f.vessel, epda.vessel))
+    if (m && m.id !== fpdaId) setFpdaId(m.id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [epdaId])
+
+  // Invoice dipilih → FPDA sekapal otomatis terpilih (untuk P&L).
+  useEffect(() => {
+    if (!inv) return
+    const m = fpdas.find((f) => sameVessel(f.vessel, inv.vessel))
+    if (m && m.id !== plFpdaId) setPlFpdaId(m.id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invId])
 
   // ===== Variance EPDA vs FPDA: gabung per huruf seksi =====
   const variance = useMemo(() => {
@@ -113,7 +133,7 @@ export function ProfitVariance({
                 </select>
               </div>
               <div>
-                <label className={labelCls}>FPDA (aktual)</label>
+                <label className={`${labelCls} flex items-center gap-1`}>FPDA (aktual) <Link2 className="w-3 h-3 text-accent-teal" /><span className="text-accent-teal/70 normal-case tracking-normal">auto sekapal</span></label>
                 <select className={selCls} value={fpdaId} onChange={(e) => setFpdaId(e.target.value)}>
                   {fpdas.map((d) => (
                     <option key={d.id} value={d.id} className="bg-surface">
@@ -213,7 +233,7 @@ export function ProfitVariance({
                 </select>
               </div>
               <div>
-                <label className={labelCls}>FPDA (biaya aktual)</label>
+                <label className={`${labelCls} flex items-center gap-1`}>FPDA (biaya aktual) <Link2 className="w-3 h-3 text-accent-teal" /><span className="text-accent-teal/70 normal-case tracking-normal">auto sekapal</span></label>
                 <select className={selCls} value={plFpdaId} onChange={(e) => setPlFpdaId(e.target.value)}>
                   {fpdas.map((d) => (
                     <option key={d.id} value={d.id} className="bg-surface">
