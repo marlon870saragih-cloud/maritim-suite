@@ -113,6 +113,7 @@ export function DisbursementForm({ type }: { type: DocKind }) {
   const [busy, setBusy] = useState<null | 'preview' | 'download' | 'save'>(null)
   const [savedId, setSavedId] = useState<string | null>(null)
   const [savedMsg, setSavedMsg] = useState('')
+  const [fromPortCall, setFromPortCall] = useState(false)
 
   const numericMeta: (keyof Meta)[] = ['agencyPct', 'usdRate', 'advanceReceived']
   const setMetaF = (k: keyof Meta) => (v: string) =>
@@ -151,9 +152,31 @@ export function DisbursementForm({ type }: { type: DocKind }) {
   const advance = type === 'fpda' ? meta.advanceReceived ?? 0 : 0
   const balance = totals.total - advance
 
-  // Buka dokumen tersimpan: /finance/{type}/baru?id=XXX
+  // Buka dokumen tersimpan: ?id=XXX · prefill dari port call: ?portcall=YYY
   useEffect(() => {
-    const id = new URLSearchParams(window.location.search).get('id')
+    const params = new URLSearchParams(window.location.search)
+    const id = params.get('id')
+    const portCallId = params.get('portcall')
+
+    // Prefill partikular dari Port Call (dokumen baru, hanya isi baris biaya).
+    if (!id && portCallId) {
+      fetch(`/api/portcalls/${portCallId}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d: { particulars?: Partial<Particulars> } | null) => {
+          if (!d?.particulars) return
+          setPar((c) => ({ ...c, ...d.particulars }))
+          // Kosongkan baris biaya — kerangka seksi A/B/C/D tetap, klien isi sendiri.
+          setSections((prev) =>
+            prev.map((s) => ({
+              ...s,
+              items: [{ description: '', basis: '', qty: '', rate: 0, amount: 0 }],
+            })),
+          )
+          setFromPortCall(true)
+        })
+      return
+    }
+
     if (!id) return
     fetch(`${endpoint}?id=${id}&json=1`)
       .then((r) => (r.ok ? r.json() : null))
@@ -259,6 +282,12 @@ export function DisbursementForm({ type }: { type: DocKind }) {
             <h1 className="font-display text-2xl text-white">Buat {cfg.label}</h1>
             <p className="text-text-secondary text-sm mt-1">{cfg.lead} Total dihitung otomatis.</p>
           </div>
+
+          {fromPortCall && (
+            <div className="rounded-md border border-accent-teal/30 bg-accent-teal/5 px-4 py-2.5 text-xs text-accent-teal">
+              Partikular kapal &amp; call terisi otomatis dari Port Call. Tinggal isi baris biaya di bawah.
+            </div>
+          )}
 
           {/* Partikular */}
           <section className="bg-card-bg border border-card-border rounded-lg p-5">

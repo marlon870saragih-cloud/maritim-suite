@@ -80,6 +80,7 @@ export function InvoiceForm() {
   const [busy, setBusy] = useState<null | 'preview' | 'download' | 'save'>(null)
   const [savedId, setSavedId] = useState<string | null>(null)
   const [savedMsg, setSavedMsg] = useState('')
+  const [fromPortCall, setFromPortCall] = useState(false)
 
   const numeric: (keyof Head)[] = ['agencyPct', 'vatPct']
   const setF = (k: keyof Head) => (v: string) =>
@@ -105,7 +106,23 @@ export function InvoiceForm() {
   const totals = useMemo(() => computeInvoiceTotals(data), [data])
 
   useEffect(() => {
-    const id = new URLSearchParams(window.location.search).get('id')
+    const params = new URLSearchParams(window.location.search)
+    const id = params.get('id')
+    const portCallId = params.get('portcall')
+
+    // Prefill bill-to & vessel dari Port Call (invoice baru, hanya isi baris tagihan).
+    if (!id && portCallId) {
+      fetch(`/api/portcalls/${portCallId}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d: { invoice?: Partial<Head> } | null) => {
+          if (!d?.invoice) return
+          setHead((h) => ({ ...h, ...d.invoice }))
+          setLines([{ description: '', detail: '', qty: 1, unitPrice: 0 }])
+          setFromPortCall(true)
+        })
+      return
+    }
+
     if (!id) return
     fetch(`/api/documents/invoice?id=${id}&json=1`)
       .then((r) => (r.ok ? r.json() : null))
@@ -204,6 +221,12 @@ export function InvoiceForm() {
               Tagihan jasa keagenan dengan PPN 11%. Form terisi data contoh — ubah lalu unduh.
             </p>
           </div>
+
+          {fromPortCall && (
+            <div className="rounded-md border border-accent-teal/30 bg-accent-teal/5 px-4 py-2.5 text-xs text-accent-teal">
+              Data principal &amp; kapal terisi otomatis dari Port Call. Tinggal isi baris tagihan di bawah.
+            </div>
+          )}
 
           {/* Detail invoice */}
           <section className="bg-card-bg border border-card-border rounded-lg p-5">

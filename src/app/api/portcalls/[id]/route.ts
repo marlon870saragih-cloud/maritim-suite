@@ -3,9 +3,32 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { portCallFields } from '@/lib/portcalls'
+import { portCallToParticulars, portCallToInvoiceHead } from '@/lib/portcall-particulars'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+
+// GET /api/portcalls/:id → port call + partikular siap-prefill untuk dokumen.
+export async function GET(_req: Request, { params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user) return new Response('Unauthorized', { status: 401 })
+
+  const pc = await prisma.portCall.findFirst({
+    where: { id: params.id, tenantId: session.user.tenantId },
+    include: {
+      vessel: {
+        select: { name: true, imoNumber: true, flag: true, gt: true, nrt: true, loa: true, maxDraft: true },
+      },
+      principal: { select: { name: true, address: true, contactPerson: true } },
+    },
+  })
+  if (!pc) return new Response('Not found', { status: 404 })
+
+  return Response.json({
+    particulars: portCallToParticulars(pc),
+    invoice: portCallToInvoiceHead(pc),
+  })
+}
 
 async function validateRefs(tenantId: string, vesselId: string, principalId: string | null) {
   if (!vesselId) return 'Kapal wajib dipilih'

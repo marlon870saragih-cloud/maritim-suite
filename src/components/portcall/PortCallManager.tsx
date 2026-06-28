@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Plus, Pencil, Trash2, Loader2, Ship, Anchor } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2, Ship, Anchor, FileText, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PORTCALL_STATUS, STATUS_LABEL, type PortCallStatusStr } from '@/lib/portcalls'
 import {
@@ -13,6 +13,20 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu'
+
+const DOC_LINKS = [
+  { type: 'epda', label: 'EPDA — Estimasi (proforma)' },
+  { type: 'fpda', label: 'FPDA — Final disbursement' },
+  { type: 'invoice', label: 'Invoice — Tagihan jasa' },
+] as const
 
 export type VesselOption = {
   id: string
@@ -258,6 +272,33 @@ export function PortCallManager({
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex items-center justify-end gap-1.5">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              title="Buat dokumen dari port call ini"
+                              className="inline-flex items-center gap-1 rounded border border-border-muted px-2 py-1.5 text-xs font-medium text-text-secondary hover:text-white hover:border-accent-blue/60 hover:bg-surface-tertiary transition-colors"
+                            >
+                              <FileText className="w-3.5 h-3.5" /> Dokumen
+                              <ChevronDown className="w-3 h-3" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-56">
+                            <DropdownMenuLabel className="text-xs">
+                              Buat dari {pc.vessel?.name ?? 'port call'}
+                            </DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            {DOC_LINKS.map((d) => (
+                              <DropdownMenuItem
+                                key={d.type}
+                                onClick={() => router.push(`/finance/${d.type}/baru?portcall=${pc.id}`)}
+                                className="cursor-pointer text-sm"
+                              >
+                                {d.label}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                         <button
                           type="button"
                           onClick={() => openEdit(pc)}
