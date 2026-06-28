@@ -1,0 +1,111 @@
+import React from 'react'
+import { renderToBuffer, type DocumentProps } from '@react-pdf/renderer'
+import { getServerSession } from 'next-auth'
+import type { DocType } from '@prisma/client'
+import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import { ProcurementDocument } from '@/lib/pdf/ProcurementDocument'
+import { SAMPLE_PR, SAMPLE_PO, computeProcTotals, type ProcData, type ProcKind } from '@/lib/pdf/procurement-data'
+import { epdaTenantForSession } from '@/lib/pdf/tenant'
+import type { EpdaTenant } from '@/lib/pdf/epda-data'
+
+/**
+ * Factory handler untuk Purchase Requisition & Purchase Order — struktur identik,
+ * beda kind/docType/contoh. Dipakai route /api/documents/{pr,po}.
+ */
+export function makeProcurementHandlers(opts: { kind: ProcKind; docType: DocType }) {
+  const { kind, docType } = opts
+  const sample = kind === 'pr' ? SAMPLE_PR : SAMPLE_PO
+  const fallbackNo = kind === 'pr' ? 'PR' : 'PO'
+
+  function pdfResponse(data: ProcData, download: boolean) {
+    const filename = `${(data.docNumber || fallbackNo).replace(/[\\/]/g, '-')}.pdf`
+    const element = React.createElement(ProcurementDocument, { data }) as React.ReactElement<DocumentProps>
+    return renderToBuffer(element).then(
+      (buffer) =>
+        new Response(new Uint8Array(buffer), {
+          headers: {
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `${download ? 'attachment' : 'inline'}; filename="${filename}"`,
+            'Cache-Control': 'no-store',
+          },
+        }),
+    )
+  }
+
+  function mergeData(body: Partial<ProcData>, tenant: EpdaTenant | null): ProcData {
+    return {
+      ...sample,
+      ...body,
+      kind,
+      tenant: tenant ?? sample.tenant,
+      lines: Array.isArray(body.lines) && body.lines.length ? body.lines : sample.lines,
+      taxPct: Number.isFinite(body.taxPct) ? Number(body.taxPct) : sample.taxPct,
+    }
+  }
+
+  async function GET(req: Request) {
+    const url = new URL(req.url)
+    const id = url.searchParams.get('id')
+    const download = url.searchParams.get('download') === '1'
+    const asJson = url.searchParams.get('json') === '1'
+    const session = await getServerSession(authOptions)
+
+    if (id) {
+      if (!session?.user) return new Response('Unauthorized', { status: 401 })
+      const doc = await prisma.maritimeDocument.findFirst({
+        where: { id, tenantId: session.user.tenantId, docType },
+      })
+      if (!doc) return new Response('Not found', { status: 404 })
+      const stored = (doc.lineItems ?? {}) as Partial<ProcData>
+      if (asJson) return Response.json(stored)
+      return pdfResponse(mergeData(stored, await epdaTenantForSession(session.user.tenantId)), download)
+    }
+
+    const tenant = await epdaTenantForSession(session?.user?.tenantId)
+    return pdfResponse(mergeData(sample, tenant), download)
+  }
+
+  async function POST(req: Request) {
+    const url = new URL(req.url)
+    const save = url.searchParams.get('save') === '1'
+    const download = url.searchParams.get('download') === '1'
+    const body = (await req.json().catch(() => ({}))) as Partial<ProcData>
+    const session = await getServerSession(authOptions)
+    const tenant = await epdaTenantForSession(session?.user?.tenantId)
+    const data = mergeData(body, tenant)
+
+    if (save) {
+      if (!session?.user) return new Response('Unauthorized', { status: 401 })
+      const totals = computeProcTotals(data)
+      const { tenant: _omit, ...payload } = data
+      const fields = {
+        docNumber: data.docNumber || fallbackNo,
+        port: data.deliveryTo || null,
+        currency: data.currency || 'IDR',
+        lineItems: payload as object,
+        subtotals: { subtotal: totals.subtotal, tax: totals.tax } as object,
+        grandTotal: totals.total,
+      }
+
+      const existingId = url.searchParams.get('id')
+      if (existingId) {
+        const upd = await prisma.maritimeDocument.updateMany({
+          where: { id: existingId, tenantId: session.user.tenantId, docType },
+          data: fields,
+        })
+        if (upd.count === 0) return new Response('Not found', { status: 404 })
+        return Response.json({ ok: true, id: existingId })
+      }
+
+      const doc = await prisma.maritimeDocument.create({
+        data: { tenantId: session.user.tenantId, docType, status: 'DRAFT', ...fields },
+      })
+      return Response.json({ ok: true, id: doc.id })
+    }
+
+    return pdfResponse(data, download)
+  }
+
+  return { GET, POST }
+}

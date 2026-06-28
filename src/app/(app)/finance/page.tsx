@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { getServerSession } from 'next-auth'
-import { Receipt, ReceiptText, FileText, Calculator, Eye, Plus, Download, FileEdit, ArrowRight, PlusCircle, MinusCircle, type LucideIcon } from 'lucide-react'
+import { Receipt, ReceiptText, FileText, Calculator, Eye, Plus, Download, FileEdit, ArrowRight, PlusCircle, MinusCircle, ClipboardList, ShoppingCart, type LucideIcon } from 'lucide-react'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -87,6 +87,26 @@ const FINANCE_DOCS: FinanceDoc[] = [
     formHref: '/finance/credit-note/baru',
     pdfHref: '/api/documents/credit-note',
   },
+  {
+    id: 'pr',
+    title: 'Purchase Requisition',
+    desc: 'Permintaan pengadaan barang/jasa kapal',
+    icon: ClipboardList,
+    bar: 'bg-accent-blue',
+    iconText: 'text-accent-blue',
+    formHref: '/finance/pr/baru',
+    pdfHref: '/api/documents/pr',
+  },
+  {
+    id: 'po',
+    title: 'Purchase Order',
+    desc: 'Order pembelian ke supplier (PPN otomatis)',
+    icon: ShoppingCart,
+    bar: 'bg-accent-teal',
+    iconText: 'text-accent-teal',
+    formHref: '/finance/po/baru',
+    pdfHref: '/api/documents/po',
+  },
 ]
 
 // Pemetaan DocType DB → segmen route/endpoint & label badge.
@@ -94,11 +114,15 @@ const DOC_KIND: Record<string, string> = {
   OFFICIAL_RECEIPT: 'receipt',
   DEBIT_NOTE: 'debit-note',
   CREDIT_NOTE: 'credit-note',
+  PURCHASE_REQUISITION: 'pr',
+  PURCHASE_ORDER: 'po',
 }
 const DOC_LABEL: Record<string, string> = {
   OFFICIAL_RECEIPT: 'KWITANSI',
   DEBIT_NOTE: 'NOTA DEBIT',
   CREDIT_NOTE: 'NOTA KREDIT',
+  PURCHASE_REQUISITION: 'PR',
+  PURCHASE_ORDER: 'PO',
 }
 
 export default async function FinancePage() {
@@ -107,7 +131,12 @@ export default async function FinancePage() {
     ? await prisma.maritimeDocument.findMany({
         where: {
           tenantId: session.user.tenantId,
-          docType: { in: ['EPDA', 'FPDA', 'INVOICE', 'OFFICIAL_RECEIPT', 'DEBIT_NOTE', 'CREDIT_NOTE'] },
+          docType: {
+            in: [
+              'EPDA', 'FPDA', 'INVOICE', 'OFFICIAL_RECEIPT', 'DEBIT_NOTE', 'CREDIT_NOTE',
+              'PURCHASE_REQUISITION', 'PURCHASE_ORDER',
+            ],
+          },
         },
         orderBy: { createdAt: 'desc' },
         take: 30,
@@ -212,7 +241,9 @@ export default async function FinancePage() {
                             ? 'text-status-danger border-status-danger/30 bg-status-danger/10'
                             : d.docType === 'CREDIT_NOTE'
                               ? 'text-status-success border-status-success/30 bg-status-success/10'
-                              : 'text-accent-blue border-accent-blue/30 bg-accent-blue/10'
+                              : d.docType === 'PURCHASE_ORDER'
+                                ? 'text-accent-teal border-accent-teal/30 bg-accent-teal/10'
+                                : 'text-accent-blue border-accent-blue/30 bg-accent-blue/10'
                   return (
                     <tr
                       key={d.id}
@@ -253,6 +284,15 @@ export default async function FinancePage() {
                               className="inline-flex items-center gap-1 px-2 py-1 rounded border border-accent-purple/30 text-accent-purple text-[10px] font-medium hover:bg-accent-purple/10 transition-colors whitespace-nowrap"
                             >
                               Invoice <ArrowRight className="w-3 h-3" />
+                            </Link>
+                          )}
+                          {d.docType === 'PURCHASE_REQUISITION' && (
+                            <Link
+                              href={`/finance/po/baru?from=${d.id}`}
+                              title="Buat Purchase Order dari PR ini"
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded border border-accent-teal/30 text-accent-teal text-[10px] font-medium hover:bg-accent-teal/10 transition-colors whitespace-nowrap"
+                            >
+                              PO <ArrowRight className="w-3 h-3" />
                             </Link>
                           )}
                           {d.docType === 'INVOICE' && (
