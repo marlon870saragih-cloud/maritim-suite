@@ -1,48 +1,90 @@
-import Link from 'next/link'
-import { Lock, BarChart3, Check } from 'lucide-react'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import { PageHeader } from '@/components/shared/PageHeader'
+import { ReceivablesTracker, type InvoiceRow, type PrincipalSummary, type AgingSummary } from '@/components/tracker/ReceivablesTracker'
+import { AGING, parseDocDate, overdueDays, bucketFor } from '@/lib/receivables'
 
-const FEATURES = [
-  'Pantau outstanding DA & invoice per principal',
-  'Aging report (30/60/90 hari) otomatis',
-  'Reminder jatuh tempo & rekap pembayaran',
-]
+export const dynamic = 'force-dynamic'
 
-export default function TrackerPage() {
+type InvStored = {
+  billToName?: string
+  vesselVoyage?: string
+  invoiceDate?: string
+  dueDate?: string
+}
+
+export default async function TrackerPage() {
+  const session = await getServerSession(authOptions)
+  const invoices = session?.user
+    ? await prisma.maritimeDocument.findMany({
+        where: { tenantId: session.user.tenantId, docType: 'INVOICE' },
+        orderBy: { createdAt: 'desc' },
+        take: 200,
+      })
+    : []
+
+  const now = new Date()
+  const rows: InvoiceRow[] = invoices.map((d) => {
+    const li = (d.lineItems ?? {}) as InvStored
+    const amount = d.grandTotal ?? 0
+    const paid = d.status === 'PAID'
+    const cancelled = d.status === 'CANCELLED'
+    const due = parseDocDate(li.dueDate) ?? d.issuedAt
+    const od = overdueDays(due, now)
+    const outstanding = paid || cancelled ? 0 : amount
+    return {
+      id: d.id,
+      docNumber: d.docNumber,
+      principal: li.billToName || '—',
+      vessel: li.vesselVoyage || '—',
+      currency: d.currency,
+      amount,
+      status: d.status,
+      dueLabel: li.dueDate || '—',
+      overdueDays: outstanding ? od : 0,
+      bucket: outstanding ? bucketFor(od) : 'current',
+      outstanding,
+    }
+  })
+
+  // ringkasan
+  const totalOutstanding = rows.reduce((s, r) => s + r.outstanding, 0)
+  const totalPaid = rows.filter((r) => r.status === 'PAID').reduce((s, r) => s + r.amount, 0)
+  const overdueCount = rows.filter((r) => r.outstanding > 0 && r.overdueDays > 0).length
+
+  // per principal (hanya yang punya outstanding)
+  const pMap = new Map<string, PrincipalSummary>()
+  for (const r of rows) {
+    if (!pMap.has(r.principal)) pMap.set(r.principal, { principal: r.principal, count: 0, outstanding: 0 })
+    const p = pMap.get(r.principal)!
+    p.count += 1
+    p.outstanding += r.outstanding
+  }
+  const byPrincipal = Array.from(pMap.values())
+    .filter((p) => p.outstanding > 0)
+    .sort((a, b) => b.outstanding - a.outstanding)
+
+  // aging buckets
+  const aging: AgingSummary[] = AGING.map((b) => {
+    const matched = rows.filter((r) => r.outstanding > 0 && r.bucket === b.key)
+    return { key: b.key, label: b.label, count: matched.length, value: matched.reduce((s, r) => s + r.outstanding, 0) }
+  })
+
   return (
-    <div className="p-margin-page max-w-[1600px] mx-auto">
-      <div className="max-w-lg mx-auto mt-12 bg-card-bg border border-card-border rounded-xl p-8 text-center">
-        <div className="w-14 h-14 rounded-full bg-surface-tertiary border border-border-muted flex items-center justify-center mx-auto mb-5">
-          <Lock className="w-6 h-6 text-text-secondary" />
-        </div>
-        <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-1">
-          Modul Terkunci
-        </p>
-        <h1 className="font-display text-2xl text-white mb-2 flex items-center justify-center gap-2">
-          <BarChart3 className="w-5 h-5 text-accent-blue" />
-          DA &amp; Invoice Tracker
-        </h1>
-        <p className="text-text-secondary text-sm mb-6">
-          Tersedia di paket <span className="text-accent-blue">Enterprise</span>. Aktifkan untuk
-          melacak piutang keagenan secara menyeluruh.
-        </p>
-
-        <ul className="text-left space-y-2 mb-8">
-          {FEATURES.map((f) => (
-            <li key={f} className="flex items-start gap-2 text-sm text-text-primary">
-              <Check className="w-4 h-4 text-accent-teal flex-shrink-0 mt-0.5" />
-              {f}
-            </li>
-          ))}
-        </ul>
-
-        <Link
-          href="/settings"
-          className="inline-flex items-center justify-center bg-[#2E86DE] hover:bg-accent-blue text-white
-                     rounded px-6 py-2.5 text-sm font-medium transition-colors"
-        >
-          Upgrade ke Enterprise
-        </Link>
-      </div>
+    <div className="p-margin-page max-w-[1600px] mx-auto space-y-6">
+      <PageHeader
+        kicker="DA & Invoice Tracker"
+        title="Pelacak tagihan & piutang"
+        description="Outstanding per principal, aging 30/60/90 hari, dan status pembayaran invoice keagenan."
+      />
+      <ReceivablesTracker
+        rows={rows}
+        byPrincipal={byPrincipal}
+        aging={aging}
+        totals={{ outstanding: totalOutstanding, paid: totalPaid, overdueCount }}
+        currency={rows[0]?.currency ?? 'IDR'}
+      />
     </div>
   )
 }
