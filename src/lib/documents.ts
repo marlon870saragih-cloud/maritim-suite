@@ -32,6 +32,7 @@ const DOC_META: Record<string, { label: string; edit: string; api: string }> = {
   FAL_5: { label: 'Crew List', edit: '/dokumen/new/FAL_5', api: 'crew-list' },
   FAL_1: { label: 'General Declaration', edit: '/dokumen/new/FAL_1', api: 'gendec' },
   FAL_3: { label: "Ship's Stores", edit: '/dokumen/new/FAL_3', api: 'ship-stores' },
+  FAL_2: { label: 'Cargo Declaration', edit: '/dokumen/new/FAL_2', api: 'cargo-decl' },
 }
 
 type Stored = { vesselName?: string; vesselVoyage?: string; toName?: string; party?: string }

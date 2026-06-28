@@ -5,6 +5,7 @@ import { SofForm } from '@/components/dokumen/SofForm'
 import { CrewListForm } from '@/components/dokumen/CrewListForm'
 import { GenDecForm } from '@/components/dokumen/GenDecForm'
 import { ShipStoresForm } from '@/components/dokumen/ShipStoresForm'
+import { CargoDeclForm } from '@/components/dokumen/CargoDeclForm'
 
 export default function NewDocumentPage({ params }: { params: { type: string } }) {
   // Dokumen operasional yang sudah punya generator.
@@ -13,6 +14,7 @@ export default function NewDocumentPage({ params }: { params: { type: string } }
   if (params.type === 'FAL_5' || params.type === 'CREW_LIST') return <CrewListForm />
   if (params.type === 'FAL_1' || params.type === 'FAL_BUNDLE') return <GenDecForm />
   if (params.type === 'FAL_3') return <ShipStoresForm />
+  if (params.type === 'FAL_2') return <CargoDeclForm />
 
   const label = params.type.replace(/_/g, ' ')
   return (
@@ -33,8 +35,9 @@ export default function NewDocumentPage({ params }: { params: { type: string } }
           <Link href="/dokumen/new/FAL_1" className="text-accent-blue hover:underline">General Declaration</Link>,{' '}
           <Link href="/dokumen/new/NOR" className="text-accent-blue hover:underline">NOR</Link>,{' '}
           <Link href="/dokumen/new/SOF" className="text-accent-blue hover:underline">SOF</Link>,{' '}
-          <Link href="/dokumen/new/FAL_5" className="text-accent-blue hover:underline">Crew List</Link> &amp;{' '}
-          <Link href="/dokumen/new/FAL_3" className="text-accent-blue hover:underline">Ship&apos;s Stores</Link>.
+          <Link href="/dokumen/new/FAL_5" className="text-accent-blue hover:underline">Crew List</Link>,{' '}
+          <Link href="/dokumen/new/FAL_3" className="text-accent-blue hover:underline">Ship&apos;s Stores</Link> &amp;{' '}
+          <Link href="/dokumen/new/FAL_2" className="text-accent-blue hover:underline">Cargo Declaration</Link>.
         </p>
       </div>
     </div>
