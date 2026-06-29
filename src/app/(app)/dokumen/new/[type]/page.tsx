@@ -12,6 +12,7 @@ import { ProtestForm } from '@/components/dokumen/ProtestForm'
 import { CrewChangeForm } from '@/components/dokumen/CrewChangeForm'
 import { PortCallSummaryForm } from '@/components/dokumen/PortCallSummaryForm'
 import { LoiForm } from '@/components/dokumen/LoiForm'
+import { TimeSheetForm } from '@/components/dokumen/TimeSheetForm'
 
 export default function NewDocumentPage({ params }: { params: { type: string } }) {
   // Dokumen operasional yang sudah punya generator.
@@ -28,6 +29,7 @@ export default function NewDocumentPage({ params }: { params: { type: string } }
   if (params.type === 'CREW_CHANGE_NOTICE') return <CrewChangeForm />
   if (params.type === 'PORT_CALL_SUMMARY') return <PortCallSummaryForm />
   if (params.type === 'LETTER_OF_INDEMNITY') return <LoiForm />
+  if (params.type === 'TIME_SHEET') return <TimeSheetForm />
 
   const label = params.type.replace(/_/g, ' ')
   return (
