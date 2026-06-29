@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { createLinkQuery } from '@/lib/link-params'
 import Link from 'next/link'
 import { ArrowLeft, Plus, Trash2, Download, Eye, Loader2, Save, Check } from 'lucide-react'
 import { SAMPLE_CREWLIST, type CrewListData, type CrewMember } from '@/lib/pdf/crewlist-data'
@@ -85,7 +86,7 @@ export function CrewListForm() {
   async function saveDraft() {
     setBusy('save')
     try {
-      const res = await fetch(`/api/documents/crew-list?save=1${savedId ? `&id=${savedId}` : ''}`, {
+      const res = await fetch(`/api/documents/crew-list?save=1${savedId ? `&id=${savedId}` : createLinkQuery()}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),

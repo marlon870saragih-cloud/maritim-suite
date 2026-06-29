@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { createLinkQuery } from '@/lib/link-params'
 import Link from 'next/link'
 import { ArrowLeft, Plus, Trash2, Download, Eye, Loader2, Save, Check } from 'lucide-react'
 import { SAMPLE_APPOINTMENT, type AppointmentData } from '@/lib/pdf/appointment-data'
@@ -80,7 +81,7 @@ export function AppointmentForm() {
   async function saveDraft() {
     setBusy('save')
     try {
-      const res = await fetch(`/api/documents/appointment?save=1${savedId ? `&id=${savedId}` : ''}`, {
+      const res = await fetch(`/api/documents/appointment?save=1${savedId ? `&id=${savedId}` : createLinkQuery()}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),

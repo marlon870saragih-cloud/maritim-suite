@@ -3,6 +3,7 @@ import { renderToBuffer, type DocumentProps } from '@react-pdf/renderer'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { resolveDocLinks } from '@/lib/document-links'
 import { InvoiceDocument } from '@/lib/pdf/InvoiceDocument'
 import { SAMPLE_INVOICE, computeInvoiceTotals, type InvoiceData } from '@/lib/pdf/invoice-data'
 import { epdaTenantForSession } from '@/lib/pdf/tenant'
@@ -94,8 +95,13 @@ export async function POST(req: Request) {
       return Response.json({ ok: true, id })
     }
 
+    const links = await resolveDocLinks({
+      portCallId: url.searchParams.get('portcall'),
+      fromId: url.searchParams.get('from'),
+      tenantId: session.user.tenantId,
+    })
     const doc = await prisma.maritimeDocument.create({
-      data: { tenantId: session.user.tenantId, docType: 'INVOICE', status: 'DRAFT', ...fields },
+      data: { tenantId: session.user.tenantId, docType: 'INVOICE', status: 'DRAFT', ...fields, ...links },
     })
     return Response.json({ ok: true, id: doc.id })
   }

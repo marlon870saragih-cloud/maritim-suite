@@ -4,6 +4,7 @@ import { getServerSession } from 'next-auth'
 import type { DocType } from '@prisma/client'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { resolveDocLinks } from '@/lib/document-links'
 import { DisbursementDocument } from '@/lib/pdf/EpdaDocument'
 import { computeTotals, type EpdaData, type EpdaTenant } from '@/lib/pdf/epda-data'
 import { epdaTenantForSession } from '@/lib/pdf/tenant'
@@ -101,8 +102,13 @@ export function makeDisbursementHandlers(opts: { variant: Variant; docType: DocT
         return Response.json({ ok: true, id })
       }
 
+      const links = await resolveDocLinks({
+        portCallId: url.searchParams.get('portcall'),
+        fromId: url.searchParams.get('from'),
+        tenantId: session.user.tenantId,
+      })
       const doc = await prisma.maritimeDocument.create({
-        data: { tenantId: session.user.tenantId, docType, status: 'DRAFT', ...fields },
+        data: { tenantId: session.user.tenantId, docType, status: 'DRAFT', ...fields, ...links },
       })
       return Response.json({ ok: true, id: doc.id })
     }

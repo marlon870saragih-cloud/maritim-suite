@@ -4,6 +4,7 @@ import { getServerSession } from 'next-auth'
 import type { DocType } from '@prisma/client'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { resolveDocLinks } from '@/lib/document-links'
 import { ProcurementDocument } from '@/lib/pdf/ProcurementDocument'
 import { SAMPLE_PR, SAMPLE_PO, computeProcTotals, type ProcData, type ProcKind } from '@/lib/pdf/procurement-data'
 import { epdaTenantForSession } from '@/lib/pdf/tenant'
@@ -98,8 +99,13 @@ export function makeProcurementHandlers(opts: { kind: ProcKind; docType: DocType
         return Response.json({ ok: true, id: existingId })
       }
 
+      const links = await resolveDocLinks({
+        portCallId: url.searchParams.get('portcall'),
+        fromId: url.searchParams.get('from'),
+        tenantId: session.user.tenantId,
+      })
       const doc = await prisma.maritimeDocument.create({
-        data: { tenantId: session.user.tenantId, docType, status: 'DRAFT', ...fields },
+        data: { tenantId: session.user.tenantId, docType, status: 'DRAFT', ...fields, ...links },
       })
       return Response.json({ ok: true, id: doc.id })
     }

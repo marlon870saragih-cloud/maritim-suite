@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { createLinkQuery } from '@/lib/link-params'
 import Link from 'next/link'
 import { ArrowLeft, Download, Eye, Loader2, Save, Check } from 'lucide-react'
 import { SAMPLE_NOR, type NorData } from '@/lib/pdf/nor-data'
@@ -71,7 +72,7 @@ export function NorForm() {
   async function saveDraft() {
     setBusy('save')
     try {
-      const res = await fetch(`/api/documents/nor?save=1${savedId ? `&id=${savedId}` : ''}`, {
+      const res = await fetch(`/api/documents/nor?save=1${savedId ? `&id=${savedId}` : createLinkQuery()}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
