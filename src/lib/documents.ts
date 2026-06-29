@@ -32,6 +32,7 @@ export const DOC_META: Record<string, { label: string; edit: string; api: string
   ARRIVAL_REPORT: { label: 'Arrival Report', edit: '/dokumen/new/ARRIVAL_REPORT', api: 'arrival-report' },
   DEPARTURE_REPORT: { label: 'Departure Report', edit: '/dokumen/new/DEPARTURE_REPORT', api: 'departure-report' },
   LETTER_OF_PROTEST: { label: 'Letter of Protest', edit: '/dokumen/new/LETTER_OF_PROTEST', api: 'protest' },
+  NOTE_OF_PROTEST: { label: 'Note of Protest', edit: '/dokumen/new/NOTE_OF_PROTEST', api: 'note-protest' },
   CREW_CHANGE_NOTICE: { label: 'Crew Change Notice', edit: '/dokumen/new/CREW_CHANGE_NOTICE', api: 'crew-change' },
   PORT_CALL_SUMMARY: { label: 'Port Call Summary', edit: '/dokumen/new/PORT_CALL_SUMMARY', api: 'port-call-summary' },
   LETTER_OF_INDEMNITY: { label: 'Letter of Indemnity', edit: '/dokumen/new/LETTER_OF_INDEMNITY', api: 'loi' },

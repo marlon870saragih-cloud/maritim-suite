@@ -33,9 +33,9 @@ const CATEGORIES: Category[] = [
   {
     id: 'portcall',
     title: 'Port Call Ops',
-    count: 11,
+    count: 12,
     icon: Ship,
-    tags: ['NOR', 'SOF', 'Time Sheet', 'Summary', 'Protest'],
+    tags: ['NOR', 'SOF', 'Time Sheet', 'Sea Protest', 'Summary'],
     href: '/dokumen/new/SOF',
     bar: 'bg-accent-teal',
     iconText: 'text-accent-teal',
