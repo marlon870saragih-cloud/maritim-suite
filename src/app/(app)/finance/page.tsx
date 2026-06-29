@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { getServerSession } from 'next-auth'
-import { Receipt, ReceiptText, FileText, Calculator, Eye, Plus, Download, FileEdit, ArrowRight, PlusCircle, MinusCircle, ClipboardList, ShoppingCart, Fuel, BarChart3, BookText, FileSpreadsheet, type LucideIcon } from 'lucide-react'
+import { Receipt, ReceiptText, FileText, Calculator, Eye, Plus, Download, FileEdit, ArrowRight, PlusCircle, MinusCircle, ClipboardList, ShoppingCart, Fuel, BarChart3, BookText, FileSpreadsheet, FileCode, type LucideIcon } from 'lucide-react'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -177,11 +177,20 @@ export default async function FinancePage() {
         />
         <div className="flex items-center gap-2 flex-wrap">
           <a
+            href="/api/efaktur/coretax"
+            title="XML impor Faktur Pajak Keluaran untuk Coretax DJP (periksa kode transaksi & NPWP sebelum impor)"
+            className="inline-flex items-center gap-2 bg-card-bg border border-card-border hover:border-accent-teal/60 hover:bg-surface-tertiary text-text-primary rounded-lg px-4 py-2.5 text-sm font-medium transition-colors whitespace-nowrap"
+          >
+            <FileCode className="w-4 h-4 text-accent-teal" />
+            e-Faktur Coretax (XML)
+          </a>
+          <a
             href="/api/efaktur/export"
+            title="Ringkasan invoice (CSV) untuk catatan internal — bukan untuk impor Coretax"
             className="inline-flex items-center gap-2 bg-card-bg border border-card-border hover:border-status-success/60 hover:bg-surface-tertiary text-text-primary rounded-lg px-4 py-2.5 text-sm font-medium transition-colors whitespace-nowrap"
           >
             <FileSpreadsheet className="w-4 h-4 text-status-success" />
-            Ekspor e-Faktur (CSV)
+            Ringkasan CSV
           </a>
           <Link
             href="/finance/analisa"
