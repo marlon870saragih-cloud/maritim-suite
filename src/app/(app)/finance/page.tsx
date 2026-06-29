@@ -5,17 +5,10 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { EfakturExport, type MasaOption } from '@/components/finance/EfakturExport'
+import { DocStatusControl } from '@/components/dokumen/DocStatusControl'
 import { toIsoDate } from '@/lib/efaktur'
 
 const fmt = (n: number | null) => (n ?? 0).toLocaleString('en-US')
-
-const STATUS_STYLE: Record<string, string> = {
-  DRAFT: 'bg-surface-tertiary text-text-secondary border-border-muted',
-  FINAL: 'bg-accent-blue/10 text-accent-blue border-accent-blue/30',
-  SENT: 'bg-accent-teal/10 text-accent-teal border-accent-teal/30',
-  PAID: 'bg-status-success/10 text-status-success border-status-success/30',
-  CANCELLED: 'bg-status-danger/10 text-status-danger border-status-danger/30',
-}
 
 type FinanceDoc = {
   id: string
@@ -358,11 +351,7 @@ export default async function FinancePage() {
                         {d.currency} {fmt(d.grandTotal)}
                       </td>
                       <td className="px-4 py-3 hidden md:table-cell">
-                        <span
-                          className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded-full border ${STATUS_STYLE[d.status] ?? STATUS_STYLE.DRAFT}`}
-                        >
-                          {d.status}
-                        </span>
+                        <DocStatusControl id={d.id} status={d.status} />
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1.5">
