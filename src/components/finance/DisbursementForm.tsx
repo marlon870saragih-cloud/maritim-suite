@@ -111,6 +111,7 @@ export function DisbursementForm({ type }: { type: DocKind }) {
     cargo: sample.cargo,
   })
   const [sections, setSections] = useState<EpdaSection[]>(clone(sample.sections))
+  const [lump, setLump] = useState({ on: false, desc: 'Lump Sum Disbursement (estimated)', amount: 0 })
   const [busy, setBusy] = useState<null | 'preview' | 'download' | 'save'>(null)
   const [savedId, setSavedId] = useState<string | null>(null)
   const [savedMsg, setSavedMsg] = useState('')
@@ -147,8 +148,8 @@ export function DisbursementForm({ type }: { type: DocKind }) {
   }
 
   const data: EpdaData = useMemo(
-    () => ({ ...sample, ...meta, ...par, sections }),
-    [sample, meta, par, sections],
+    () => ({ ...sample, ...meta, ...par, sections, lumpSum: lump.on, lumpSumDesc: lump.desc, lumpSumAmount: lump.amount }),
+    [sample, meta, par, sections, lump],
   )
   const totals = useMemo(() => computeTotals(data), [data])
   const advance = type === 'fpda' ? meta.advanceReceived ?? 0 : 0
@@ -245,6 +246,8 @@ export function DisbursementForm({ type }: { type: DocKind }) {
           cargo: p.cargo ?? c.cargo,
         }))
         if (Array.isArray(p.sections)) setSections(p.sections)
+        if (p.lumpSum != null || p.lumpSumAmount != null)
+          setLump({ on: !!p.lumpSum, desc: p.lumpSumDesc ?? 'Lump Sum Disbursement (estimated)', amount: p.lumpSumAmount ?? 0 })
         setSavedId(id)
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -373,8 +376,31 @@ export function DisbursementForm({ type }: { type: DocKind }) {
             </div>
           </section>
 
+          {/* Mode lump sum */}
+          <section className="bg-card-bg border border-card-border rounded-lg p-5">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={lump.on}
+                onChange={(e) => setLump((p) => ({ ...p, on: e.target.checked }))}
+                className="w-4 h-4 accent-accent-blue"
+              />
+              <span className="text-sm text-text-primary font-medium">Mode Lump Sum</span>
+              <span className="text-xs text-text-secondary">— satu angka total, tanpa rincian seksi A/B/C/D</span>
+            </label>
+            {lump.on && (
+              <div className="grid grid-cols-1 md:grid-cols-[1fr_200px] gap-3 mt-4">
+                <Field label="Uraian" value={lump.desc} onChange={(v) => setLump((p) => ({ ...p, desc: v }))} />
+                <Field label="Jumlah lump sum" type="number" value={lump.amount} onChange={(v) => setLump((p) => ({ ...p, amount: Number(v) || 0 }))} />
+                <p className="md:col-span-2 text-xs text-text-secondary/80">
+                  Agency handling {meta.agencyPct}% tetap dihitung di atas jumlah ini. Bila lump sum sudah termasuk agency, set Agency % = 0.
+                </p>
+              </div>
+            )}
+          </section>
+
           {/* Rincian biaya per seksi */}
-          {sections.map((sec, si) => (
+          {!lump.on && sections.map((sec, si) => (
             <section key={sec.letter} className="bg-card-bg border border-card-border rounded-lg p-5">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="font-display text-base text-white">
@@ -464,15 +490,16 @@ export function DisbursementForm({ type }: { type: DocKind }) {
               Ringkasan Biaya
             </p>
             <div className="space-y-2 text-sm">
-              {sections.map((sec) => (
-                <div key={sec.letter} className="flex justify-between text-text-secondary">
-                  <span>Subtotal {sec.letter}</span>
-                  <span className="font-mono text-text-primary">{fmt(sectionSubtotal(sec))}</span>
-                </div>
-              ))}
-              <div className="border-t border-border-muted my-2" />
+              {!lump.on &&
+                sections.map((sec) => (
+                  <div key={sec.letter} className="flex justify-between text-text-secondary">
+                    <span>Subtotal {sec.letter}</span>
+                    <span className="font-mono text-text-primary">{fmt(sectionSubtotal(sec))}</span>
+                  </div>
+                ))}
+              {!lump.on && <div className="border-t border-border-muted my-2" />}
               <div className="flex justify-between text-text-secondary">
-                <span>Subtotal (A+B+C+D)</span>
+                <span>{lump.on ? 'Lump Sum' : 'Subtotal (A+B+C+D)'}</span>
                 <span className="font-mono text-text-primary">{fmt(totals.subtotal)}</span>
               </div>
               <div className="flex justify-between text-text-secondary">

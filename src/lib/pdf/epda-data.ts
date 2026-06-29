@@ -51,6 +51,10 @@ export type EpdaData = {
   cargo: string
   // Isi
   sections: EpdaSection[]
+  // Mode lump sum: sembunyikan rincian seksi → satu baris total disbursement.
+  lumpSum?: boolean
+  lumpSumDesc?: string
+  lumpSumAmount?: number
   agencyPct: number // mis. 2.5
   usdRate?: number // kurs indikatif untuk catatan USD
   advanceReceived?: number // FPDA: dana muka yang sudah diterima (untuk hitung saldo)
@@ -65,7 +69,9 @@ export const sectionSubtotal = (s: EpdaSection) =>
 
 // Hitung subtotal keseluruhan + agency handling + total.
 export function computeTotals(d: EpdaData) {
-  const subtotal = d.sections.reduce((sum, s) => sum + sectionSubtotal(s), 0)
+  const subtotal = d.lumpSum
+    ? Math.round(d.lumpSumAmount || 0)
+    : d.sections.reduce((sum, s) => sum + sectionSubtotal(s), 0)
   const agencyAmount = Math.round((subtotal * d.agencyPct) / 100)
   const total = subtotal + agencyAmount
   const usd = d.usdRate ? Math.round(total / d.usdRate) : undefined

@@ -223,8 +223,19 @@ export function DisbursementDocument({
           <Text style={[s.th, s.thAmt]}>Amount ({data.currency})</Text>
         </View>
 
-        {/* sections */}
-        {data.sections.map((sec) => (
+        {/* lump sum: satu baris total, tanpa rincian seksi */}
+        {data.lumpSum ? (
+          <View style={s.itemRow}>
+            <View style={s.itemDesc}>
+              <Text style={s.itemName}>{data.lumpSumDesc || 'Lump Sum Disbursement (estimated)'}</Text>
+              <Text style={s.itemBasis}>All-inclusive lump sum for the port call</Text>
+            </View>
+            <Text style={s.itemQty}>lump sum</Text>
+            <Text style={s.itemRate}>—</Text>
+            <Text style={s.itemAmt}>{fmt(Math.round(data.lumpSumAmount || 0))}</Text>
+          </View>
+        ) : (
+          data.sections.map((sec) => (
           <View key={sec.letter} wrap={false}>
             <View style={s.secRow}>
               <Text style={s.secLetter}>{sec.letter}</Text>
@@ -246,13 +257,14 @@ export function DisbursementDocument({
               <Text style={s.subAmt}>{fmt(sectionSubtotal(sec))}</Text>
             </View>
           </View>
-        ))}
+          ))
+        )}
 
         {/* totals */}
         <View style={s.totalsWrap} wrap={false}>
           <View style={s.totalsBox}>
             <View style={s.totLine}>
-              <Text style={s.totLabel}>Subtotal (A + B + C + D)</Text>
+              <Text style={s.totLabel}>{data.lumpSum ? 'Lump Sum Disbursement' : 'Subtotal (A + B + C + D)'}</Text>
               <Text style={s.totVal}>
                 {data.currency} {fmt(subtotal)}
               </Text>
