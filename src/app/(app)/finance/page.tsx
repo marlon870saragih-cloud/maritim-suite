@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { getServerSession } from 'next-auth'
-import { Receipt, ReceiptText, FileText, Calculator, Eye, Plus, Download, FileEdit, ArrowRight, PlusCircle, MinusCircle, ClipboardList, ShoppingCart, Fuel, BarChart3, BookText, FileSpreadsheet, FileCode, type LucideIcon } from 'lucide-react'
+import { Receipt, ReceiptText, FileText, Calculator, Eye, Plus, Download, FileEdit, ArrowRight, PlusCircle, MinusCircle, ClipboardList, ShoppingCart, Fuel, BarChart3, BookText, FileSpreadsheet, FileCode, AlertTriangle, type LucideIcon } from 'lucide-react'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -167,6 +167,25 @@ export default async function FinancePage() {
       })
     : []
 
+  // Kesiapan ekspor e-Faktur Coretax: NPWP penjual wajib (jadi <TIN>) + ada invoice.
+  const [tenant, invoiceDocs] = session?.user
+    ? await Promise.all([
+        prisma.tenant.findUnique({ where: { id: session.user.tenantId }, select: { npwp: true } }),
+        prisma.maritimeDocument.findMany({
+          where: { tenantId: session.user.tenantId, docType: 'INVOICE' },
+          select: { lineItems: true },
+          take: 1000,
+        }),
+      ])
+    : [null, []]
+  const hasNpwp = (v?: string | null) => !!(v && v.replace(/\D/g, '').length >= 15)
+  const sellerNpwpOk = hasNpwp(tenant?.npwp)
+  const invoiceCount = invoiceDocs.length
+  const missingBuyerNpwp = invoiceDocs.filter(
+    (i) => !hasNpwp((i.lineItems as { billToNpwp?: string } | null)?.billToNpwp),
+  ).length
+  const efakturReady = sellerNpwpOk && invoiceCount > 0
+
   return (
     <div className="p-margin-page max-w-[1600px] mx-auto space-y-8">
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -178,10 +197,20 @@ export default async function FinancePage() {
         <div className="flex items-center gap-2 flex-wrap">
           <a
             href="/api/efaktur/coretax"
-            title="XML impor Faktur Pajak Keluaran untuk Coretax DJP (periksa kode transaksi & NPWP sebelum impor)"
-            className="inline-flex items-center gap-2 bg-card-bg border border-card-border hover:border-accent-teal/60 hover:bg-surface-tertiary text-text-primary rounded-lg px-4 py-2.5 text-sm font-medium transition-colors whitespace-nowrap"
+            title={
+              efakturReady
+                ? 'XML impor Faktur Pajak Keluaran untuk Coretax DJP (periksa kode transaksi sebelum impor)'
+                : !sellerNpwpOk
+                  ? 'NPWP perusahaan belum diisi — kolom <TIN> penjual kosong & XML belum valid untuk Coretax. Isi di Profil Perusahaan.'
+                  : 'Belum ada invoice untuk diekspor.'
+            }
+            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors whitespace-nowrap border ${
+              efakturReady
+                ? 'bg-card-bg border-card-border hover:border-accent-teal/60 hover:bg-surface-tertiary text-text-primary'
+                : 'bg-accent-amber/10 border-accent-amber/40 hover:bg-accent-amber/15 text-accent-amber'
+            }`}
           >
-            <FileCode className="w-4 h-4 text-accent-teal" />
+            {efakturReady ? <FileCode className="w-4 h-4 text-accent-teal" /> : <AlertTriangle className="w-4 h-4" />}
             e-Faktur Coretax (XML)
           </a>
           <a
@@ -199,6 +228,23 @@ export default async function FinancePage() {
             <BarChart3 className="w-4 h-4 text-accent-blue" />
             Analisa Laba &amp; Variance
           </Link>
+
+          {(!sellerNpwpOk || missingBuyerNpwp > 0) && (
+            <p className="w-full text-right text-xs text-accent-amber/90 flex items-center justify-end gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              {!sellerNpwpOk ? (
+                <span>
+                  NPWP perusahaan belum diisi untuk e-Faktur —{' '}
+                  <Link href="/settings/company" className="underline hover:text-accent-amber">
+                    isi di Profil Perusahaan
+                  </Link>
+                  .
+                </span>
+              ) : (
+                <span>{missingBuyerNpwp} invoice tanpa NPWP pembeli — lengkapi sebelum impor ke Coretax.</span>
+              )}
+            </p>
+          )}
         </div>
       </div>
 
