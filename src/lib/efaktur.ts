@@ -15,15 +15,20 @@ export type EfakturSeller = {
   npwp: string // NPWP penjual (tenant)
 }
 
+// Satu baris jasa pada faktur (mis. tiap baris invoice + baris agency fee).
+export type EfakturGood = {
+  name: string
+  amount: number // DPP baris (= harga × qty)
+}
+
 export type EfakturInvoice = {
   docNumber: string
   invoiceDate: string // "22 Jun 2026" atau ISO
   buyerName: string
   buyerNpwp: string
   buyerAddress: string
-  description: string // uraian jasa (mis. kapal/voyage)
-  dpp: number // dasar pengenaan pajak = subtotal + agency
-  vat: number // PPN tersimpan
+  vatRate: number // tarif PPN (%) faktur, mis. 11
+  goods: EfakturGood[] // diitemisasi per baris; PPN dihitung per baris oleh Coretax
 }
 
 const MONTHS: Record<string, string> = {
@@ -68,9 +73,28 @@ export function buildCoretaxXml(seller: EfakturSeller, invoices: EfakturInvoice[
     .map((inv) => {
       const buyerTin = npwp16(inv.buyerNpwp)
       const buyerIdtku = buyerTin ? buyerTin + '000000' : ''
-      const dpp = Math.round(inv.dpp || 0)
-      const vat = Math.round(inv.vat || 0)
-      const rate = dpp > 0 ? Math.round((vat / dpp) * 100) : 11
+      const rate = Number.isFinite(inv.vatRate) && inv.vatRate > 0 ? Math.round(inv.vatRate) : 11
+      const goods = (inv.goods?.length ? inv.goods : [{ name: 'Jasa keagenan kapal', amount: 0 }])
+        .map((g) => {
+          const base = Math.round(g.amount || 0)
+          const vat = Math.round((base * rate) / 100)
+          return `				<GoodService>
+					<Opt>B</Opt>
+					<Code>000000</Code>
+					<Name>${xmlEsc(g.name || 'Jasa keagenan kapal')}</Name>
+					<Unit>UM.0001</Unit>
+					<Price>${base}</Price>
+					<Qty>1</Qty>
+					<TotalDiscount>0</TotalDiscount>
+					<TaxBase>${base}</TaxBase>
+					<OtherTaxBase>${base}</OtherTaxBase>
+					<VATRate>${rate}</VATRate>
+					<VAT>${vat}</VAT>
+					<STLGRate>0</STLGRate>
+					<STLG>0</STLG>
+				</GoodService>`
+        })
+        .join('\n')
       return `		<TaxInvoice>
 			<TaxInvoiceDate>${xmlEsc(toIsoDate(inv.invoiceDate))}</TaxInvoiceDate>
 			<TaxInvoiceOpt>Normal</TaxInvoiceOpt>
@@ -90,21 +114,7 @@ export function buildCoretaxXml(seller: EfakturSeller, invoices: EfakturInvoice[
 			<BuyerEmail/>
 			<BuyerIDTKU>${xmlEsc(buyerIdtku)}</BuyerIDTKU>
 			<ListOfGoodService>
-				<GoodService>
-					<Opt>B</Opt>
-					<Code>000000</Code>
-					<Name>${xmlEsc(inv.description || 'Jasa keagenan kapal')}</Name>
-					<Unit>UM.0001</Unit>
-					<Price>${dpp}</Price>
-					<Qty>1</Qty>
-					<TotalDiscount>0</TotalDiscount>
-					<TaxBase>${dpp}</TaxBase>
-					<OtherTaxBase>${dpp}</OtherTaxBase>
-					<VATRate>${rate}</VATRate>
-					<VAT>${vat}</VAT>
-					<STLGRate>0</STLGRate>
-					<STLG>0</STLG>
-				</GoodService>
+${goods}
 			</ListOfGoodService>
 		</TaxInvoice>`
     })
