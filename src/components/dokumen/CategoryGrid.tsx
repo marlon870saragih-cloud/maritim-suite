@@ -45,9 +45,9 @@ const CATEGORIES: Category[] = [
   {
     id: 'clearance',
     title: 'Clearance & SIB',
-    count: 5,
+    count: 6,
     icon: Receipt,
-    tags: ['Agency Appt.', 'SIB'],
+    tags: ['Agency Appt.', 'SIB', 'LOI'],
     href: '/dokumen/new/AGENCY_APPOINTMENT',
     bar: 'bg-accent-amber',
     iconText: 'text-accent-amber',
