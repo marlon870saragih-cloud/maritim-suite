@@ -34,6 +34,7 @@ const DOC_LINKS = [
   { path: '/dokumen/new/SOF', label: 'SOF — Statement of Facts' },
   { path: '/dokumen/new/ARRIVAL_REPORT', label: 'Arrival Report' },
   { path: '/dokumen/new/DEPARTURE_REPORT', label: 'Departure Report' },
+  { path: '/dokumen/new/DAMAGE_REPORT', label: 'Damage / Survey Report' },
   { path: '/dokumen/new/LETTER_OF_PROTEST', label: 'Letter of Protest' },
   { path: '/dokumen/new/NOTE_OF_PROTEST', label: 'Note of Protest (Sea Protest)' },
   { path: '/dokumen/new/CREW_CHANGE_NOTICE', label: 'Crew Change Notice' },
