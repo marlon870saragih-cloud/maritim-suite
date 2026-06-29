@@ -3,6 +3,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { PortCallManager, type PortCallRow } from '@/components/portcall/PortCallManager'
+import { toLinkedDoc } from '@/lib/documents'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,6 +18,10 @@ export default async function PortCallPage() {
           include: {
             vessel: { select: { id: true, name: true } },
             principal: { select: { id: true, name: true } },
+            documents: {
+              select: { id: true, docType: true, docNumber: true, status: true },
+              orderBy: { createdAt: 'desc' },
+            },
           },
           orderBy: [{ eta: 'desc' }, { createdAt: 'desc' }],
         }),
@@ -44,7 +49,10 @@ export default async function PortCallPage() {
         description="Pusat data kunjungan — pilih kapal & principal sekali, dipakai otomatis di semua dokumen."
       />
       <PortCallManager
-        portCalls={portCalls as unknown as PortCallRow[]}
+        portCalls={portCalls.map((pc) => ({
+          ...pc,
+          documents: pc.documents.map(toLinkedDoc),
+        })) as unknown as PortCallRow[]}
         vessels={vessels}
         principals={principals}
       />

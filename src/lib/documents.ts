@@ -16,7 +16,7 @@ export type DocRow = {
 }
 
 // Pemetaan DocType DB → label + rute form (edit) + segmen API (view/download PDF).
-const DOC_META: Record<string, { label: string; edit: string; api: string }> = {
+export const DOC_META: Record<string, { label: string; edit: string; api: string }> = {
   EPDA: { label: 'EPDA', edit: '/finance/epda/baru', api: 'epda' },
   FPDA: { label: 'FPDA', edit: '/finance/fpda/baru', api: 'fpda' },
   INVOICE: { label: 'Invoice', edit: '/finance/invoice/baru', api: 'invoice' },
@@ -34,6 +34,31 @@ const DOC_META: Record<string, { label: string; edit: string; api: string }> = {
   FAL_3: { label: "Ship's Stores", edit: '/dokumen/new/FAL_3', api: 'ship-stores' },
   FAL_2: { label: 'Cargo Declaration', edit: '/dokumen/new/FAL_2', api: 'cargo-decl' },
   AGENCY_APPOINTMENT: { label: 'Agency Appointment', edit: '/dokumen/new/AGENCY_APPOINTMENT', api: 'appointment' },
+}
+
+/** Ringkasan satu dokumen terkait sebuah Port Call (untuk panel grup di Port Call). */
+export type LinkedDoc = {
+  id: string
+  docType: string
+  label: string
+  docNumber: string
+  status: string
+  viewHref?: string
+  editHref?: string
+}
+
+/** Bentuk baris dokumen terkait dari record MaritimeDocument (label + link via DOC_META). */
+export function toLinkedDoc(d: { id: string; docType: string; docNumber: string; status: string }): LinkedDoc {
+  const m = DOC_META[d.docType]
+  return {
+    id: d.id,
+    docType: d.docType,
+    label: m?.label ?? d.docType.replace(/_/g, ' '),
+    docNumber: d.docNumber,
+    status: d.status,
+    viewHref: m ? `/api/documents/${m.api}?id=${d.id}` : undefined,
+    editHref: m ? `${m.edit}?id=${d.id}` : undefined,
+  }
 }
 
 type Stored = { vesselName?: string; vesselVoyage?: string; toName?: string; party?: string }

@@ -1,11 +1,12 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Plus, Pencil, Trash2, Loader2, Ship, Anchor, FileText, ChevronDown } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2, Ship, Anchor, FileText, ChevronDown, ChevronRight, Eye, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PORTCALL_STATUS, STATUS_LABEL, type PortCallStatusStr } from '@/lib/portcalls'
+import type { LinkedDoc } from '@/lib/documents'
 import {
   Dialog,
   DialogContent,
@@ -64,6 +65,7 @@ export type PortCallRow = {
   notes: string | null
   vessel: { id: string; name: string } | null
   principal: { id: string; name: string } | null
+  documents: LinkedDoc[]
 }
 
 type FormState = Record<string, string>
@@ -116,6 +118,7 @@ export function PortCallManager({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
 
   const set = (k: string, v: string) => setForm((p) => ({ ...p, [k]: v }))
   const noVessels = vessels.length === 0
@@ -253,14 +256,35 @@ export function PortCallManager({
               </thead>
               <tbody className="text-sm">
                 {portCalls.map((pc, i) => (
+                  <Fragment key={pc.id}>
                   <tr
-                    key={pc.id}
                     className={cn(
                       'hover:bg-surface-tertiary/30 transition-colors',
-                      i < portCalls.length - 1 && 'border-b border-card-border/50'
+                      expandedId !== pc.id && i < portCalls.length - 1 && 'border-b border-card-border/50'
                     )}
                   >
-                    <td className="px-5 py-4 text-text-primary">{pc.vessel?.name ?? '—'}</td>
+                    <td className="px-5 py-4 text-text-primary">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedId((id) => (id === pc.id ? null : pc.id))}
+                        title={pc.documents.length ? 'Lihat dokumen terkait' : 'Belum ada dokumen'}
+                        className="inline-flex items-center gap-2 text-left hover:text-accent-blue transition-colors"
+                      >
+                        {pc.documents.length > 0 ? (
+                          <ChevronRight
+                            className={cn('w-4 h-4 shrink-0 text-text-secondary transition-transform', expandedId === pc.id && 'rotate-90 text-accent-blue')}
+                          />
+                        ) : (
+                          <span className="w-4 h-4 shrink-0" />
+                        )}
+                        <span>{pc.vessel?.name ?? '—'}</span>
+                        {pc.documents.length > 0 && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-accent-blue/10 text-accent-blue border border-accent-blue/20 px-2 py-0.5 text-[10px] font-mono">
+                            <FileText className="w-3 h-3" /> {pc.documents.length}
+                          </span>
+                        )}
+                      </button>
+                    </td>
                     <td className="px-5 py-4 text-text-secondary">{pc.principal?.name ?? '—'}</td>
                     <td className="px-5 py-4 text-text-secondary">
                       {pc.port}
@@ -331,6 +355,42 @@ export function PortCallManager({
                       </div>
                     </td>
                   </tr>
+                  {expandedId === pc.id && pc.documents.length > 0 && (
+                    <tr className={cn(i < portCalls.length - 1 && 'border-b border-card-border/50')}>
+                      <td colSpan={7} className="px-5 pb-4 pt-0 bg-surface/30">
+                        <div className="rounded-md border border-card-border/60 divide-y divide-card-border/40">
+                          {pc.documents.map((d) => (
+                            <div key={d.id} className="flex items-center gap-3 px-3 py-2 text-sm">
+                              <span className="font-mono text-[10px] uppercase tracking-wider text-accent-blue w-36 shrink-0">{d.label}</span>
+                              <span className="text-text-primary truncate flex-1">{d.docNumber}</span>
+                              <span className="font-mono text-[10px] uppercase tracking-wider text-text-secondary">{d.status}</span>
+                              <div className="flex items-center gap-1 shrink-0">
+                                {d.viewHref && (
+                                  <a href={d.viewHref} target="_blank" rel="noopener noreferrer" title="Lihat PDF"
+                                    className="p-1.5 rounded text-text-secondary hover:text-accent-blue hover:bg-surface-tertiary transition-colors">
+                                    <Eye className="w-3.5 h-3.5" />
+                                  </a>
+                                )}
+                                {d.viewHref && (
+                                  <a href={`${d.viewHref}&download=1`} title="Unduh PDF"
+                                    className="p-1.5 rounded text-text-secondary hover:text-accent-blue hover:bg-surface-tertiary transition-colors">
+                                    <Download className="w-3.5 h-3.5" />
+                                  </a>
+                                )}
+                                {d.editHref && (
+                                  <Link href={d.editHref} title="Ubah"
+                                    className="p-1.5 rounded text-text-secondary hover:text-accent-blue hover:bg-surface-tertiary transition-colors">
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </Link>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
