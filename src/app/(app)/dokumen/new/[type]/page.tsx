@@ -9,6 +9,7 @@ import { CargoDeclForm } from '@/components/dokumen/CargoDeclForm'
 import { AppointmentForm } from '@/components/dokumen/AppointmentForm'
 import { ReportForm } from '@/components/dokumen/ReportForm'
 import { ProtestForm } from '@/components/dokumen/ProtestForm'
+import { CrewChangeForm } from '@/components/dokumen/CrewChangeForm'
 
 export default function NewDocumentPage({ params }: { params: { type: string } }) {
   // Dokumen operasional yang sudah punya generator.
@@ -22,6 +23,7 @@ export default function NewDocumentPage({ params }: { params: { type: string } }
   if (params.type === 'ARRIVAL_REPORT') return <ReportForm kind="ARRIVAL" />
   if (params.type === 'DEPARTURE_REPORT') return <ReportForm kind="DEPARTURE" />
   if (params.type === 'LETTER_OF_PROTEST') return <ProtestForm />
+  if (params.type === 'CREW_CHANGE_NOTICE') return <CrewChangeForm />
 
   const label = params.type.replace(/_/g, ' ')
   return (

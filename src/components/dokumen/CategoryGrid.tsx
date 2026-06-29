@@ -57,9 +57,9 @@ const CATEGORIES: Category[] = [
   {
     id: 'crew',
     title: 'Crew & Husbandry',
-    count: 4,
+    count: 5,
     icon: Users,
-    tags: ['Crew List', 'Sign-On'],
+    tags: ['Crew List', 'Crew Change', 'Sign-On'],
     href: '/dokumen/new/FAL_5',
     bar: 'bg-accent-purple',
     iconText: 'text-accent-purple',
