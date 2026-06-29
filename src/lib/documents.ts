@@ -29,6 +29,8 @@ export const DOC_META: Record<string, { label: string; edit: string; api: string
   STATEMENT_OF_ACCOUNT: { label: 'SOA', edit: '/finance/soa/baru', api: 'soa' },
   NOR: { label: 'NOR', edit: '/dokumen/new/NOR', api: 'nor' },
   SOF: { label: 'SOF', edit: '/dokumen/new/SOF', api: 'sof' },
+  ARRIVAL_REPORT: { label: 'Arrival Report', edit: '/dokumen/new/ARRIVAL_REPORT', api: 'arrival-report' },
+  DEPARTURE_REPORT: { label: 'Departure Report', edit: '/dokumen/new/DEPARTURE_REPORT', api: 'departure-report' },
   FAL_5: { label: 'Crew List', edit: '/dokumen/new/FAL_5', api: 'crew-list' },
   FAL_1: { label: 'General Declaration', edit: '/dokumen/new/FAL_1', api: 'gendec' },
   FAL_3: { label: "Ship's Stores", edit: '/dokumen/new/FAL_3', api: 'ship-stores' },

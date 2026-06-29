@@ -31,6 +31,8 @@ const DOC_LINKS = [
   { path: '/dokumen/new/FAL_1', label: 'General Declaration — FAL 1' },
   { path: '/dokumen/new/NOR', label: 'NOR — Notice of Readiness' },
   { path: '/dokumen/new/SOF', label: 'SOF — Statement of Facts' },
+  { path: '/dokumen/new/ARRIVAL_REPORT', label: 'Arrival Report' },
+  { path: '/dokumen/new/DEPARTURE_REPORT', label: 'Departure Report' },
   { path: '/dokumen/new/FAL_5', label: 'Crew List — FAL 5' },
   { path: '/dokumen/new/FAL_3', label: "Ship's Stores — FAL 3" },
   { path: '/dokumen/new/FAL_2', label: 'Cargo Declaration — FAL 2' },
