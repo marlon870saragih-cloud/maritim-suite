@@ -8,6 +8,7 @@ import { ShipStoresForm } from '@/components/dokumen/ShipStoresForm'
 import { CargoDeclForm } from '@/components/dokumen/CargoDeclForm'
 import { AppointmentForm } from '@/components/dokumen/AppointmentForm'
 import { ReportForm } from '@/components/dokumen/ReportForm'
+import { ProtestForm } from '@/components/dokumen/ProtestForm'
 
 export default function NewDocumentPage({ params }: { params: { type: string } }) {
   // Dokumen operasional yang sudah punya generator.
@@ -20,6 +21,7 @@ export default function NewDocumentPage({ params }: { params: { type: string } }
   if (params.type === 'AGENCY_APPOINTMENT' || params.type === 'SIB') return <AppointmentForm />
   if (params.type === 'ARRIVAL_REPORT') return <ReportForm kind="ARRIVAL" />
   if (params.type === 'DEPARTURE_REPORT') return <ReportForm kind="DEPARTURE" />
+  if (params.type === 'LETTER_OF_PROTEST') return <ProtestForm />
 
   const label = params.type.replace(/_/g, ' ')
   return (
