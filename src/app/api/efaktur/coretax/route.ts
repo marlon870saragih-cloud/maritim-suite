@@ -1,7 +1,7 @@
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { buildCoretaxXml, type EfakturInvoice } from '@/lib/efaktur'
+import { buildCoretaxXml, toIsoDate, type EfakturInvoice } from '@/lib/efaktur'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -20,11 +20,14 @@ type InvStored = {
 type InvSubs = { subtotal?: number; agency?: number; vat?: number }
 
 // GET /api/efaktur/coretax → XML impor Faktur Pajak Keluaran untuk Coretax DJP.
-export async function GET() {
+// ?masa=YYYY-MM → hanya invoice pada masa pajak (bulan) tsb; tanpa param = semua.
+export async function GET(req: Request) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return new Response('Unauthorized', { status: 401 })
 
-  const [tenant, invoices] = await Promise.all([
+  const masa = new URL(req.url).searchParams.get('masa') // "YYYY-MM" atau null
+
+  const [tenant, allInvoices] = await Promise.all([
     prisma.tenant.findUnique({ where: { id: session.user.tenantId }, select: { npwp: true } }),
     prisma.maritimeDocument.findMany({
       where: { tenantId: session.user.tenantId, docType: 'INVOICE' },
@@ -32,6 +35,13 @@ export async function GET() {
       take: 1000,
     }),
   ])
+
+  const invoices = masa
+    ? allInvoices.filter((inv) => {
+        const li = (inv.lineItems ?? {}) as InvStored
+        return toIsoDate(li.invoiceDate ?? '').slice(0, 7) === masa
+      })
+    : allInvoices
 
   const rows: EfakturInvoice[] = invoices.map((inv) => {
     const li = (inv.lineItems ?? {}) as InvStored
@@ -60,11 +70,11 @@ export async function GET() {
   })
 
   const xml = buildCoretaxXml({ npwp: tenant?.npwp ?? '' }, rows)
-  const today = new Date().toISOString().slice(0, 10)
+  const suffix = masa ?? new Date().toISOString().slice(0, 10)
   return new Response(xml, {
     headers: {
       'Content-Type': 'application/xml; charset=utf-8',
-      'Content-Disposition': `attachment; filename="efaktur-coretax-${today}.xml"`,
+      'Content-Disposition': `attachment; filename="efaktur-coretax-${suffix}.xml"`,
       'Cache-Control': 'no-store',
     },
   })

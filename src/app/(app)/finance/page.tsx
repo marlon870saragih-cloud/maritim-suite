@@ -1,9 +1,11 @@
 import Link from 'next/link'
 import { getServerSession } from 'next-auth'
-import { Receipt, ReceiptText, FileText, Calculator, Eye, Plus, Download, FileEdit, ArrowRight, PlusCircle, MinusCircle, ClipboardList, ShoppingCart, Fuel, BarChart3, BookText, FileSpreadsheet, FileCode, AlertTriangle, type LucideIcon } from 'lucide-react'
+import { Receipt, ReceiptText, FileText, Calculator, Eye, Plus, Download, FileEdit, ArrowRight, PlusCircle, MinusCircle, ClipboardList, ShoppingCart, Fuel, BarChart3, BookText, FileSpreadsheet, AlertTriangle, type LucideIcon } from 'lucide-react'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { EfakturExport, type MasaOption } from '@/components/finance/EfakturExport'
+import { toIsoDate } from '@/lib/efaktur'
 
 const fmt = (n: number | null) => (n ?? 0).toLocaleString('en-US')
 
@@ -186,6 +188,18 @@ export default async function FinancePage() {
   ).length
   const efakturReady = sellerNpwpOk && invoiceCount > 0
 
+  // Daftar masa pajak (bulan invoice) untuk filter ekspor e-Faktur.
+  const MASA_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
+  const masaSet = new Set<string>()
+  for (const inv of invoiceDocs) {
+    const iso = toIsoDate((inv.lineItems as { invoiceDate?: string } | null)?.invoiceDate ?? '')
+    if (/^\d{4}-\d{2}/.test(iso)) masaSet.add(iso.slice(0, 7))
+  }
+  const masaList: MasaOption[] = Array.from(masaSet).sort().reverse().map((v) => {
+    const [y, m] = v.split('-')
+    return { value: v, label: `${MASA_MONTHS[Number(m) - 1] ?? m} ${y}` }
+  })
+
   return (
     <div className="p-margin-page max-w-[1600px] mx-auto space-y-8">
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -195,24 +209,7 @@ export default async function FinancePage() {
           description="EPDA · FPDA · Invoice — perhitungan agency fee & disbursement otomatis."
         />
         <div className="flex items-center gap-2 flex-wrap">
-          <a
-            href="/api/efaktur/coretax"
-            title={
-              efakturReady
-                ? 'XML impor Faktur Pajak Keluaran untuk Coretax DJP (periksa kode transaksi sebelum impor)'
-                : !sellerNpwpOk
-                  ? 'NPWP perusahaan belum diisi — kolom <TIN> penjual kosong & XML belum valid untuk Coretax. Isi di Profil Perusahaan.'
-                  : 'Belum ada invoice untuk diekspor.'
-            }
-            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors whitespace-nowrap border ${
-              efakturReady
-                ? 'bg-card-bg border-card-border hover:border-accent-teal/60 hover:bg-surface-tertiary text-text-primary'
-                : 'bg-accent-amber/10 border-accent-amber/40 hover:bg-accent-amber/15 text-accent-amber'
-            }`}
-          >
-            {efakturReady ? <FileCode className="w-4 h-4 text-accent-teal" /> : <AlertTriangle className="w-4 h-4" />}
-            e-Faktur Coretax (XML)
-          </a>
+          <EfakturExport ready={efakturReady} sellerNpwpOk={sellerNpwpOk} masaList={masaList} />
           <a
             href="/api/efaktur/export"
             title="Ringkasan invoice (CSV) untuk catatan internal — bukan untuk impor Coretax"
