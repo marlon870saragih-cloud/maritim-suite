@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { Eye, Pencil, Download } from 'lucide-react'
-import { StatusBadge } from '@/components/shared/StatusBadge'
+import { DocStatusControl } from '@/components/dokumen/DocStatusControl'
 import type { DocRow } from '@/lib/documents'
 import { cn } from '@/lib/utils'
 
@@ -40,7 +40,7 @@ export function RecentDocsTable({ documents }: { documents: DocRow[] }) {
                 <td className="px-5 py-4 text-text-primary">{doc.vessel}</td>
                 <td className="px-5 py-4 text-text-secondary">{doc.port}</td>
                 <td className="px-5 py-4">
-                  <StatusBadge status={doc.status} />
+                  <DocStatusControl id={doc.id} status={doc.status} />
                 </td>
                 <td className="px-5 py-4">
                   <div className="flex items-center justify-end gap-1">
