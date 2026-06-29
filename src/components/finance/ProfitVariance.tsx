@@ -7,6 +7,7 @@ export type DisbDoc = {
   id: string
   docNumber: string
   vessel: string
+  portCallId: string | null
   sections: { letter: string; title: string; amount: number }[]
   subtotal: number
   agency: number
@@ -16,6 +17,7 @@ export type InvDoc = {
   id: string
   docNumber: string
   vessel: string
+  portCallId: string | null
   subtotal: number
   agency: number
   vat: number
@@ -54,22 +56,26 @@ export function ProfitVariance({
   const plFpda = fpdas.find((d) => d.id === plFpdaId) ?? null
   const inv = invoices.find((d) => d.id === invId) ?? null
 
-  // Auto-pasangkan dokumen sekapal: nama kapal dinormalkan (buang voyage "· V.118").
+  // Auto-pasangkan dokumen: utamakan tautan Port Call yang sama (akurat), lalu
+  // fallback ke nama kapal yang dinormalkan (buang voyage "· V.118").
   const sameVessel = (a: string, b: string) =>
     !!a && !!b && a.split('·')[0].trim().toLowerCase() === b.split('·')[0].trim().toLowerCase()
+  const matchFpda = (target: { portCallId: string | null; vessel: string }) =>
+    (target.portCallId && fpdas.find((f) => f.portCallId === target.portCallId)) ||
+    fpdas.find((f) => sameVessel(f.vessel, target.vessel))
 
-  // EPDA dipilih → FPDA sekapal otomatis terpilih (untuk Variance).
+  // EPDA dipilih → FPDA sepasang (port call / sekapal) otomatis terpilih (untuk Variance).
   useEffect(() => {
     if (!epda) return
-    const m = fpdas.find((f) => sameVessel(f.vessel, epda.vessel))
+    const m = matchFpda(epda)
     if (m && m.id !== fpdaId) setFpdaId(m.id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [epdaId])
 
-  // Invoice dipilih → FPDA sekapal otomatis terpilih (untuk P&L).
+  // Invoice dipilih → FPDA sepasang (port call / sekapal) otomatis terpilih (untuk P&L).
   useEffect(() => {
     if (!inv) return
-    const m = fpdas.find((f) => sameVessel(f.vessel, inv.vessel))
+    const m = matchFpda(inv)
     if (m && m.id !== plFpdaId) setPlFpdaId(m.id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [invId])
