@@ -27,6 +27,7 @@ const DOC_LINKS = [
   { path: '/finance/epda/baru', label: 'EPDA — Estimasi (proforma)' },
   { path: '/finance/fpda/baru', label: 'FPDA — Final disbursement' },
   { path: '/finance/invoice/baru', label: 'Invoice — Tagihan jasa' },
+  { path: '/dokumen/new/BUNKER_REQUISITION', label: 'Bunker Requisition' },
   { path: '/finance/bdn/baru', label: 'BDN — Bunker delivery note' },
   { path: '/dokumen/new/FAL_1', label: 'General Declaration — FAL 1' },
   { path: '/dokumen/new/NOR', label: 'NOR — Notice of Readiness' },

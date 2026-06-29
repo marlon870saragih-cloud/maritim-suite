@@ -36,6 +36,7 @@ export const DOC_META: Record<string, { label: string; edit: string; api: string
   PORT_CALL_SUMMARY: { label: 'Port Call Summary', edit: '/dokumen/new/PORT_CALL_SUMMARY', api: 'port-call-summary' },
   LETTER_OF_INDEMNITY: { label: 'Letter of Indemnity', edit: '/dokumen/new/LETTER_OF_INDEMNITY', api: 'loi' },
   TIME_SHEET: { label: 'Time Sheet', edit: '/dokumen/new/TIME_SHEET', api: 'timesheet' },
+  BUNKER_REQUISITION: { label: 'Bunker Requisition', edit: '/dokumen/new/BUNKER_REQUISITION', api: 'bunker-req' },
   FAL_5: { label: 'Crew List', edit: '/dokumen/new/FAL_5', api: 'crew-list' },
   FAL_1: { label: 'General Declaration', edit: '/dokumen/new/FAL_1', api: 'gendec' },
   FAL_3: { label: "Ship's Stores", edit: '/dokumen/new/FAL_3', api: 'ship-stores' },
