@@ -12,6 +12,7 @@ import {
   type ReportEvent,
   type ReportKind,
 } from '@/lib/pdf/report-data'
+import { blankSample } from '@/lib/blank-sample'
 import { useT, type Lang } from '@/lib/i18n'
 import { FORM_COMMON } from '@/lib/i18n-forms'
 
@@ -80,9 +81,9 @@ export function ReportForm({ kind }: { kind: ReportKind }) {
   const cfg = CONFIG[kind]
   const title = kind === 'ARRIVAL' ? t.titleArrival : t.titleDeparture
   const desc = kind === 'ARRIVAL' ? t.descArrival : t.descDeparture
-  const { tenant: _t, events: _e, ...sampleHead } = cfg.sample
+  const { tenant: _t, events: _e, ...sampleHead } = blankSample(cfg.sample)
   const [head, setHead] = useState<Head>(sampleHead)
-  const [events, setEvents] = useState<ReportEvent[]>(clone(cfg.sample.events))
+  const [events, setEvents] = useState<ReportEvent[]>([])
   const [busy, setBusy] = useState<null | 'preview' | 'download' | 'save'>(null)
   const [savedId, setSavedId] = useState<string | null>(null)
   const [savedMsg, setSavedMsg] = useState('')

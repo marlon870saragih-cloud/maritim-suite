@@ -5,6 +5,7 @@ import { createLinkQuery } from '@/lib/link-params'
 import Link from 'next/link'
 import { ArrowLeft, Plus, Trash2, Download, Eye, Loader2, Save, Check } from 'lucide-react'
 import { SAMPLE_CREWLIST, type CrewListData, type CrewMember } from '@/lib/pdf/crewlist-data'
+import { blankSample } from '@/lib/blank-sample'
 import { useT, type Lang } from '@/lib/i18n'
 import { FORM_COMMON } from '@/lib/i18n-forms'
 
@@ -52,9 +53,9 @@ const emptyCrew = (): CrewMember => ({ name: '', rank: '', nationality: 'Indones
 export function CrewListForm() {
   const t = useT(STR)
   const c = useT(FORM_COMMON)
-  const { tenant: _t, crew: _c, ...sampleHead } = SAMPLE_CREWLIST
+  const { tenant: _t, crew: _c, ...sampleHead } = blankSample(SAMPLE_CREWLIST)
   const [head, setHead] = useState<Head>(sampleHead)
-  const [crew, setCrew] = useState<CrewMember[]>(clone(SAMPLE_CREWLIST.crew))
+  const [crew, setCrew] = useState<CrewMember[]>([])
   const [busy, setBusy] = useState<null | 'preview' | 'download' | 'save'>(null)
   const [savedId, setSavedId] = useState<string | null>(null)
   const [savedMsg, setSavedMsg] = useState('')

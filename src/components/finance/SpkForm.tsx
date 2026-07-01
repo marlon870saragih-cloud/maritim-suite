@@ -5,6 +5,7 @@ import { createLinkQuery } from '@/lib/link-params'
 import Link from 'next/link'
 import { ArrowLeft, Plus, Trash2, Download, Eye, Loader2, Save, Check, Sparkles } from 'lucide-react'
 import { SAMPLE_SPK, type SpkData, type SpkScopeItem } from '@/lib/pdf/spk-data'
+import { blankSample } from '@/lib/blank-sample'
 import { useT, type Lang } from '@/lib/i18n'
 import { FORM_COMMON } from '@/lib/i18n-forms'
 
@@ -75,11 +76,11 @@ type Head = Omit<SpkData, 'tenant' | 'scopeItems' | 'terms'>
 export function SpkForm() {
   const t = useT(STR)
   const c = useT(FORM_COMMON)
-  const { tenant: _t, scopeItems: _s, terms: _tm, ...sampleHead } = SAMPLE_SPK
+  const { tenant: _t, scopeItems: _s, terms: _tm, ...sampleHead } = blankSample(SAMPLE_SPK)
 
   const [head, setHead] = useState<Head>(sampleHead)
-  const [scope, setScope] = useState<SpkScopeItem[]>(clone(SAMPLE_SPK.scopeItems))
-  const [terms, setTerms] = useState<string[]>(clone(SAMPLE_SPK.terms))
+  const [scope, setScope] = useState<SpkScopeItem[]>([])
+  const [terms, setTerms] = useState<string[]>([])
   const [busy, setBusy] = useState<null | 'preview' | 'download' | 'save'>(null)
   const [savedId, setSavedId] = useState<string | null>(null)
   const [savedMsg, setSavedMsg] = useState('')

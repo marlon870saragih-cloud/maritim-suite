@@ -10,6 +10,7 @@ import {
   type SummaryDocRow,
   type SummaryFinance,
 } from '@/lib/pdf/pcsummary-data'
+import { blankSample } from '@/lib/blank-sample'
 import { useT, type Lang } from '@/lib/i18n'
 import { FORM_COMMON } from '@/lib/i18n-forms'
 
@@ -64,10 +65,10 @@ type SummaryResp = {
 export function PortCallSummaryForm() {
   const t = useT(STR)
   const c = useT(FORM_COMMON)
-  const { tenant: _t, documents: _d, finance: _f, ...sampleHead } = SAMPLE_PCSUMMARY
+  const { tenant: _t, documents: _d, finance: _f, ...sampleHead } = blankSample(SAMPLE_PCSUMMARY)
   const [head, setHead] = useState<Head>(sampleHead)
-  const [documents, setDocuments] = useState<SummaryDocRow[]>(SAMPLE_PCSUMMARY.documents)
-  const [finance, setFinance] = useState<SummaryFinance>(SAMPLE_PCSUMMARY.finance)
+  const [documents, setDocuments] = useState<SummaryDocRow[]>([])
+  const [finance, setFinance] = useState<SummaryFinance>({ epda: 0, fpda: 0, invoice: 0 })
   const [busy, setBusy] = useState<null | 'preview' | 'download' | 'save'>(null)
   const [savedId, setSavedId] = useState<string | null>(null)
   const [savedMsg, setSavedMsg] = useState('')

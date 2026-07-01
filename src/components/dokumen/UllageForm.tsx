@@ -5,6 +5,7 @@ import { createLinkQuery } from '@/lib/link-params'
 import Link from 'next/link'
 import { ArrowLeft, Plus, Trash2, Download, Eye, Loader2, Save, Check } from 'lucide-react'
 import { SAMPLE_ULLAGE, ullageTotalVolume, ullageTotalMt, type UllageData, type UllageTank } from '@/lib/pdf/ullage-data'
+import { blankSample } from '@/lib/blank-sample'
 import { useT, type Lang } from '@/lib/i18n'
 import { FORM_COMMON } from '@/lib/i18n-forms'
 
@@ -49,9 +50,9 @@ const emptyTank = (): UllageTank => ({ tank: '', ullage: '', tempC: '', volumeM3
 export function UllageForm() {
   const t = useT(STR)
   const c = useT(FORM_COMMON)
-  const { tenant: _t, tanks: _k, ...sampleHead } = SAMPLE_ULLAGE
+  const { tenant: _t, tanks: _k, ...sampleHead } = blankSample(SAMPLE_ULLAGE)
   const [head, setHead] = useState<Head>(sampleHead)
-  const [tanks, setTanks] = useState<UllageTank[]>(clone(SAMPLE_ULLAGE.tanks))
+  const [tanks, setTanks] = useState<UllageTank[]>([])
   const [busy, setBusy] = useState<null | 'preview' | 'download' | 'save'>(null)
   const [savedId, setSavedId] = useState<string | null>(null)
   const [savedMsg, setSavedMsg] = useState('')

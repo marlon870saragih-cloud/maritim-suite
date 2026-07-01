@@ -14,6 +14,7 @@ import {
   type NoteKind,
   type NoteLine,
 } from '@/lib/pdf/note-data'
+import { blankSample } from '@/lib/blank-sample'
 import type { InvoiceData } from '@/lib/pdf/invoice-data'
 import { useT, useLang, type Lang } from '@/lib/i18n'
 import { FORM_COMMON } from '@/lib/i18n-forms'
@@ -84,10 +85,10 @@ export function NoteForm({ kind }: { kind: NoteKind }) {
   const meta = NOTE_META[kind]
   const endpoint = `/api/documents/${kind}-note`
   const formRoute = `/finance/${kind}-note/baru`
-  const { tenant: _t, lines: _l, kind: _k, ...sampleHead } = sample
+  const { tenant: _t, lines: _l, kind: _k, ...sampleHead } = blankSample(sample)
 
   const [head, setHead] = useState<Head>(sampleHead)
-  const [lines, setLines] = useState<NoteLine[]>(clone(sample.lines))
+  const [lines, setLines] = useState<NoteLine[]>([])
   const [busy, setBusy] = useState<null | 'preview' | 'download' | 'save'>(null)
   const [savedId, setSavedId] = useState<string | null>(null)
   const [savedMsg, setSavedMsg] = useState('')

@@ -7,6 +7,7 @@ import { ArrowLeft, Download, Eye, Loader2, Save, Check } from 'lucide-react'
 import { useT, useLang, type Lang } from '@/lib/i18n'
 import { FORM_COMMON } from '@/lib/i18n-forms'
 import { SAMPLE_RECEIPT, terbilangRupiah, type ReceiptData } from '@/lib/pdf/receipt-data'
+import { blankSample } from '@/lib/blank-sample'
 import { computeInvoiceTotals, type InvoiceData } from '@/lib/pdf/invoice-data'
 
 const fmt = (n: number) => (n || 0).toLocaleString('en-US')
@@ -65,7 +66,7 @@ export function ReceiptForm() {
   const t = useT(STR)
   const c = useT(FORM_COMMON)
   const { lang } = useLang()
-  const { tenant: _t, ...sample } = SAMPLE_RECEIPT
+  const { tenant: _t, ...sample } = blankSample(SAMPLE_RECEIPT)
   const [form, setForm] = useState<FormState>(sample)
   const [busy, setBusy] = useState<null | 'preview' | 'download' | 'save'>(null)
   const [savedId, setSavedId] = useState<string | null>(null)

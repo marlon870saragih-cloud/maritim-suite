@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Download, Eye, Loader2, Save, Check } from 'lucide-react'
 import { SAMPLE_SOA, computeSoaTotals, type SoaData, type SoaRow } from '@/lib/pdf/soa-data'
+import { blankSample } from '@/lib/blank-sample'
 import { useT, type Lang } from '@/lib/i18n'
 import { FORM_COMMON } from '@/lib/i18n-forms'
 
@@ -58,10 +59,10 @@ type Head = Omit<SoaData, 'tenant' | 'rows'>
 export function SoaForm({ parties }: { parties: SoaParty[] }) {
   const t = useT(STR)
   const c = useT(FORM_COMMON)
-  const { tenant: _t, rows: _r, ...sampleHead } = SAMPLE_SOA
+  const { tenant: _t, rows: _r, ...sampleHead } = blankSample(SAMPLE_SOA)
   const [partyIdx, setPartyIdx] = useState(parties.length ? 0 : -1)
   const [head, setHead] = useState<Head>(sampleHead)
-  const [rows, setRows] = useState<SoaRow[]>(parties[0]?.rows ?? SAMPLE_SOA.rows)
+  const [rows, setRows] = useState<SoaRow[]>(parties[0]?.rows ?? [])
   const [busy, setBusy] = useState<null | 'preview' | 'download' | 'save'>(null)
   const [savedId, setSavedId] = useState<string | null>(null)
   const [savedMsg, setSavedMsg] = useState('')

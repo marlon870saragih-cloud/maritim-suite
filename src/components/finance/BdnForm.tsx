@@ -5,6 +5,7 @@ import { createLinkQuery } from '@/lib/link-params'
 import Link from 'next/link'
 import { ArrowLeft, Download, Eye, Loader2, Save, Check } from 'lucide-react'
 import { SAMPLE_BDN, bdnAmount, type BdnData } from '@/lib/pdf/bdn-data'
+import { blankSample } from '@/lib/blank-sample'
 import { useT, type Lang } from '@/lib/i18n'
 import { FORM_COMMON } from '@/lib/i18n-forms'
 
@@ -66,7 +67,7 @@ const NUM_KEYS: (keyof FormState)[] = ['quantityMt', 'pricePerMt']
 export function BdnForm() {
   const t = useT(STR)
   const c = useT(FORM_COMMON)
-  const { tenant: _t, ...sample } = SAMPLE_BDN
+  const { tenant: _t, ...sample } = blankSample(SAMPLE_BDN)
   const [form, setForm] = useState<FormState>(sample)
   const [busy, setBusy] = useState<null | 'preview' | 'download' | 'save'>(null)
   const [savedId, setSavedId] = useState<string | null>(null)

@@ -14,6 +14,7 @@ import {
   type ProcKind,
   type ProcLine,
 } from '@/lib/pdf/procurement-data'
+import { blankSample } from '@/lib/blank-sample'
 import { useT, useLang, type Lang } from '@/lib/i18n'
 import { FORM_COMMON } from '@/lib/i18n-forms'
 
@@ -87,10 +88,10 @@ export function ProcurementForm({ kind }: { kind: ProcKind }) {
   const totalLabel = kind === 'pr' ? t.totalPr : t.totalPo
   const endpoint = `/api/documents/${kind}`
   const formRoute = `/finance/${kind}/baru`
-  const { tenant: _t, lines: _l, kind: _k, ...sampleHead } = sample
+  const { tenant: _t, lines: _l, kind: _k, ...sampleHead } = blankSample(sample)
 
   const [head, setHead] = useState<Head>(sampleHead)
-  const [lines, setLines] = useState<ProcLine[]>(clone(sample.lines))
+  const [lines, setLines] = useState<ProcLine[]>([])
   const [busy, setBusy] = useState<null | 'preview' | 'download' | 'save'>(null)
   const [savedId, setSavedId] = useState<string | null>(null)
   const [savedMsg, setSavedMsg] = useState('')

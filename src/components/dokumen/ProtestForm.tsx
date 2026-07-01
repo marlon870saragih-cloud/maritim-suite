@@ -5,6 +5,7 @@ import { createLinkQuery } from '@/lib/link-params'
 import Link from 'next/link'
 import { ArrowLeft, Download, Eye, Loader2, Save, Check } from 'lucide-react'
 import { SAMPLE_PROTEST, type ProtestData } from '@/lib/pdf/protest-data'
+import { blankSample } from '@/lib/blank-sample'
 import { useT, type Lang } from '@/lib/i18n'
 import { FORM_COMMON } from '@/lib/i18n-forms'
 
@@ -49,7 +50,7 @@ type FormState = Omit<ProtestData, 'tenant'>
 export function ProtestForm() {
   const t = useT(STR)
   const c = useT(FORM_COMMON)
-  const { tenant: _t, ...sample } = SAMPLE_PROTEST
+  const { tenant: _t, ...sample } = blankSample(SAMPLE_PROTEST)
   const [form, setForm] = useState<FormState>(sample)
   const [busy, setBusy] = useState<null | 'preview' | 'download' | 'save'>(null)
   const [savedId, setSavedId] = useState<string | null>(null)

@@ -8,7 +8,6 @@ import { useT, useLang, type Lang } from '@/lib/i18n'
 import { FORM_COMMON } from '@/lib/i18n-forms'
 import { getSimpleSchema, type SimpleData } from '@/lib/pdf/simple-docs'
 
-const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v))
 
 const inputCls =
   'w-full bg-surface border border-border-muted rounded px-2.5 py-2 text-sm text-text-primary ' +
