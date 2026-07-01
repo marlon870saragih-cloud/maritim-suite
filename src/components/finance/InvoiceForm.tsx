@@ -98,24 +98,26 @@ type Head = Pick<
 export function InvoiceForm() {
   const t = useT(STR)
   const c = useT(FORM_COMMON)
+  // Invoice BARU dibuka kosong (tanpa data/angka contoh). Hanya default konfigurasi
+  // (mata uang, agency %, PPN %) + boilerplate syarat/penandatangan yang dipertahankan.
   const [head, setHead] = useState<Head>({
-    docNumber: SAMPLE_INVOICE.docNumber,
-    invoiceDate: SAMPLE_INVOICE.invoiceDate,
-    dueDate: SAMPLE_INVOICE.dueDate,
+    docNumber: '',
+    invoiceDate: '',
+    dueDate: '',
     currency: SAMPLE_INVOICE.currency,
     agencyPct: SAMPLE_INVOICE.agencyPct,
     vatPct: SAMPLE_INVOICE.vatPct,
-    billToName: SAMPLE_INVOICE.billToName,
-    billToAddress: SAMPLE_INVOICE.billToAddress ?? '',
-    billToAttn: SAMPLE_INVOICE.billToAttn ?? '',
-    billToNpwp: SAMPLE_INVOICE.billToNpwp ?? '',
-    vesselVoyage: SAMPLE_INVOICE.vesselVoyage,
-    portCall: SAMPLE_INVOICE.portCall,
-    refFda: SAMPLE_INVOICE.refFda ?? '',
+    billToName: '',
+    billToAddress: '',
+    billToAttn: '',
+    billToNpwp: '',
+    vesselVoyage: '',
+    portCall: '',
+    refFda: '',
     paymentTerms: SAMPLE_INVOICE.paymentTerms,
     signRole: SAMPLE_INVOICE.signRole,
   })
-  const [lines, setLines] = useState<InvoiceLine[]>(clone(SAMPLE_INVOICE.lines))
+  const [lines, setLines] = useState<InvoiceLine[]>([])
   const [busy, setBusy] = useState<null | 'preview' | 'download' | 'save'>(null)
   const [savedId, setSavedId] = useState<string | null>(null)
   const [savedMsg, setSavedMsg] = useState('')

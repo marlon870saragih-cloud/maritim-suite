@@ -131,31 +131,26 @@ export function DisbursementForm({ type }: { type: DocKind }) {
   const endpoint = `/api/documents/${type}`
   const formRoute = `/finance/${type}/baru`
 
+  // Dokumen BARU dibuka kosong (tanpa "sisa angka"/data contoh). Hanya default
+  // konfigurasi (mata uang, agency %, kurs) yang dipertahankan. Data contoh tetap
+  // dipakai untuk tombol "Lihat contoh" (endpoint sample), bukan untuk form baru.
   const [meta, setMeta] = useState<Meta>({
-    docNumber: sample.docNumber,
-    issuedAt: sample.issuedAt,
-    validUntil: sample.validUntil,
+    docNumber: '',
+    issuedAt: '',
+    validUntil: '',
     currency: sample.currency,
     agencyPct: sample.agencyPct,
     usdRate: sample.usdRate ?? 0,
-    advanceReceived: sample.advanceReceived ?? 0,
+    advanceReceived: 0,
   })
   const [par, setPar] = useState<Particulars>({
-    vesselName: sample.vesselName,
-    principal: sample.principal,
-    imo: sample.imo,
-    flag: sample.flag,
-    port: sample.port,
-    portCode: sample.portCode,
-    gt: sample.gt,
-    nrt: sample.nrt,
-    eta: sample.eta,
-    etd: sample.etd,
-    loa: sample.loa,
-    draft: sample.draft,
-    cargo: sample.cargo,
+    vesselName: '', principal: '', imo: '', flag: '', port: '', portCode: '',
+    gt: '', nrt: '', eta: '', etd: '', loa: '', draft: '', cargo: '',
   })
-  const [sections, setSections] = useState<EpdaSection[]>(clone(sample.sections))
+  // Kerangka seksi A/B/C/D (judul) dipertahankan sebagai panduan, item dikosongkan.
+  const [sections, setSections] = useState<EpdaSection[]>(
+    sample.sections.map((s) => ({ letter: s.letter, title: s.title, items: [] })),
+  )
   const [lump, setLump] = useState({ on: false, desc: 'Lump Sum Disbursement (estimated)', amount: 0 })
   const [busy, setBusy] = useState<null | 'preview' | 'download' | 'save'>(null)
   const [savedId, setSavedId] = useState<string | null>(null)

@@ -30,7 +30,23 @@ export function SimpleDocForm({ type }: { type: string }) {
   const h = useT(HDR)
   const { lang } = useLang()
 
-  const [data, setData] = useState<SimpleData>(() => clone((schema ?? { sample: {} as SimpleData }).sample))
+  // Dokumen BARU dibuka kosong: particulars & tabel dikosongkan (tanpa data contoh),
+  // tapi teks boilerplate (pernyataan/klausul) & penandatangan default dipertahankan.
+  const [data, setData] = useState<SimpleData>(() =>
+    schema
+      ? {
+          docNumber: '',
+          date: '',
+          fields: {},
+          intro: schema.sample.intro,
+          clauses: schema.sample.clauses,
+          rows: [],
+          remarks: '',
+          signName: schema.sample.signName,
+          signRole: schema.sample.signRole,
+        }
+      : ({ docNumber: '', date: '', fields: {}, signName: '', signRole: '' } as SimpleData),
+  )
   const [busy, setBusy] = useState<null | 'preview' | 'download' | 'save'>(null)
   const [savedId, setSavedId] = useState<string | null>(null)
   const [savedMsg, setSavedMsg] = useState('')
