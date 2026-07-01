@@ -5,8 +5,35 @@ import { createLinkQuery } from '@/lib/link-params'
 import Link from 'next/link'
 import { ArrowLeft, Download, Eye, Loader2, Save, Check } from 'lucide-react'
 import { SAMPLE_BDN, bdnAmount, type BdnData } from '@/lib/pdf/bdn-data'
+import { useT, type Lang } from '@/lib/i18n'
+import { FORM_COMMON } from '@/lib/i18n-forms'
 
 const fmt = (n: number) => (n || 0).toLocaleString('en-US')
+
+const STR: Record<Lang, Record<string, string>> = {
+  id: {
+    back: 'Kembali ke Finance', kicker: 'Pengadaan · Bunker', h1: 'Buat Bunker Delivery Note',
+    desc: 'Bukti serah bunker ke kapal (MARPOL Annex VI). Nilai dihitung dari jumlah × harga/MT.',
+    fromPortCall: 'Data kapal terisi otomatis dari Port Call. Lengkapi spesifikasi bunker di bawah.',
+    secVessel: 'Kapal & Penyerahan', fDelivery: 'Tanggal & waktu serah', fCurrency: 'Mata uang',
+    fVessel: 'Nama kapal', fFlag: 'Bendera', fPort: 'Pelabuhan',
+    secSupplier: 'Pemasok & Produk', fSupplier: 'Pemasok', fBarge: 'Tongkang / truk', fGrade: 'Grade produk',
+    secFuel: 'Spesifikasi Bahan Bakar', fQty: 'Jumlah (MT)', fPrice: 'Harga / MT',
+    secNotes: 'Catatan & Penerima', fRemarks: 'Catatan', fReceiver: 'Penerima (kapal)', fSignRole: 'Jabatan pemasok (ttd)',
+    sQty: 'Jumlah', sPrice: 'Harga / MT', bunkerValue: 'Nilai Bunker',
+  },
+  en: {
+    back: 'Back to Finance', kicker: 'Procurement · Bunker', h1: 'Create Bunker Delivery Note',
+    desc: 'Proof of bunker delivery to the vessel (MARPOL Annex VI). Value computed as quantity × price/MT.',
+    fromPortCall: 'Vessel details auto-filled from Port Call. Complete the bunker specification below.',
+    secVessel: 'Vessel & Delivery', fDelivery: 'Delivery date & time', fCurrency: 'Currency',
+    fVessel: 'Vessel name', fFlag: 'Flag', fPort: 'Port',
+    secSupplier: 'Supplier & Product', fSupplier: 'Supplier', fBarge: 'Barge / truck', fGrade: 'Product grade',
+    secFuel: 'Fuel Specification', fQty: 'Quantity (MT)', fPrice: 'Price / MT',
+    secNotes: 'Remarks & Receiver', fRemarks: 'Remarks', fReceiver: 'Receiver (vessel)', fSignRole: 'Supplier title (sign)',
+    sQty: 'Quantity', sPrice: 'Price / MT', bunkerValue: 'Bunker Value',
+  },
+}
 
 const inputCls =
   'w-full bg-surface border border-border-muted rounded px-2.5 py-2 text-sm text-text-primary ' +
@@ -37,6 +64,8 @@ type FormState = Omit<BdnData, 'tenant'>
 const NUM_KEYS: (keyof FormState)[] = ['quantityMt', 'pricePerMt']
 
 export function BdnForm() {
+  const t = useT(STR)
+  const c = useT(FORM_COMMON)
   const { tenant: _t, ...sample } = SAMPLE_BDN
   const [form, setForm] = useState<FormState>(sample)
   const [busy, setBusy] = useState<null | 'preview' | 'download' | 'save'>(null)
@@ -96,10 +125,10 @@ export function BdnForm() {
       const j = (await res.json()) as { id: string }
       setSavedId(j.id)
       window.history.replaceState(null, '', `/finance/bdn/baru?id=${j.id}`)
-      setSavedMsg('Tersimpan ✓')
+      setSavedMsg(c.saved)
       setTimeout(() => setSavedMsg(''), 3000)
     } catch {
-      alert('Gagal menyimpan. Pastikan Anda sudah login.')
+      alert(c.saveFail)
     } finally {
       setBusy(null)
     }
@@ -128,7 +157,7 @@ export function BdnForm() {
       }
       setTimeout(() => URL.revokeObjectURL(url), 60000)
     } catch {
-      alert('Gagal membuat PDF. Coba lagi.')
+      alert(c.pdfFail)
     } finally {
       setBusy(null)
     }
@@ -141,72 +170,70 @@ export function BdnForm() {
         className="inline-flex items-center gap-2 text-text-secondary hover:text-accent-blue text-sm transition-colors mb-5"
       >
         <ArrowLeft className="w-4 h-4" />
-        Kembali ke Finance
+        {t.back}
       </Link>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
         <div className="space-y-5">
           <div>
             <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-1">
-              Pengadaan · Bunker
+              {t.kicker}
             </p>
-            <h1 className="font-display text-2xl text-white">Buat Bunker Delivery Note</h1>
-            <p className="text-text-secondary text-sm mt-1">
-              Bukti serah bunker ke kapal (MARPOL Annex VI). Nilai dihitung dari jumlah × harga/MT.
-            </p>
+            <h1 className="font-display text-2xl text-white">{t.h1}</h1>
+            <p className="text-text-secondary text-sm mt-1">{t.desc}</p>
           </div>
 
           {fromPortCall && (
             <div className="rounded-md border border-accent-teal/30 bg-accent-teal/5 px-4 py-2.5 text-xs text-accent-teal">
-              Data kapal terisi otomatis dari Port Call. Lengkapi spesifikasi bunker di bawah.
+              {t.fromPortCall}
             </div>
           )}
 
           <section className="bg-card-bg border border-card-border rounded-lg p-5">
-            <h2 className="font-display text-base text-white mb-4">Kapal &amp; Penyerahan</h2>
+            <h2 className="font-display text-base text-white mb-4">{t.secVessel}</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <Field label="No. BDN" value={form.docNumber} onChange={set('docNumber')} />
-              <Field label="Tanggal & waktu serah" value={form.deliveryDate} onChange={set('deliveryDate')} />
-              <Field label="Mata uang" value={form.currency} onChange={set('currency')} />
-              <Field label="Nama kapal" value={form.vesselName} onChange={set('vesselName')} />
+              <Field label={t.fDelivery} value={form.deliveryDate} onChange={set('deliveryDate')} />
+              <Field label={t.fCurrency} value={form.currency} onChange={set('currency')} />
+              <Field label={t.fVessel} value={form.vesselName} onChange={set('vesselName')} />
               <Field label="IMO" value={form.imo} onChange={set('imo')} />
-              <Field label="Bendera" value={form.flag ?? ''} onChange={set('flag')} />
-              <Field label="Pelabuhan" value={form.port} onChange={set('port')} />
+              <Field label={t.fFlag} value={form.flag ?? ''} onChange={set('flag')} />
+              <Field label={t.fPort} value={form.port} onChange={set('port')} />
             </div>
           </section>
 
           <section className="bg-card-bg border border-card-border rounded-lg p-5">
-            <h2 className="font-display text-base text-white mb-4">Pemasok &amp; Produk</h2>
+            <h2 className="font-display text-base text-white mb-4">{t.secSupplier}</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              <Field label="Pemasok" value={form.supplier} onChange={set('supplier')} />
-              <Field label="Tongkang / truk" value={form.bargeName ?? ''} onChange={set('bargeName')} />
-              <Field label="Grade produk" value={form.productGrade} onChange={set('productGrade')} />
+              <Field label={t.fSupplier} value={form.supplier} onChange={set('supplier')} />
+              <Field label={t.fBarge} value={form.bargeName ?? ''} onChange={set('bargeName')} />
+              <Field label={t.fGrade} value={form.productGrade} onChange={set('productGrade')} />
             </div>
           </section>
 
           <section className="bg-card-bg border border-card-border rounded-lg p-5">
-            <h2 className="font-display text-base text-white mb-4">Spesifikasi Bahan Bakar</h2>
+            <h2 className="font-display text-base text-white mb-4">{t.secFuel}</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              <Field label="Jumlah (MT)" type="number" value={form.quantityMt} onChange={set('quantityMt')} />
+              <Field label={t.fQty} type="number" value={form.quantityMt} onChange={set('quantityMt')} />
               <Field label="Density @15°C (kg/m³)" value={form.density15} onChange={set('density15')} />
               <Field label="Sulphur (% m/m)" value={form.sulphurPct} onChange={set('sulphurPct')} />
               <Field label="Viscosity (cSt)" value={form.viscosity ?? ''} onChange={set('viscosity')} />
               <Field label="Flash point (°C)" value={form.flashPoint ?? ''} onChange={set('flashPoint')} />
               <Field label="Water (% v/v)" value={form.waterPct ?? ''} onChange={set('waterPct')} />
-              <Field label="Harga / MT" type="number" value={form.pricePerMt} onChange={set('pricePerMt')} />
+              <Field label={t.fPrice} type="number" value={form.pricePerMt} onChange={set('pricePerMt')} />
             </div>
           </section>
 
           <section className="bg-card-bg border border-card-border rounded-lg p-5">
-            <h2 className="font-display text-base text-white mb-4">Catatan &amp; Penerima</h2>
+            <h2 className="font-display text-base text-white mb-4">{t.secNotes}</h2>
             <div className="space-y-3">
               <div>
-                <label className={labelCls}>Catatan</label>
+                <label className={labelCls}>{t.fRemarks}</label>
                 <textarea value={form.remarks} onChange={(e) => set('remarks')(e.target.value)} rows={2} className={inputCls} />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Penerima (kapal)" value={form.receiverName ?? ''} onChange={set('receiverName')} />
-                <Field label="Jabatan pemasok (ttd)" value={form.signRole} onChange={set('signRole')} />
+                <Field label={t.fReceiver} value={form.receiverName ?? ''} onChange={set('receiverName')} />
+                <Field label={t.fSignRole} value={form.signRole} onChange={set('signRole')} />
               </div>
             </div>
           </section>
@@ -214,19 +241,19 @@ export function BdnForm() {
 
         <aside className="lg:sticky lg:top-5 space-y-3">
           <div className="bg-card-bg border border-card-border rounded-lg p-5">
-            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-3">Ringkasan</p>
+            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-3">{c.summary}</p>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between text-text-secondary">
-                <span>Jumlah</span>
+                <span>{t.sQty}</span>
                 <span className="font-mono text-text-primary">{fmt(form.quantityMt)} MT</span>
               </div>
               <div className="flex justify-between text-text-secondary">
-                <span>Harga / MT</span>
+                <span>{t.sPrice}</span>
                 <span className="font-mono text-text-primary">{fmt(form.pricePerMt)}</span>
               </div>
             </div>
-            <div className="mt-3 -mx-5 -mb-5 px-5 py-3 bg-[#0D2A50] border-t border-[#1D4A8A] rounded-b-lg">
-              <p className="text-[10px] font-mono uppercase tracking-wider text-accent-blue/70">Nilai Bunker</p>
+            <div className="mt-3 -mx-5 -mb-5 px-5 py-3 bg-accent-blue/10 border-t border-accent-blue/30 rounded-b-lg">
+              <p className="text-[10px] font-mono uppercase tracking-wider text-accent-blue/80">{t.bunkerValue}</p>
               <p className="font-display text-xl text-white">
                 {form.currency} {fmt(amount)}
               </p>
@@ -237,11 +264,10 @@ export function BdnForm() {
             type="button"
             onClick={saveDraft}
             disabled={busy !== null}
-            className="w-full inline-flex items-center justify-center gap-2 bg-[#2E86DE] hover:bg-accent-blue
-                       text-white rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60"
+            className="w-full inline-flex items-center justify-center gap-2 bg-accent-blue hover:bg-primary text-[#231a06] rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60"
           >
             {busy === 'save' ? <Loader2 className="w-4 h-4 animate-spin" /> : savedId ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-            {savedId ? 'Simpan Perubahan' : 'Simpan Draft'}
+            {savedId ? c.saveChanges : c.saveDraft}
           </button>
           {savedMsg && <p className="text-center text-xs text-accent-teal -mt-1">{savedMsg}</p>}
 
@@ -255,7 +281,7 @@ export function BdnForm() {
                          rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60"
             >
               {busy === 'download' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              Unduh
+              {c.download}
             </button>
             <button
               type="button"
@@ -266,14 +292,11 @@ export function BdnForm() {
                          rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60"
             >
               {busy === 'preview' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
-              Preview
+              {c.preview}
             </button>
           </div>
 
-          <p className="text-[11px] text-text-secondary/70 leading-relaxed">
-            Kop perusahaan pada PDF otomatis dari profil perusahaan Anda. Draft tersimpan bisa dibuka &amp;
-            diunduh ulang dari halaman Finance.
-          </p>
+          <p className="text-[11px] text-text-secondary/70 leading-relaxed">{c.pdfNote}</p>
         </aside>
       </div>
     </div>

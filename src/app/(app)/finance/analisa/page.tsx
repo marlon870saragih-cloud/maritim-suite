@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { PrintButton } from '@/components/shared/PrintButton'
 import { ProfitVariance, type DisbDoc, type InvDoc } from '@/components/finance/ProfitVariance'
 
 export const dynamic = 'force-dynamic'
@@ -60,19 +61,22 @@ export default async function AnalisaPage() {
   const invoices = docs.filter((d) => d.docType === 'INVOICE').map(mapInv)
 
   return (
-    <div className="p-margin-page max-w-[1600px] mx-auto space-y-6">
+    <div className="p-margin-page max-w-[1600px] mx-auto space-y-6 print-report">
       <Link
         href="/finance"
-        className="inline-flex items-center gap-2 text-text-secondary hover:text-accent-blue text-sm transition-colors"
+        className="print:hidden inline-flex items-center gap-2 text-text-secondary hover:text-accent-blue text-sm transition-colors"
       >
         <ArrowLeft className="w-4 h-4" />
         Kembali ke Finance
       </Link>
-      <PageHeader
-        kicker="Analisa Keuangan"
-        title="Laba & Variance per Port Call"
-        description="Bandingkan estimasi (EPDA) vs aktual (FPDA), dan hitung laba dari Invoice vs biaya FPDA."
-      />
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <PageHeader
+          kicker="Analisa Keuangan"
+          title="Laba & Variance per Port Call"
+          description="Bandingkan estimasi (EPDA) vs aktual (FPDA), dan hitung laba dari Invoice vs biaya FPDA."
+        />
+        <PrintButton />
+      </div>
       <ProfitVariance epdas={epdas} fpdas={fpdas} invoices={invoices} />
     </div>
   )

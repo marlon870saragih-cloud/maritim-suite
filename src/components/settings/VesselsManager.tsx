@@ -4,6 +4,30 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, Pencil, Trash2, Loader2, Ship } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useT, type Lang } from '@/lib/i18n'
+
+const STR: Record<Lang, Record<string, string>> = {
+  id: {
+    addBtn: 'Tambah Kapal',
+    errNameReq: 'Nama kapal wajib diisi.', errSave: 'Gagal menyimpan.', errConn: 'Gagal terhubung ke server.', errDelete: 'Gagal menghapus.',
+    confirmPre: 'Hapus kapal "', confirmPost: '"? Tindakan ini tidak bisa dibatalkan.',
+    emptyTitle: 'Belum ada kapal', emptyDesc: 'Tambah data kapal sekali — dipakai otomatis untuk port call & dokumen.',
+    thName: 'Nama Kapal', thFlag: 'Bendera', thType: 'Tipe', thAction: 'Aksi',
+    editTitle: 'Ubah Kapal', dialogDesc: 'Data ini dipakai untuk mengisi otomatis partikular kapal di port call & dokumen.',
+    fName: 'Nama Kapal', fImo: 'No. IMO', fFlag: 'Bendera', fType: 'Tipe Kapal', fDraft: 'Draft Maks (m)', fYear: 'Tahun Bangun',
+    tipEdit: 'Ubah', tipDelete: 'Hapus', cancel: 'Batal', saveChanges: 'Simpan Perubahan',
+  },
+  en: {
+    addBtn: 'Add Vessel',
+    errNameReq: 'Vessel name is required.', errSave: 'Failed to save.', errConn: 'Failed to connect to server.', errDelete: 'Failed to delete.',
+    confirmPre: 'Delete vessel "', confirmPost: '"? This action cannot be undone.',
+    emptyTitle: 'No vessels yet', emptyDesc: 'Add a vessel once — auto-used for port calls & documents.',
+    thName: 'Vessel Name', thFlag: 'Flag', thType: 'Type', thAction: 'Action',
+    editTitle: 'Edit Vessel', dialogDesc: 'This data auto-fills vessel particulars in port calls & documents.',
+    fName: 'Vessel Name', fImo: 'IMO No.', fFlag: 'Flag', fType: 'Vessel Type', fDraft: 'Max Draft (m)', fYear: 'Year Built',
+    tipEdit: 'Edit', tipDelete: 'Delete', cancel: 'Cancel', saveChanges: 'Save changes',
+  },
+}
 import {
   Dialog,
   DialogContent,
@@ -77,6 +101,7 @@ function Field({
 }
 
 export function VesselsManager({ vessels }: { vessels: Vessel[] }) {
+  const t = useT(STR)
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<Vessel | null>(null)
@@ -102,7 +127,7 @@ export function VesselsManager({ vessels }: { vessels: Vessel[] }) {
 
   async function submit() {
     if (!form.name.trim()) {
-      setError('Nama kapal wajib diisi.')
+      setError(t.errNameReq)
       return
     }
     setBusy(true)
@@ -114,30 +139,30 @@ export function VesselsManager({ vessels }: { vessels: Vessel[] }) {
         body: JSON.stringify(form),
       })
       if (!res.ok) {
-        setError((await res.text()) || 'Gagal menyimpan.')
+        setError((await res.text()) || t.errSave)
         return
       }
       setOpen(false)
       router.refresh()
     } catch {
-      setError('Gagal terhubung ke server.')
+      setError(t.errConn)
     } finally {
       setBusy(false)
     }
   }
 
   async function remove(v: Vessel) {
-    if (!confirm(`Hapus kapal "${v.name}"? Tindakan ini tidak bisa dibatalkan.`)) return
+    if (!confirm(`${t.confirmPre}${v.name}${t.confirmPost}`)) return
     setDeletingId(v.id)
     try {
       const res = await fetch(`/api/vessels/${v.id}`, { method: 'DELETE' })
       if (!res.ok) {
-        alert((await res.text()) || 'Gagal menghapus.')
+        alert((await res.text()) || t.errDelete)
         return
       }
       router.refresh()
     } catch {
-      alert('Gagal terhubung ke server.')
+      alert(t.errConn)
     } finally {
       setDeletingId(null)
     }
@@ -149,9 +174,9 @@ export function VesselsManager({ vessels }: { vessels: Vessel[] }) {
         <button
           type="button"
           onClick={openAdd}
-          className="inline-flex items-center gap-2 bg-[#2E86DE] hover:bg-accent-blue text-white rounded px-4 py-2 text-sm font-medium transition-colors"
+          className="inline-flex items-center gap-2 bg-accent-blue hover:bg-primary text-[#231a06] rounded px-4 py-2 text-sm font-medium transition-colors"
         >
-          <Plus className="w-4 h-4" /> Tambah Kapal
+          <Plus className="w-4 h-4" /> {t.addBtn}
         </button>
       </div>
 
@@ -162,17 +187,15 @@ export function VesselsManager({ vessels }: { vessels: Vessel[] }) {
               <Ship className="w-6 h-6" />
             </div>
             <div>
-              <p className="text-text-primary text-sm font-medium">Belum ada kapal</p>
-              <p className="text-text-secondary text-xs mt-1">
-                Tambah data kapal sekali — dipakai otomatis untuk port call &amp; dokumen.
-              </p>
+              <p className="text-text-primary text-sm font-medium">{t.emptyTitle}</p>
+              <p className="text-text-secondary text-xs mt-1">{t.emptyDesc}</p>
             </div>
             <button
               type="button"
               onClick={openAdd}
-              className="inline-flex items-center gap-2 mt-1 bg-[#2E86DE] hover:bg-accent-blue text-white rounded px-4 py-2 text-sm font-medium transition-colors"
+              className="inline-flex items-center gap-2 mt-1 bg-accent-blue hover:bg-primary text-[#231a06] rounded px-4 py-2 text-sm font-medium transition-colors"
             >
-              <Plus className="w-4 h-4" /> Tambah Kapal
+              <Plus className="w-4 h-4" /> {t.addBtn}
             </button>
           </div>
         ) : (
@@ -180,12 +203,12 @@ export function VesselsManager({ vessels }: { vessels: Vessel[] }) {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-surface-secondary text-text-secondary font-mono uppercase tracking-widest border-b border-card-border text-[10px]">
-                  <th className="px-5 py-3 font-medium">Nama Kapal</th>
+                  <th className="px-5 py-3 font-medium">{t.thName}</th>
                   <th className="px-5 py-3 font-medium">IMO</th>
-                  <th className="px-5 py-3 font-medium">Bendera</th>
-                  <th className="px-5 py-3 font-medium">Tipe</th>
+                  <th className="px-5 py-3 font-medium">{t.thFlag}</th>
+                  <th className="px-5 py-3 font-medium">{t.thType}</th>
                   <th className="px-5 py-3 font-medium text-right">GT</th>
-                  <th className="px-5 py-3 font-medium text-right">Aksi</th>
+                  <th className="px-5 py-3 font-medium text-right">{t.thAction}</th>
                 </tr>
               </thead>
               <tbody className="text-sm">
@@ -207,7 +230,7 @@ export function VesselsManager({ vessels }: { vessels: Vessel[] }) {
                         <button
                           type="button"
                           onClick={() => openEdit(v)}
-                          title="Ubah"
+                          title={t.tipEdit}
                           className="p-1.5 rounded text-text-secondary hover:text-accent-blue hover:bg-surface-tertiary transition-colors"
                         >
                           <Pencil className="w-4 h-4" />
@@ -216,7 +239,7 @@ export function VesselsManager({ vessels }: { vessels: Vessel[] }) {
                           type="button"
                           onClick={() => remove(v)}
                           disabled={deletingId === v.id}
-                          title="Hapus"
+                          title={t.tipDelete}
                           className="p-1.5 rounded text-text-secondary hover:text-status-danger hover:bg-surface-tertiary transition-colors disabled:opacity-50"
                         >
                           {deletingId === v.id ? (
@@ -239,27 +262,27 @@ export function VesselsManager({ vessels }: { vessels: Vessel[] }) {
         <DialogContent className="bg-surface-secondary border-card-border text-text-primary max-w-xl">
           <DialogHeader>
             <DialogTitle className="font-display text-white">
-              {editing ? 'Ubah Kapal' : 'Tambah Kapal'}
+              {editing ? t.editTitle : t.addBtn}
             </DialogTitle>
             <DialogDescription className="text-text-secondary">
-              Data ini dipakai untuk mengisi otomatis partikular kapal di port call &amp; dokumen.
+              {t.dialogDesc}
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
-              <Field label="Nama Kapal" k="name" form={form} set={set} required placeholder="MV Ocean Blue" />
+              <Field label={t.fName} k="name" form={form} set={set} required placeholder="MV Ocean Blue" />
             </div>
-            <Field label="No. IMO" k="imoNumber" form={form} set={set} placeholder="9123456" />
+            <Field label={t.fImo} k="imoNumber" form={form} set={set} placeholder="9123456" />
             <Field label="Call Sign" k="callSign" form={form} set={set} placeholder="YBxx" />
-            <Field label="Bendera" k="flag" form={form} set={set} placeholder="Indonesia" />
-            <Field label="Tipe Kapal" k="vesselType" form={form} set={set} placeholder="Bulk Carrier" />
+            <Field label={t.fFlag} k="flag" form={form} set={set} placeholder="Indonesia" />
+            <Field label={t.fType} k="vesselType" form={form} set={set} placeholder="Bulk Carrier" />
             <Field label="GT" k="gt" form={form} set={set} type="number" placeholder="25000" />
             <Field label="NRT" k="nrt" form={form} set={set} type="number" placeholder="15000" />
             <Field label="LOA (m)" k="loa" form={form} set={set} type="number" placeholder="180" />
             <Field label="Beam (m)" k="beam" form={form} set={set} type="number" placeholder="28" />
-            <Field label="Draft Maks (m)" k="maxDraft" form={form} set={set} type="number" placeholder="10.5" />
-            <Field label="Tahun Bangun" k="yearBuilt" form={form} set={set} type="number" placeholder="2015" />
+            <Field label={t.fDraft} k="maxDraft" form={form} set={set} type="number" placeholder="10.5" />
+            <Field label={t.fYear} k="yearBuilt" form={form} set={set} type="number" placeholder="2015" />
           </div>
 
           {error && (
@@ -275,16 +298,16 @@ export function VesselsManager({ vessels }: { vessels: Vessel[] }) {
               disabled={busy}
               className="px-4 py-2 rounded text-sm font-medium border border-border-muted text-text-secondary hover:text-white hover:bg-surface-tertiary transition-colors disabled:opacity-50"
             >
-              Batal
+              {t.cancel}
             </button>
             <button
               type="button"
               onClick={submit}
               disabled={busy}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded text-sm font-medium bg-[#2E86DE] hover:bg-accent-blue text-white transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded text-sm font-medium bg-accent-blue hover:bg-primary text-[#231a06] transition-colors disabled:opacity-50"
             >
               {busy && <Loader2 className="w-4 h-4 animate-spin" />}
-              {editing ? 'Simpan Perubahan' : 'Tambah Kapal'}
+              {editing ? t.saveChanges : t.addBtn}
             </button>
           </div>
         </DialogContent>

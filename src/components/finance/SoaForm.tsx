@@ -3,7 +3,30 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Download, Eye, Loader2, Save, Check } from 'lucide-react'
-import { SAMPLE_SOA, computeSoaTotals, rowBalance, type SoaData, type SoaRow } from '@/lib/pdf/soa-data'
+import { SAMPLE_SOA, computeSoaTotals, type SoaData, type SoaRow } from '@/lib/pdf/soa-data'
+import { useT, type Lang } from '@/lib/i18n'
+import { FORM_COMMON } from '@/lib/i18n-forms'
+
+const STR: Record<Lang, Record<string, string>> = {
+  id: {
+    back: 'Kembali ke Finance', kicker: 'Penagihan · Statement of Account', h1: 'Buat Statement of Account',
+    desc: 'Rekap tagihan per principal. Pilih principal — invoice mereka terkumpul otomatis.',
+    noInvoices: 'Belum ada invoice tersimpan. Buat & simpan Invoice dulu agar bisa direkap jadi SOA.',
+    secPrincipal: 'Principal & Periode', selPrincipal: 'Principal (dari invoice tersimpan)', invWord: 'invoice',
+    fDate: 'Tanggal', fPeriod: 'Periode', fOpening: 'Saldo awal', fAttn: 'Attn',
+    secLines: 'Baris Tagihan', thDate: 'Tanggal', thNo: 'No. Invoice', thRef: 'Keterangan', thBilled: 'Tagihan', thPaid: 'Dibayar',
+    fNotes: 'Catatan', sOpening: 'Saldo awal', sBilled: 'Total tagihan', sPaid: 'Total dibayar', outstanding: 'Saldo Terutang',
+  },
+  en: {
+    back: 'Back to Finance', kicker: 'Billing · Statement of Account', h1: 'Create Statement of Account',
+    desc: 'Charges recap per principal. Pick a principal — their invoices are gathered automatically.',
+    noInvoices: 'No saved invoices yet. Create & save an Invoice first so it can be recapped into an SOA.',
+    secPrincipal: 'Principal & Period', selPrincipal: 'Principal (from saved invoices)', invWord: 'invoices',
+    fDate: 'Date', fPeriod: 'Period', fOpening: 'Opening balance', fAttn: 'Attn',
+    secLines: 'Charge Lines', thDate: 'Date', thNo: 'Invoice No.', thRef: 'Description', thBilled: 'Billed', thPaid: 'Paid',
+    fNotes: 'Notes', sOpening: 'Opening balance', sBilled: 'Total billed', sPaid: 'Total paid', outstanding: 'Outstanding Balance',
+  },
+}
 
 export type SoaParty = {
   name: string
@@ -33,6 +56,8 @@ function Field({ label, value, onChange, type = 'text' }: { label: string; value
 type Head = Omit<SoaData, 'tenant' | 'rows'>
 
 export function SoaForm({ parties }: { parties: SoaParty[] }) {
+  const t = useT(STR)
+  const c = useT(FORM_COMMON)
   const { tenant: _t, rows: _r, ...sampleHead } = SAMPLE_SOA
   const [partyIdx, setPartyIdx] = useState(parties.length ? 0 : -1)
   const [head, setHead] = useState<Head>(sampleHead)
@@ -79,10 +104,10 @@ export function SoaForm({ parties }: { parties: SoaParty[] }) {
       const j = (await res.json()) as { id: string }
       setSavedId(j.id)
       window.history.replaceState(null, '', `/finance/soa/baru?id=${j.id}`)
-      setSavedMsg('Tersimpan ✓')
+      setSavedMsg(c.saved)
       setTimeout(() => setSavedMsg(''), 3000)
     } catch {
-      alert('Gagal menyimpan. Pastikan Anda sudah login.')
+      alert(c.saveFail)
     } finally {
       setBusy(null)
     }
@@ -111,7 +136,7 @@ export function SoaForm({ parties }: { parties: SoaParty[] }) {
       }
       setTimeout(() => URL.revokeObjectURL(url), 60000)
     } catch {
-      alert('Gagal membuat PDF. Coba lagi.')
+      alert(c.pdfFail)
     } finally {
       setBusy(null)
     }
@@ -121,41 +146,41 @@ export function SoaForm({ parties }: { parties: SoaParty[] }) {
     <div className="p-margin-page max-w-[1600px] mx-auto">
       <Link href="/finance" className="inline-flex items-center gap-2 text-text-secondary hover:text-accent-blue text-sm transition-colors mb-5">
         <ArrowLeft className="w-4 h-4" />
-        Kembali ke Finance
+        {t.back}
       </Link>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
         <div className="space-y-5">
           <div>
-            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-1">Penagihan · Statement of Account</p>
-            <h1 className="font-display text-2xl text-white">Buat Statement of Account</h1>
-            <p className="text-text-secondary text-sm mt-1">Rekap tagihan per principal. Pilih principal — invoice mereka terkumpul otomatis.</p>
+            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-1">{t.kicker}</p>
+            <h1 className="font-display text-2xl text-white">{t.h1}</h1>
+            <p className="text-text-secondary text-sm mt-1">{t.desc}</p>
           </div>
 
           {parties.length === 0 ? (
             <div className="rounded-md border border-accent-amber/30 bg-accent-amber/5 px-4 py-3 text-xs text-accent-amber">
-              Belum ada invoice tersimpan. Buat &amp; simpan Invoice dulu agar bisa direkap jadi SOA.
+              {t.noInvoices}
             </div>
           ) : (
             <section className="bg-card-bg border border-card-border rounded-lg p-5">
-              <h2 className="font-display text-base text-white mb-4">Principal &amp; Periode</h2>
+              <h2 className="font-display text-base text-white mb-4">{t.secPrincipal}</h2>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 <div className="col-span-2 md:col-span-3">
-                  <label className={labelCls}>Principal (dari invoice tersimpan)</label>
+                  <label className={labelCls}>{t.selPrincipal}</label>
                   <select className={inputCls} value={partyIdx} onChange={(e) => loadParty(Number(e.target.value))}>
                     {parties.map((p, i) => (
                       <option key={p.name} value={i} className="bg-surface">
-                        {p.name} · {p.rows.length} invoice
+                        {p.name} · {p.rows.length} {t.invWord}
                       </option>
                     ))}
                   </select>
                 </div>
                 <Field label="No. SOA" value={head.docNumber} onChange={setF('docNumber')} />
-                <Field label="Tanggal" value={head.statementDate} onChange={setF('statementDate')} />
-                <Field label="Periode" value={head.period} onChange={setF('period')} />
-                <Field label="Saldo awal" type="number" value={head.openingBalance} onChange={setF('openingBalance')} />
+                <Field label={t.fDate} value={head.statementDate} onChange={setF('statementDate')} />
+                <Field label={t.fPeriod} value={head.period} onChange={setF('period')} />
+                <Field label={t.fOpening} type="number" value={head.openingBalance} onChange={setF('openingBalance')} />
                 <Field label="NPWP" value={head.toNpwp ?? ''} onChange={setF('toNpwp')} />
-                <Field label="Attn" value={head.toAttn ?? ''} onChange={setF('toAttn')} />
+                <Field label={t.fAttn} value={head.toAttn ?? ''} onChange={setF('toAttn')} />
               </div>
             </section>
           )}
@@ -163,15 +188,15 @@ export function SoaForm({ parties }: { parties: SoaParty[] }) {
           {parties.length > 0 && (
             <section className="bg-card-bg border border-card-border rounded-lg p-5">
               <div className="flex items-center justify-between mb-3">
-                <h2 className="font-display text-base text-white">Baris Tagihan</h2>
-                <span className="text-xs font-mono text-text-secondary">{rows.length} invoice</span>
+                <h2 className="font-display text-base text-white">{t.secLines}</h2>
+                <span className="text-xs font-mono text-text-secondary">{rows.length} {t.invWord}</span>
               </div>
               <div className="hidden md:grid grid-cols-12 gap-2 px-1 mb-1.5 text-[9px] font-mono uppercase tracking-wider text-text-secondary/60">
-                <div className="col-span-2">Tanggal</div>
-                <div className="col-span-3">No. Invoice</div>
-                <div className="col-span-3">Keterangan</div>
-                <div className="col-span-2 text-right">Tagihan</div>
-                <div className="col-span-2 text-right">Dibayar</div>
+                <div className="col-span-2">{t.thDate}</div>
+                <div className="col-span-3">{t.thNo}</div>
+                <div className="col-span-3">{t.thRef}</div>
+                <div className="col-span-2 text-right">{t.thBilled}</div>
+                <div className="col-span-2 text-right">{t.thPaid}</div>
               </div>
               <div className="space-y-1.5">
                 {rows.map((r, i) => (
@@ -190,7 +215,7 @@ export function SoaForm({ parties }: { parties: SoaParty[] }) {
                 ))}
               </div>
               <div className="mt-3">
-                <label className={labelCls}>Catatan</label>
+                <label className={labelCls}>{t.fNotes}</label>
                 <textarea value={head.notes} onChange={(e) => setF('notes')(e.target.value)} rows={2} className={inputCls} />
               </div>
             </section>
@@ -199,24 +224,24 @@ export function SoaForm({ parties }: { parties: SoaParty[] }) {
 
         <aside className="lg:sticky lg:top-5 space-y-3">
           <div className="bg-card-bg border border-card-border rounded-lg p-5">
-            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-3">Ringkasan</p>
+            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-3">{c.summary}</p>
             <div className="space-y-2 text-sm">
               {head.openingBalance ? (
-                <div className="flex justify-between text-text-secondary"><span>Saldo awal</span><span className="font-mono text-text-primary">{fmt(head.openingBalance)}</span></div>
+                <div className="flex justify-between text-text-secondary"><span>{t.sOpening}</span><span className="font-mono text-text-primary">{fmt(head.openingBalance)}</span></div>
               ) : null}
-              <div className="flex justify-between text-text-secondary"><span>Total tagihan</span><span className="font-mono text-text-primary">{fmt(totals.billed)}</span></div>
-              <div className="flex justify-between text-text-secondary"><span>Total dibayar</span><span className="font-mono text-status-success">({fmt(totals.paid)})</span></div>
+              <div className="flex justify-between text-text-secondary"><span>{t.sBilled}</span><span className="font-mono text-text-primary">{fmt(totals.billed)}</span></div>
+              <div className="flex justify-between text-text-secondary"><span>{t.sPaid}</span><span className="font-mono text-status-success">({fmt(totals.paid)})</span></div>
             </div>
-            <div className="mt-3 -mx-5 -mb-5 px-5 py-3 bg-[#0D2A50] border-t border-[#1D4A8A] rounded-b-lg">
-              <p className="text-[10px] font-mono uppercase tracking-wider text-accent-blue/70">Saldo Terutang</p>
+            <div className="mt-3 -mx-5 -mb-5 px-5 py-3 bg-accent-blue/10 border-t border-accent-blue/30 rounded-b-lg">
+              <p className="text-[10px] font-mono uppercase tracking-wider text-accent-blue/80">{t.outstanding}</p>
               <p className="font-display text-xl text-white">{head.currency} {fmt(totals.outstanding)}</p>
             </div>
           </div>
 
           <button type="button" onClick={saveDraft} disabled={busy !== null || parties.length === 0}
-            className="w-full inline-flex items-center justify-center gap-2 bg-[#2E86DE] hover:bg-accent-blue text-white rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60">
+            className="w-full inline-flex items-center justify-center gap-2 bg-accent-blue hover:bg-primary text-[#231a06] rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60">
             {busy === 'save' ? <Loader2 className="w-4 h-4 animate-spin" /> : savedId ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-            {savedId ? 'Simpan Perubahan' : 'Simpan Draft'}
+            {savedId ? c.saveChanges : c.saveDraft}
           </button>
           {savedMsg && <p className="text-center text-xs text-accent-teal -mt-1">{savedMsg}</p>}
 
@@ -224,12 +249,12 @@ export function SoaForm({ parties }: { parties: SoaParty[] }) {
             <button type="button" onClick={() => generate(true)} disabled={busy !== null || parties.length === 0}
               className="flex-1 inline-flex items-center justify-center gap-2 border border-border-muted text-text-secondary hover:text-white hover:border-accent-blue/60 hover:bg-surface-tertiary rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60">
               {busy === 'download' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              Unduh
+              {c.download}
             </button>
             <button type="button" onClick={() => generate(false)} disabled={busy !== null || parties.length === 0}
               className="flex-1 inline-flex items-center justify-center gap-2 border border-border-muted text-text-secondary hover:text-white hover:border-accent-blue/60 hover:bg-surface-tertiary rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60">
               {busy === 'preview' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
-              Preview
+              {c.preview}
             </button>
           </div>
         </aside>

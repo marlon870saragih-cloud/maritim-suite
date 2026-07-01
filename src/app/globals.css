@@ -4,26 +4,42 @@
 
 @layer base {
   :root {
-    --background: 214 56% 11%;
-    --foreground: 220 80% 95%;
-    --card: 218 60% 14%;
-    --card-foreground: 220 80% 95%;
-    --popover: 218 60% 14%;
-    --popover-foreground: 220 80% 95%;
-    --primary: 213 100% 62%;
-    --primary-foreground: 214 100% 18%;
-    --secondary: 171 70% 58%;
-    --secondary-foreground: 171 100% 11%;
-    --muted: 217 45% 20%;
-    --muted-foreground: 215 30% 60%;
-    --accent: 217 45% 22%;
-    --accent-foreground: 220 80% 95%;
-    --destructive: 4 74% 55%;
+    /* Tema "Port Call Ledger" — tinta gelap + aksen brass (interior app) */
+    --background: 198 57% 9%;
+    --foreground: 190 12% 90%;
+    --card: 197 56% 12%;
+    --card-foreground: 190 12% 90%;
+    --popover: 197 56% 12%;
+    --popover-foreground: 190 12% 90%;
+    --primary: 40 55% 51%;
+    --primary-foreground: 40 80% 9%;
+    --secondary: 186 31% 51%;
+    --secondary-foreground: 186 60% 10%;
+    --muted: 196 40% 18%;
+    --muted-foreground: 191 16% 62%;
+    --accent: 196 35% 22%;
+    --accent-foreground: 190 12% 90%;
+    --destructive: 9 61% 47%;
     --destructive-foreground: 0 0% 100%;
-    --border: 216 50% 23%;
-    --input: 216 50% 23%;
-    --ring: 213 100% 62%;
+    --border: 192 45% 20%;
+    --input: 192 45% 20%;
+    --ring: 40 55% 51%;
     --radius: 0.5rem;
+
+    /* ===== Tema "Port Call Ledger" (kuningan + kertas/buku) — token bersama, dipakai
+       lintas halaman: landing, auth, dan (bertahap) seluruh UI app. Literal hex. ===== */
+    --ms-ink: #0a1c24;
+    --ms-ink-2: #0e2731;
+    --ms-chart: #f2ebd9;
+    --ms-chart-line: #d9cda8;
+    --ms-chart-ink: #1c2a2c;
+    --ms-chart-mut: #6b6553;
+    --ms-paper: #fbf7eb;
+    --ms-brass: #c79a3e;
+    --ms-brass-2: #a87e26;
+    --ms-brass-deep: #7a5e1c;
+    --ms-signal: #c0432e;
+    --ms-depth: #3c6b7a;
   }
 }
 
@@ -38,5 +54,46 @@
   h2,
   h3 {
     font-family: var(--font-display), serif;
+  }
+}
+
+/* ===== Cetak (print) — tema terang & bersih, tanpa chrome aplikasi =====
+   Chrome (sidebar/topbar/tombol) disembunyikan via utility `print:hidden`.
+   Di sini kita paksa latar putih + teks gelap agar hasil cetak hemat tinta & terbaca.
+   Diagram (SVG recharts) memakai atribut fill sendiri, jadi warnanya tetap. */
+@media print {
+  html,
+  body {
+    background: #ffffff !important;
+  }
+  main {
+    background: #ffffff !important;
+  }
+  /* latar gelap → putih */
+  .print-report .bg-background,
+  .print-report .bg-card-bg,
+  .print-report .bg-surface,
+  .print-report .bg-surface-secondary,
+  .print-report .bg-surface-tertiary {
+    background: #ffffff !important;
+  }
+  /* teks terang → gelap */
+  .print-report .text-white,
+  .print-report .text-text-primary,
+  .print-report .text-on-surface {
+    color: #16202b !important;
+  }
+  .print-report .text-text-secondary {
+    color: #55606b !important;
+  }
+  /* garis → abu terang */
+  .print-report .border-card-border,
+  .print-report .border-border-muted,
+  .print-report .border-border {
+    border-color: #d8dde2 !important;
+  }
+  /* jangan pecah kartu di tengah antar-halaman */
+  .print-report section {
+    break-inside: avoid;
   }
 }

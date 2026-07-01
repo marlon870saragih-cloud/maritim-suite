@@ -28,7 +28,11 @@ export const base = StyleSheet.create({
     backgroundColor: WHITE,
   },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  brandRow: { flexDirection: 'row', gap: 14, maxWidth: 360 },
+  // brand block mengambil sisa ruang & boleh menyusut (nama perusahaan membungkus
+  // bila perlu) supaya tak pernah bertabrakan dgn judul dokumen di kanan.
+  brandRow: { flexDirection: 'row', gap: 14, flex: 1, flexShrink: 1, marginRight: 18, maxWidth: 360 },
+  // blok kanan (judul/meta) menahan ruangnya sendiri — tidak meluber ke kiri.
+  headerRight: { alignItems: 'flex-end', flexShrink: 0, maxWidth: 215 },
   seal: {
     width: 46,
     height: 46,
@@ -39,7 +43,17 @@ export const base = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sealLogo: { width: 46, height: 46, borderRadius: 23, objectFit: 'cover' },
+  // Wadah logo polos: tanpa cincin emas / cakram — logo transparan tampil bersih
+  // langsung di atas kop (halaman putih). Hanya mengatur ukuran & posisi.
+  sealLogoWrap: {
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Ukuran eksplisit + objectFit 'contain' → logo utuh (tak terpotong) dan tak
+  // pernah meluber menimpa huruf nama perusahaan di sebelahnya.
+  sealLogo: { width: 48, height: 48, objectFit: 'contain' },
   sealText: { fontFamily: 'Spectral', fontWeight: 700, fontSize: 12, color: GOLD },
   coName: { fontFamily: 'Spectral', fontWeight: 700, fontSize: 17, color: NAVY, lineHeight: 1.1 },
   coTag: { fontFamily: 'Inter', fontWeight: 700, fontSize: 6.5, letterSpacing: 1.6, color: GOLD, marginTop: 3, textTransform: 'uppercase' },
@@ -77,14 +91,16 @@ export function Letterhead({ tenant, right }: { tenant: EpdaTenant; right: React
     <>
       <View style={base.header}>
         <View style={base.brandRow}>
-          <View style={base.seal}>
-            {tenant.logoUrl ? (
-              // eslint-disable-next-line jsx-a11y/alt-text
+          {tenant.logoUrl ? (
+            <View style={base.sealLogoWrap}>
+              {/* eslint-disable-next-line jsx-a11y/alt-text */}
               <Image src={tenant.logoUrl} style={base.sealLogo} />
-            ) : (
+            </View>
+          ) : (
+            <View style={base.seal}>
               <Text style={base.sealText}>{initials(tenant.companyName)}</Text>
-            )}
-          </View>
+            </View>
+          )}
           <View>
             <Text style={base.coName}>{tenant.companyName}</Text>
             {tenant.companyTagline ? <Text style={base.coTag}>{tenant.companyTagline}</Text> : null}
@@ -93,7 +109,7 @@ export function Letterhead({ tenant, right }: { tenant: EpdaTenant; right: React
             </Text>
           </View>
         </View>
-        <View style={{ alignItems: 'flex-end' }}>{right}</View>
+        <View style={base.headerRight}>{right}</View>
       </View>
       <View style={base.ruleNavy} />
       <View style={base.ruleGold} />

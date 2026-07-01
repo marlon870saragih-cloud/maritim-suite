@@ -28,5 +28,7 @@ export function epdaTenantFromTenant(t: Tenant): EpdaTenant {
     bankAccount: u(t.bankAccount),
     bankHolder: u(t.bankHolder),
     bankSwift: u(t.bankSwift),
+    signerName: u(t.signerName),
+    signerTitle: u(t.signerTitle),
   }
 }

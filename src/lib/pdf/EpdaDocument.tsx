@@ -14,34 +14,12 @@ const s = StyleSheet.create({
     backgroundColor: WHITE,
   },
 
-  // ---- header ----
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  brandRow: { flexDirection: 'row', gap: 14, maxWidth: 360 },
-  seal: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: NAVY,
-    borderWidth: 1.5,
-    borderColor: GOLD,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sealLogo: { width: 46, height: 46, borderRadius: 23, objectFit: 'cover' },
-  sealText: { fontFamily: 'Spectral', fontWeight: 700, fontSize: 12, color: GOLD },
-  coName: { fontFamily: 'Spectral', fontWeight: 700, fontSize: 17, color: NAVY, lineHeight: 1.1 },
-  coTag: { fontFamily: 'Inter', fontWeight: 700, fontSize: 6.5, letterSpacing: 1.6, color: GOLD, marginTop: 3, textTransform: 'uppercase' },
-  coAddr: { fontFamily: 'Inter', fontSize: 7.6, color: GRAY, marginTop: 6, lineHeight: 1.5, maxWidth: 250 },
-
-  metaBox: { alignItems: 'flex-end' },
+  // ---- header (kop via <Letterhead/> dari base; blok kanan dokumen di bawah) ----
   metaKicker: { fontFamily: 'Inter', fontWeight: 700, fontSize: 7, letterSpacing: 1.4, color: GOLD, textTransform: 'uppercase' },
   metaNo: { fontFamily: 'Spectral', fontWeight: 700, fontSize: 13, color: NAVY, marginTop: 2 },
   metaRow: { flexDirection: 'row', marginTop: 5 },
   metaLabel: { fontFamily: 'Inter', fontSize: 8, color: GRAY, marginRight: 6 },
   metaVal: { fontFamily: 'Inter', fontWeight: 700, fontSize: 8, color: NAVY },
-
-  ruleNavy: { height: 2, backgroundColor: NAVY, marginTop: 9 },
-  ruleGold: { height: 1, backgroundColor: GOLD, marginTop: 1.5, width: '38%' },
 
   // ---- title ----
   title: { fontFamily: 'Spectral', fontWeight: 700, fontSize: 18, color: NAVY, marginTop: 11 },
@@ -89,10 +67,6 @@ const s = StyleSheet.create({
   grandLabel: { fontFamily: 'Spectral', fontWeight: 700, fontSize: 12, color: WHITE },
   grandVal: { fontFamily: 'Spectral', fontWeight: 700, fontSize: 16, color: WHITE },
   usdNote: { textAlign: 'right', fontFamily: 'Inter', fontSize: 7.4, color: GRAYL, marginTop: 6 },
-
-  // ---- footer ----
-  footer: { position: 'absolute', bottom: 22, left: 38, right: 38, flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: LINE, paddingTop: 8 },
-  footText: { fontFamily: 'Inter', fontSize: 7.2, color: GRAYL },
 
   // ---- page 2 ----
   p2head: { fontFamily: 'Inter', fontWeight: 700, fontSize: 7.6, letterSpacing: 1.6, color: GOLD, textTransform: 'uppercase', marginBottom: 10 },

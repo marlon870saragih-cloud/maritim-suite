@@ -11,8 +11,9 @@ const num = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null
 }
 
+// Catatan: companyName SENGAJA tidak termasuk — nama perusahaan terkunci sesuai
+// pendaftaran & tak bisa diubah lewat form (anti-manipulasi identitas dokumen).
 export type TenantProfileInput = {
-  companyName: string
   companyTagline: string | null
   companyAddress: string | null
   companyPhone: string | null
@@ -22,6 +23,8 @@ export type TenantProfileInput = {
   bankAccount: string | null
   bankHolder: string | null
   bankSwift: string | null
+  signerName: string | null
+  signerTitle: string | null
   defaultAgencyPct: number
   defaultCurrency: string
 }
@@ -30,7 +33,6 @@ export type TenantProfileInput = {
 export function tenantProfileFields(body: Record<string, unknown>): TenantProfileInput {
   const pct = num(body.defaultAgencyPct)
   return {
-    companyName: str(body.companyName) ?? '',
     companyTagline: str(body.companyTagline),
     companyAddress: str(body.companyAddress),
     companyPhone: str(body.companyPhone),
@@ -40,6 +42,8 @@ export function tenantProfileFields(body: Record<string, unknown>): TenantProfil
     bankAccount: str(body.bankAccount),
     bankHolder: str(body.bankHolder),
     bankSwift: str(body.bankSwift),
+    signerName: str(body.signerName),
+    signerTitle: str(body.signerTitle),
     defaultAgencyPct: pct == null ? 2.5 : pct,
     defaultCurrency: (str(body.defaultCurrency) ?? 'IDR').toUpperCase(),
   }

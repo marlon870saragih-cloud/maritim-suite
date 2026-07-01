@@ -4,10 +4,35 @@ import { useEffect, useMemo, useState } from 'react'
 import { createLinkQuery } from '@/lib/link-params'
 import Link from 'next/link'
 import { ArrowLeft, Download, Eye, Loader2, Save, Check } from 'lucide-react'
+import { useT, useLang, type Lang } from '@/lib/i18n'
+import { FORM_COMMON } from '@/lib/i18n-forms'
 import { SAMPLE_RECEIPT, terbilangRupiah, type ReceiptData } from '@/lib/pdf/receipt-data'
 import { computeInvoiceTotals, type InvoiceData } from '@/lib/pdf/invoice-data'
 
 const fmt = (n: number) => (n || 0).toLocaleString('en-US')
+
+const STR: Record<Lang, Record<string, string>> = {
+  id: {
+    back: 'Kembali ke Finance', kicker: 'Generator Keuangan · Kwitansi', h1: 'Buat Kwitansi',
+    desc: 'Tanda terima pembayaran (official receipt). Nominal otomatis jadi terbilang.',
+    fromSrcPre: 'Data & nominal disalin dari', fromSrcPost: '. Periksa, isi nomor kwitansi, lalu unduh.',
+    forPaymentPre: 'Pembayaran jasa keagenan kapal sesuai Invoice',
+    secDetail: 'Detail Kwitansi', fNo: 'No. kwitansi', fDate: 'Tanggal', fPlace: 'Tempat', fCurrency: 'Mata uang', fRef: 'Ref. dokumen',
+    secReceived: 'Penerimaan', fFrom: 'Telah terima dari', fAmount: 'Jumlah (angka)', fWords: 'Terbilang (otomatis)', fForPayment: 'Untuk pembayaran',
+    secSign: 'Penerima & Tanda Tangan', fSignName: 'Nama penerima', fSignRole: 'Jabatan',
+    sFrom: 'Diterima dari', sRef: 'Referensi', amountReceived: 'Jumlah Diterima',
+  },
+  en: {
+    back: 'Back to Finance', kicker: 'Finance Generator · Receipt', h1: 'Create Receipt',
+    desc: 'Payment receipt (official receipt). The amount auto-converts to words.',
+    fromSrcPre: 'Data & amount copied from', fromSrcPost: '. Review, set the receipt number, then download.',
+    forPaymentPre: 'Payment for ship agency services per Invoice',
+    secDetail: 'Receipt Details', fNo: 'Receipt no.', fDate: 'Date', fPlace: 'Place', fCurrency: 'Currency', fRef: 'Ref. document',
+    secReceived: 'Receipt of Payment', fFrom: 'Received from', fAmount: 'Amount (figures)', fWords: 'In words (auto)', fForPayment: 'For payment',
+    secSign: 'Recipient & Signature', fSignName: 'Recipient name', fSignRole: 'Position',
+    sFrom: 'Received from', sRef: 'Reference', amountReceived: 'Amount Received',
+  },
+}
 
 const inputCls =
   'w-full bg-surface border border-border-muted rounded px-2.5 py-2 text-sm text-text-primary ' +
@@ -37,6 +62,9 @@ function Field({
 type FormState = Omit<ReceiptData, 'tenant'>
 
 export function ReceiptForm() {
+  const t = useT(STR)
+  const c = useT(FORM_COMMON)
+  const { lang } = useLang()
   const { tenant: _t, ...sample } = SAMPLE_RECEIPT
   const [form, setForm] = useState<FormState>(sample)
   const [busy, setBusy] = useState<null | 'preview' | 'download' | 'save'>(null)
@@ -70,7 +98,7 @@ export function ReceiptForm() {
             currency: p.currency ?? f.currency,
             receivedFrom: p.billToName ?? f.receivedFrom,
             amount: totals.totalDue,
-            forPayment: `Pembayaran jasa keagenan kapal sesuai Invoice ${p.docNumber ?? ''}${ref ? ` — ${ref}` : ''}.`,
+            forPayment: `${STR[lang].forPaymentPre} ${p.docNumber ?? ''}${ref ? ` — ${ref}` : ''}.`,
             refDoc: p.docNumber ?? f.refDoc,
           }))
           setFromSource(`Invoice ${p.docNumber ?? ''}`.trim())
@@ -100,10 +128,10 @@ export function ReceiptForm() {
       const j = (await res.json()) as { id: string }
       setSavedId(j.id)
       window.history.replaceState(null, '', `/finance/receipt/baru?id=${j.id}`)
-      setSavedMsg('Tersimpan ✓')
+      setSavedMsg(c.saved)
       setTimeout(() => setSavedMsg(''), 3000)
     } catch {
-      alert('Gagal menyimpan. Pastikan Anda sudah login.')
+      alert(c.saveFail)
     } finally {
       setBusy(null)
     }
@@ -132,7 +160,7 @@ export function ReceiptForm() {
       }
       setTimeout(() => URL.revokeObjectURL(url), 60000)
     } catch {
-      alert('Gagal membuat PDF. Coba lagi.')
+      alert(c.pdfFail)
     } finally {
       setBusy(null)
     }
@@ -145,53 +173,51 @@ export function ReceiptForm() {
         className="inline-flex items-center gap-2 text-text-secondary hover:text-accent-blue text-sm transition-colors mb-5"
       >
         <ArrowLeft className="w-4 h-4" />
-        Kembali ke Finance
+        {t.back}
       </Link>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
         <div className="space-y-5">
           <div>
             <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-1">
-              Generator Keuangan · Kwitansi
+              {t.kicker}
             </p>
-            <h1 className="font-display text-2xl text-white">Buat Kwitansi</h1>
-            <p className="text-text-secondary text-sm mt-1">
-              Tanda terima pembayaran (official receipt). Nominal otomatis jadi terbilang.
-            </p>
+            <h1 className="font-display text-2xl text-white">{t.h1}</h1>
+            <p className="text-text-secondary text-sm mt-1">{t.desc}</p>
           </div>
 
           {fromSource && (
             <div className="rounded-md border border-accent-teal/30 bg-accent-teal/5 px-4 py-2.5 text-xs text-accent-teal">
-              Data &amp; nominal disalin dari {fromSource}. Periksa, isi nomor kwitansi, lalu unduh.
+              {t.fromSrcPre} {fromSource}{t.fromSrcPost}
             </div>
           )}
 
           <section className="bg-card-bg border border-card-border rounded-lg p-5">
-            <h2 className="font-display text-base text-white mb-4">Detail Kwitansi</h2>
+            <h2 className="font-display text-base text-white mb-4">{t.secDetail}</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              <Field label="No. kwitansi" value={form.docNumber} onChange={set('docNumber')} />
-              <Field label="Tanggal" value={form.receiptDate} onChange={set('receiptDate')} />
-              <Field label="Tempat" value={form.place} onChange={set('place')} />
-              <Field label="Mata uang" value={form.currency} onChange={set('currency')} />
-              <Field label="Ref. dokumen" value={form.refDoc ?? ''} onChange={set('refDoc')} />
+              <Field label={t.fNo} value={form.docNumber} onChange={set('docNumber')} />
+              <Field label={t.fDate} value={form.receiptDate} onChange={set('receiptDate')} />
+              <Field label={t.fPlace} value={form.place} onChange={set('place')} />
+              <Field label={t.fCurrency} value={form.currency} onChange={set('currency')} />
+              <Field label={t.fRef} value={form.refDoc ?? ''} onChange={set('refDoc')} />
             </div>
           </section>
 
           <section className="bg-card-bg border border-card-border rounded-lg p-5">
-            <h2 className="font-display text-base text-white mb-4">Penerimaan</h2>
+            <h2 className="font-display text-base text-white mb-4">{t.secReceived}</h2>
             <div className="space-y-3">
-              <Field label="Telah terima dari" value={form.receivedFrom} onChange={set('receivedFrom')} />
+              <Field label={t.fFrom} value={form.receivedFrom} onChange={set('receivedFrom')} />
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Jumlah (angka)" type="number" value={form.amount} onChange={set('amount')} />
+                <Field label={t.fAmount} type="number" value={form.amount} onChange={set('amount')} />
                 <div>
-                  <label className={labelCls}>Terbilang (otomatis)</label>
+                  <label className={labelCls}>{t.fWords}</label>
                   <div className="w-full bg-surface/60 border border-border-muted rounded px-2.5 py-2 text-sm text-accent-teal italic min-h-[38px]">
                     {terbilangRupiah(form.amount)}
                   </div>
                 </div>
               </div>
               <div>
-                <label className={labelCls}>Untuk pembayaran</label>
+                <label className={labelCls}>{t.fForPayment}</label>
                 <textarea
                   value={form.forPayment}
                   onChange={(e) => set('forPayment')(e.target.value)}
@@ -203,29 +229,29 @@ export function ReceiptForm() {
           </section>
 
           <section className="bg-card-bg border border-card-border rounded-lg p-5">
-            <h2 className="font-display text-base text-white mb-4">Penerima &amp; Tanda Tangan</h2>
+            <h2 className="font-display text-base text-white mb-4">{t.secSign}</h2>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Nama penerima" value={form.signName} onChange={set('signName')} />
-              <Field label="Jabatan" value={form.signRole} onChange={set('signRole')} />
+              <Field label={t.fSignName} value={form.signName} onChange={set('signName')} />
+              <Field label={t.fSignRole} value={form.signRole} onChange={set('signRole')} />
             </div>
           </section>
         </div>
 
         <aside className="lg:sticky lg:top-5 space-y-3">
           <div className="bg-card-bg border border-card-border rounded-lg p-5">
-            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-3">Ringkasan</p>
+            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-3">{c.summary}</p>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between text-text-secondary">
-                <span>Diterima dari</span>
+                <span>{t.sFrom}</span>
                 <span className="text-text-primary text-right max-w-[60%] truncate">{form.receivedFrom || '—'}</span>
               </div>
               <div className="flex justify-between text-text-secondary">
-                <span>Referensi</span>
+                <span>{t.sRef}</span>
                 <span className="font-mono text-text-primary">{form.refDoc || '—'}</span>
               </div>
             </div>
-            <div className="mt-3 -mx-5 -mb-5 px-5 py-3 bg-[#0D2A50] border-t border-[#1D4A8A] rounded-b-lg">
-              <p className="text-[10px] font-mono uppercase tracking-wider text-accent-blue/70">Jumlah Diterima</p>
+            <div className="mt-3 -mx-5 -mb-5 px-5 py-3 bg-accent-blue/10 border-t border-accent-blue/30 rounded-b-lg">
+              <p className="text-[10px] font-mono uppercase tracking-wider text-accent-blue/80">{t.amountReceived}</p>
               <p className="font-display text-xl text-white">
                 {form.currency} {fmt(form.amount)}
               </p>
@@ -236,11 +262,10 @@ export function ReceiptForm() {
             type="button"
             onClick={saveDraft}
             disabled={busy !== null}
-            className="w-full inline-flex items-center justify-center gap-2 bg-[#2E86DE] hover:bg-accent-blue
-                       text-white rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60"
+            className="w-full inline-flex items-center justify-center gap-2 bg-accent-blue hover:bg-primary text-[#231a06] rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60"
           >
             {busy === 'save' ? <Loader2 className="w-4 h-4 animate-spin" /> : savedId ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-            {savedId ? 'Simpan Perubahan' : 'Simpan Draft'}
+            {savedId ? c.saveChanges : c.saveDraft}
           </button>
           {savedMsg && <p className="text-center text-xs text-accent-teal -mt-1">{savedMsg}</p>}
 
@@ -254,7 +279,7 @@ export function ReceiptForm() {
                          rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60"
             >
               {busy === 'download' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              Unduh
+              {c.download}
             </button>
             <button
               type="button"
@@ -265,14 +290,11 @@ export function ReceiptForm() {
                          rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60"
             >
               {busy === 'preview' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
-              Preview
+              {c.preview}
             </button>
           </div>
 
-          <p className="text-[11px] text-text-secondary/70 leading-relaxed">
-            Kop perusahaan pada PDF otomatis dari profil perusahaan Anda. Draft tersimpan bisa dibuka &amp;
-            diunduh ulang dari halaman Finance.
-          </p>
+          <p className="text-[11px] text-text-secondary/70 leading-relaxed">{c.pdfNote}</p>
         </aside>
       </div>
     </div>

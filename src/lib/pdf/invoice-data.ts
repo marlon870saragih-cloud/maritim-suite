@@ -5,6 +5,8 @@ export type InvoiceLine = {
   detail?: string
   qty: number
   unitPrice: number
+  // Kena PPN? undefined/true = kena PPN; false = bebas PPN (mis. fresh water, sijil on/off).
+  taxable?: boolean
 }
 
 export type InvoiceData = {
@@ -31,15 +33,22 @@ export type InvoiceData = {
 }
 
 export const lineAmount = (l: InvoiceLine) => (l.qty || 0) * (l.unitPrice || 0)
+// Baris kena PPN kecuali ditandai taxable === false.
+export const isTaxable = (l: InvoiceLine) => l.taxable !== false
 
-// PPN 11% dikenakan pada (subtotal + agency handling), sesuai Invoice-Tribuana.pdf.
+// PPN dikenakan HANYA pada DPP = (jumlah baris kena PPN) + agency fee (jasa, kena PPN).
+// Baris bebas PPN (fresh water, sijil on/off, dll) tetap masuk subtotal & total,
+// tapi tidak dihitung dalam PPN.
 export function computeInvoiceTotals(d: InvoiceData) {
   const subtotal = d.lines.reduce((s, l) => s + lineAmount(l), 0)
+  const taxableLines = d.lines.reduce((s, l) => s + (isTaxable(l) ? lineAmount(l) : 0), 0)
   const agency = Math.round((subtotal * d.agencyPct) / 100)
-  const taxable = subtotal + agency
-  const vat = Math.round((taxable * d.vatPct) / 100)
-  const totalDue = taxable + vat
-  return { subtotal, agency, vat, totalDue }
+  const dpp = taxableLines + agency // dasar pengenaan pajak
+  const vat = Math.round((dpp * d.vatPct) / 100)
+  const exemptTotal = subtotal - taxableLines
+  const totalDue = subtotal + agency + vat
+  const hasExempt = d.lines.some((l) => !isTaxable(l))
+  return { subtotal, agency, dpp, vat, exemptTotal, totalDue, hasExempt }
 }
 
 // ====== DATA CONTOH (replika Invoice-Tribuana.pdf) ======
@@ -80,6 +89,13 @@ export const SAMPLE_INVOICE: InvoiceData = {
       detail: 'Agency fee, transportation, communication & sundries',
       qty: 1,
       unitPrice: 19000000,
+    },
+    {
+      description: 'Fresh water supply',
+      detail: 'Air tawar ke kapal — bebas PPN',
+      qty: 1,
+      unitPrice: 3500000,
+      taxable: false,
     },
   ],
   agencyPct: 2.5,

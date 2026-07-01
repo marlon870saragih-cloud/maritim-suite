@@ -6,36 +6,37 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // === FOUNDATION (dari DESIGN.md Stitch) ===
-        background: '#0A1628', // Level 0 — canvas utama
-        surface: '#071325',
-        'surface-secondary': '#0F1F3D', // Level 1 — sidebar, cards
-        'surface-tertiary': '#162844', // Level 2 — hover, input active
-        'surface-container': '#142032',
-        'surface-container-high': '#1F2A3D',
-        'card-bg': '#09162A',
-        'card-border': '#0E2240',
-        'border-muted': '#1E3A5F',
+        // === FOUNDATION — tema "Port Call Ledger" (interior tinta gelap) ===
+        background: '#0A1C24', // Level 0 — kanvas tinta
+        surface: '#081820',
+        'surface-secondary': '#0E2731', // Level 1 — sidebar, cards
+        'surface-tertiary': '#16333D', // Level 2 — hover, input active
+        'surface-container': '#112430',
+        'surface-container-high': '#1B3540',
+        'card-bg': '#0B1F28',
+        'card-border': '#14323D',
+        'border-muted': '#1C4049',
 
         // === TEXT ===
-        'text-primary': '#F0F4FF',
-        'text-secondary': '#8BA4C0',
-        'on-surface': '#D7E3FC',
+        'text-primary': '#EDF1EE',
+        'text-secondary': '#8FA6AB',
+        'on-surface': '#DCE6E6',
 
-        // === ACCENTS ===
-        'accent-blue': '#3B9EFF',
-        'accent-teal': '#1DD4A8',
-        'accent-amber': '#E8A020',
-        'accent-purple': '#9B6FFF',
-        primary: '#A3C9FF',
+        // === ACCENTS (brass = aksen utama; teal-laut = sekunder. Nama token
+        //     dipertahankan agar ratusan konsumen kelas tak perlu diubah) ===
+        'accent-blue': '#C79A3E', // brass
+        'accent-teal': '#5AA0A8', // teal laut
+        'accent-amber': '#D9A53E',
+        'accent-purple': '#C79A3E', // ungu di-remap ke brass
+        primary: '#D9B978', // brass terang
         'primary-foreground': 'hsl(var(--primary-foreground))',
-        secondary: '#52DCC1',
+        secondary: '#5AA0A8',
         'secondary-foreground': 'hsl(var(--secondary-foreground))',
 
         // === STATUS ===
-        'status-danger': '#E74C3C',
-        'status-warning': '#F39C12',
-        'status-success': '#2ECC71',
+        'status-danger': '#C0432E',
+        'status-warning': '#D98E2B',
+        'status-success': '#3E8E6E',
 
         // shadcn/ui compatibility
         border: 'hsl(var(--border))',

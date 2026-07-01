@@ -5,6 +5,27 @@ import { createLinkQuery } from '@/lib/link-params'
 import Link from 'next/link'
 import { ArrowLeft, Plus, Trash2, Download, Eye, Loader2, Save, Check } from 'lucide-react'
 import { SAMPLE_DAMAGE, damageTotal, type DamageData, type DamageItem } from '@/lib/pdf/damage-data'
+import { useT, type Lang } from '@/lib/i18n'
+import { FORM_COMMON } from '@/lib/i18n-forms'
+
+const STR: Record<Lang, Record<string, string>> = {
+  id: {
+    kicker: 'Maritime Dokumen · Port Call Ops', h1: 'Buat Damage / Survey Report', desc: 'Laporan temuan kerusakan kapal/kargo/fasilitas + estimasi.',
+    fromPortCall: 'Data kapal & pelabuhan terisi otomatis dari Port Call. Lengkapi survei & temuan.',
+    secSurvey: 'Kapal & Survei', fDate: 'Tanggal', fPlace: 'Tempat', fVessel: 'Nama kapal', fFlag: 'Bendera', fPort: 'Pelabuhan', fCurrency: 'Mata uang', fOccasion: 'Occasion (saat survei)', fSurveyor: 'Surveyor', fAttended: 'Dihadiri oleh',
+    secFindings: 'Temuan Kerusakan', itemWord: 'item', thLoc: 'Lokasi / Objek', thDesc: 'Uraian', thCause: 'Penyebab', thSeverity: 'Tingkat', thEstimate: 'Estimasi',
+    phDesc: 'Uraian kerusakan', phCause: 'Penyebab', phSeverity: 'Sedang', deleteItem: 'Hapus item', addItem: 'Tambah item', fConclusion: 'Kesimpulan',
+    sVessel: 'Kapal', sFindings: 'Item temuan', totalEst: 'Total Estimasi',
+  },
+  en: {
+    kicker: 'Maritime Documents · Port Call Ops', h1: 'Create Damage / Survey Report', desc: 'Report of damage findings on vessel/cargo/facility + estimate.',
+    fromPortCall: 'Vessel & port auto-filled from Port Call. Complete the survey & findings.',
+    secSurvey: 'Vessel & Survey', fDate: 'Date', fPlace: 'Place', fVessel: 'Vessel name', fFlag: 'Flag', fPort: 'Port', fCurrency: 'Currency', fOccasion: 'Occasion (at survey)', fSurveyor: 'Surveyor', fAttended: 'Attended by',
+    secFindings: 'Damage Findings', itemWord: 'items', thLoc: 'Location / Object', thDesc: 'Description', thCause: 'Cause', thSeverity: 'Severity', thEstimate: 'Estimate',
+    phDesc: 'Damage description', phCause: 'Cause', phSeverity: 'Medium', deleteItem: 'Delete item', addItem: 'Add item', fConclusion: 'Conclusion',
+    sVessel: 'Vessel', sFindings: 'Findings', totalEst: 'Total Estimate',
+  },
+}
 
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v))
 const fmt = (n: number) => (n || 0).toLocaleString('en-US')
@@ -28,6 +49,8 @@ type Head = Omit<DamageData, 'tenant' | 'items'>
 const emptyItem = (): DamageItem => ({ location: '', description: '', cause: '', severity: 'Ringan', estimate: 0 })
 
 export function DamageForm() {
+  const t = useT(STR)
+  const c = useT(FORM_COMMON)
   const { tenant: _t, items: _i, ...sampleHead } = SAMPLE_DAMAGE
   const [head, setHead] = useState<Head>(sampleHead)
   const [items, setItems] = useState<DamageItem[]>(clone(SAMPLE_DAMAGE.items))
@@ -100,10 +123,10 @@ export function DamageForm() {
       const j = (await res.json()) as { id: string }
       setSavedId(j.id)
       window.history.replaceState(null, '', `/dokumen/new/DAMAGE_REPORT?id=${j.id}`)
-      setSavedMsg('Tersimpan ✓')
+      setSavedMsg(c.saved)
       setTimeout(() => setSavedMsg(''), 3000)
     } catch {
-      alert('Gagal menyimpan. Pastikan Anda sudah login.')
+      alert(c.saveFail)
     } finally {
       setBusy(null)
     }
@@ -132,7 +155,7 @@ export function DamageForm() {
       }
       setTimeout(() => URL.revokeObjectURL(url), 60000)
     } catch {
-      alert('Gagal membuat PDF. Coba lagi.')
+      alert(c.pdfFail)
     } finally {
       setBusy(null)
     }
@@ -142,63 +165,63 @@ export function DamageForm() {
     <div className="p-margin-page max-w-[1600px] mx-auto">
       <Link href="/dokumen" className="inline-flex items-center gap-2 text-text-secondary hover:text-accent-blue text-sm transition-colors mb-5">
         <ArrowLeft className="w-4 h-4" />
-        Kembali ke Dokumen
+        {c.backDok}
       </Link>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
         <div className="space-y-5">
           <div>
-            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-1">Maritime Dokumen · Port Call Ops</p>
-            <h1 className="font-display text-2xl text-white">Buat Damage / Survey Report</h1>
-            <p className="text-text-secondary text-sm mt-1">Laporan temuan kerusakan kapal/kargo/fasilitas + estimasi.</p>
+            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-1">{t.kicker}</p>
+            <h1 className="font-display text-2xl text-white">{t.h1}</h1>
+            <p className="text-text-secondary text-sm mt-1">{t.desc}</p>
           </div>
 
           {fromPortCall && (
             <div className="rounded-md border border-accent-teal/30 bg-accent-teal/5 px-4 py-2.5 text-xs text-accent-teal">
-              Data kapal &amp; pelabuhan terisi otomatis dari Port Call. Lengkapi survei &amp; temuan.
+              {t.fromPortCall}
             </div>
           )}
 
           <section className="bg-card-bg border border-card-border rounded-lg p-5">
-            <h2 className="font-display text-base text-white mb-4">Kapal &amp; Survei</h2>
+            <h2 className="font-display text-base text-white mb-4">{t.secSurvey}</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <Field label="No. dokumen" value={head.docNumber} onChange={set('docNumber')} />
-              <Field label="Tanggal" value={head.date} onChange={set('date')} />
-              <Field label="Tempat" value={head.place} onChange={set('place')} />
-              <Field label="Nama kapal" value={head.vesselName} onChange={set('vesselName')} />
+              <Field label={t.fDate} value={head.date} onChange={set('date')} />
+              <Field label={t.fPlace} value={head.place} onChange={set('place')} />
+              <Field label={t.fVessel} value={head.vesselName} onChange={set('vesselName')} />
               <Field label="IMO" value={head.imo} onChange={set('imo')} />
-              <Field label="Bendera" value={head.flag ?? ''} onChange={set('flag')} />
-              <Field label="Pelabuhan" value={head.port} onChange={set('port')} />
+              <Field label={t.fFlag} value={head.flag ?? ''} onChange={set('flag')} />
+              <Field label={t.fPort} value={head.port} onChange={set('port')} />
               <Field label="No. Voyage" value={head.voyageNo ?? ''} onChange={set('voyageNo')} />
-              <Field label="Mata uang" value={head.currency} onChange={set('currency')} />
-              <Field label="Occasion (saat survei)" value={head.occasion} onChange={set('occasion')} />
-              <Field label="Surveyor" value={head.surveyor} onChange={set('surveyor')} />
-              <Field label="Dihadiri oleh" value={head.attendedBy} onChange={set('attendedBy')} />
+              <Field label={t.fCurrency} value={head.currency} onChange={set('currency')} />
+              <Field label={t.fOccasion} value={head.occasion} onChange={set('occasion')} />
+              <Field label={t.fSurveyor} value={head.surveyor} onChange={set('surveyor')} />
+              <Field label={t.fAttended} value={head.attendedBy} onChange={set('attendedBy')} />
             </div>
           </section>
 
           <section className="bg-card-bg border border-card-border rounded-lg p-5">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="font-display text-base text-white">Temuan Kerusakan</h2>
-              <span className="text-xs font-mono text-text-secondary">{items.length} item</span>
+              <h2 className="font-display text-base text-white">{t.secFindings}</h2>
+              <span className="text-xs font-mono text-text-secondary">{items.length} {t.itemWord}</span>
             </div>
             <div className="hidden md:grid grid-cols-12 gap-2 px-1 mb-1.5 text-[9px] font-mono uppercase tracking-wider text-text-secondary/60">
-              <div className="col-span-3">Lokasi / Objek</div>
-              <div className="col-span-3">Uraian</div>
-              <div className="col-span-2">Penyebab</div>
-              <div className="col-span-1">Tingkat</div>
-              <div className="col-span-2">Estimasi</div>
+              <div className="col-span-3">{t.thLoc}</div>
+              <div className="col-span-3">{t.thDesc}</div>
+              <div className="col-span-2">{t.thCause}</div>
+              <div className="col-span-1">{t.thSeverity}</div>
+              <div className="col-span-2">{t.thEstimate}</div>
               <div className="col-span-1" />
             </div>
             <div className="space-y-2">
               {items.map((it, i) => (
                 <div key={i} className="grid grid-cols-12 gap-2 items-start">
                   <input value={it.location} onChange={(e) => updateItem(i, 'location', e.target.value)} placeholder="Hatch No.2" className={`${inputCls} col-span-6 md:col-span-3`} />
-                  <input value={it.description} onChange={(e) => updateItem(i, 'description', e.target.value)} placeholder="Uraian kerusakan" className={`${inputCls} col-span-6 md:col-span-3`} />
-                  <input value={it.cause} onChange={(e) => updateItem(i, 'cause', e.target.value)} placeholder="Penyebab" className={`${inputCls} col-span-4 md:col-span-2`} />
-                  <input value={it.severity} onChange={(e) => updateItem(i, 'severity', e.target.value)} placeholder="Sedang" className={`${inputCls} col-span-3 md:col-span-1`} />
+                  <input value={it.description} onChange={(e) => updateItem(i, 'description', e.target.value)} placeholder={t.phDesc} className={`${inputCls} col-span-6 md:col-span-3`} />
+                  <input value={it.cause} onChange={(e) => updateItem(i, 'cause', e.target.value)} placeholder={t.phCause} className={`${inputCls} col-span-4 md:col-span-2`} />
+                  <input value={it.severity} onChange={(e) => updateItem(i, 'severity', e.target.value)} placeholder={t.phSeverity} className={`${inputCls} col-span-3 md:col-span-1`} />
                   <input value={String(it.estimate)} onChange={(e) => updateItem(i, 'estimate', e.target.value)} placeholder="0" className={`${inputCls} col-span-4 md:col-span-2`} />
-                  <button type="button" onClick={() => removeItem(i)} aria-label="Hapus item" className="col-span-1 flex items-center justify-center h-9 rounded text-text-secondary hover:text-status-danger hover:bg-status-danger/10 transition-colors">
+                  <button type="button" onClick={() => removeItem(i)} aria-label={t.deleteItem} className="col-span-1 flex items-center justify-center h-9 rounded text-text-secondary hover:text-status-danger hover:bg-status-danger/10 transition-colors">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
@@ -206,10 +229,10 @@ export function DamageForm() {
             </div>
             <button type="button" onClick={addItem} className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-accent-blue hover:text-white transition-colors">
               <Plus className="w-3.5 h-3.5" />
-              Tambah item
+              {t.addItem}
             </button>
             <div className="mt-4">
-              <label className={labelCls}>Kesimpulan</label>
+              <label className={labelCls}>{t.fConclusion}</label>
               <textarea value={head.conclusion} onChange={(e) => set('conclusion')(e.target.value)} rows={3} className={inputCls} />
             </div>
             <div className="mt-3">
@@ -221,21 +244,21 @@ export function DamageForm() {
 
         <aside className="lg:sticky lg:top-5 space-y-3">
           <div className="bg-card-bg border border-card-border rounded-lg p-5">
-            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-3">Ringkasan</p>
+            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-3">{c.summary}</p>
             <div className="space-y-2 text-sm">
-              <div className="flex justify-between text-text-secondary"><span>Kapal</span><span className="text-text-primary text-right max-w-[60%] truncate">{head.vesselName || '—'}</span></div>
-              <div className="flex justify-between text-text-secondary"><span>Item temuan</span><span className="font-mono text-text-primary">{items.length}</span></div>
+              <div className="flex justify-between text-text-secondary"><span>{t.sVessel}</span><span className="text-text-primary text-right max-w-[60%] truncate">{head.vesselName || '—'}</span></div>
+              <div className="flex justify-between text-text-secondary"><span>{t.sFindings}</span><span className="font-mono text-text-primary">{items.length}</span></div>
             </div>
-            <div className="mt-3 -mx-5 -mb-5 px-5 py-3 bg-[#0D2A50] border-t border-[#1D4A8A] rounded-b-lg">
-              <p className="text-[10px] font-mono uppercase tracking-wider text-accent-blue/70">Total Estimasi</p>
+            <div className="mt-3 -mx-5 -mb-5 px-5 py-3 bg-accent-blue/10 border-t border-accent-blue/30 rounded-b-lg">
+              <p className="text-[10px] font-mono uppercase tracking-wider text-accent-blue/80">{t.totalEst}</p>
               <p className="font-display text-xl text-white">{head.currency} {fmt(total)}</p>
             </div>
           </div>
 
           <button type="button" onClick={saveDraft} disabled={busy !== null}
-            className="w-full inline-flex items-center justify-center gap-2 bg-[#2E86DE] hover:bg-accent-blue text-white rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60">
+            className="w-full inline-flex items-center justify-center gap-2 bg-accent-blue hover:bg-primary text-[#231a06] rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60">
             {busy === 'save' ? <Loader2 className="w-4 h-4 animate-spin" /> : savedId ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-            {savedId ? 'Simpan Perubahan' : 'Simpan Draft'}
+            {savedId ? c.saveChanges : c.saveDraft}
           </button>
           {savedMsg && <p className="text-center text-xs text-accent-teal -mt-1">{savedMsg}</p>}
 
@@ -243,12 +266,12 @@ export function DamageForm() {
             <button type="button" onClick={() => generate(true)} disabled={busy !== null}
               className="flex-1 inline-flex items-center justify-center gap-2 border border-border-muted text-text-secondary hover:text-white hover:border-accent-blue/60 hover:bg-surface-tertiary rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60">
               {busy === 'download' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              Unduh
+              {c.download}
             </button>
             <button type="button" onClick={() => generate(false)} disabled={busy !== null}
               className="flex-1 inline-flex items-center justify-center gap-2 border border-border-muted text-text-secondary hover:text-white hover:border-accent-blue/60 hover:bg-surface-tertiary rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60">
               {busy === 'preview' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
-              Preview
+              {c.preview}
             </button>
           </div>
         </aside>

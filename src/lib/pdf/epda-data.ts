@@ -27,6 +27,8 @@ export type EpdaTenant = {
   bankAccount?: string
   bankHolder?: string
   bankSwift?: string
+  signerName?: string // penanda tangan default dokumen (mis. SPK)
+  signerTitle?: string // jabatan penanda tangan
 }
 
 export type EpdaData = {

@@ -12,7 +12,7 @@ type InvStored = {
   vesselVoyage?: string
   portCall?: string
 }
-type InvSubs = { subtotal?: number; agency?: number; vat?: number }
+type InvSubs = { subtotal?: number; agency?: number; dpp?: number; vat?: number }
 
 // Bungkus sel CSV bila mengandung koma / kutip / newline.
 const esc = (v: string | number) => {
@@ -37,7 +37,9 @@ export async function GET() {
   for (const inv of invoices) {
     const li = (inv.lineItems ?? {}) as InvStored
     const sub = (inv.subtotals ?? {}) as InvSubs
-    const dpp = (sub.subtotal ?? 0) + (sub.agency ?? 0) // dasar pengenaan pajak
+    // DPP yang benar (hanya baris kena PPN + agency) disimpan sejak fix PPN per-baris;
+    // invoice lama tanpa dpp → fallback ke subtotal+agency.
+    const dpp = sub.dpp ?? (sub.subtotal ?? 0) + (sub.agency ?? 0)
     const row = [
       li.invoiceDate ?? '',
       inv.docNumber,
@@ -51,7 +53,9 @@ export async function GET() {
     lines.push(row.map(esc).join(','))
   }
 
-  const csv = '﻿' + lines.join('\r\n') // BOM agar Excel baca UTF-8 benar
+  // BOM (UTF-8) + baris "sep=," agar Excel (termasuk locale Indonesia yang default
+  // pemisahnya titik-koma) tetap memisah kolom dengan benar.
+  const csv = '﻿sep=,\r\n' + lines.join('\r\n')
   const today = new Date().toISOString().slice(0, 10)
   return new Response(csv, {
     headers: {

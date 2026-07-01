@@ -5,6 +5,31 @@ import { createLinkQuery } from '@/lib/link-params'
 import Link from 'next/link'
 import { ArrowLeft, Download, Eye, Loader2, Save, Check } from 'lucide-react'
 import { SAMPLE_NOR, type NorData } from '@/lib/pdf/nor-data'
+import { useT, type Lang } from '@/lib/i18n'
+import { FORM_COMMON } from '@/lib/i18n-forms'
+
+const STR: Record<Lang, Record<string, string>> = {
+  id: {
+    kicker: 'Maritime Dokumen · Port Call Ops', h1: 'Buat Notice of Readiness',
+    desc: 'Pemberitahuan kapal siap muat/bongkar ke charterer/principal.',
+    fromPortCall: 'Data kapal & call terisi otomatis dari Port Call. Lengkapi waktu & pihak penerima.',
+    secVessel: 'Kapal & Operasi', fVessel: 'Nama kapal', fFlag: 'Bendera', fPort: 'Pelabuhan',
+    fOperation: 'Operasi (Loading/Discharging)', fCargo: 'Kargo',
+    secTo: 'Kepada & Waktu', fTo: 'Kepada (charterer/principal)', fArrDate: 'Tgl tiba', fArrTime: 'Jam tiba',
+    fNorDate: 'Tgl NOR', fNorTime: 'Jam NOR',
+    sVessel: 'Kapal', sOperation: 'Operasi',
+  },
+  en: {
+    kicker: 'Maritime Documents · Port Call Ops', h1: 'Create Notice of Readiness',
+    desc: 'Notice that the vessel is ready to load/discharge, to the charterer/principal.',
+    fromPortCall: 'Vessel & call details auto-filled from Port Call. Complete the times & recipient.',
+    secVessel: 'Vessel & Operation', fVessel: 'Vessel name', fFlag: 'Flag', fPort: 'Port',
+    fOperation: 'Operation (Loading/Discharging)', fCargo: 'Cargo',
+    secTo: 'Recipient & Time', fTo: 'To (charterer/principal)', fArrDate: 'Arrival date', fArrTime: 'Arrival time',
+    fNorDate: 'NOR date', fNorTime: 'NOR time',
+    sVessel: 'Vessel', sOperation: 'Operation',
+  },
+}
 
 const inputCls =
   'w-full bg-surface border border-border-muted rounded px-2.5 py-2 text-sm text-text-primary ' +
@@ -24,6 +49,8 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
 type FormState = Omit<NorData, 'tenant'>
 
 export function NorForm() {
+  const t = useT(STR)
+  const c = useT(FORM_COMMON)
   const { tenant: _t, ...sample } = SAMPLE_NOR
   const [form, setForm] = useState<FormState>(sample)
   const [busy, setBusy] = useState<null | 'preview' | 'download' | 'save'>(null)
@@ -81,10 +108,10 @@ export function NorForm() {
       const j = (await res.json()) as { id: string }
       setSavedId(j.id)
       window.history.replaceState(null, '', `/dokumen/new/NOR?id=${j.id}`)
-      setSavedMsg('Tersimpan ✓')
+      setSavedMsg(c.saved)
       setTimeout(() => setSavedMsg(''), 3000)
     } catch {
-      alert('Gagal menyimpan. Pastikan Anda sudah login.')
+      alert(c.saveFail)
     } finally {
       setBusy(null)
     }
@@ -113,7 +140,7 @@ export function NorForm() {
       }
       setTimeout(() => URL.revokeObjectURL(url), 60000)
     } catch {
-      alert('Gagal membuat PDF. Coba lagi.')
+      alert(c.pdfFail)
     } finally {
       setBusy(null)
     }
@@ -123,47 +150,47 @@ export function NorForm() {
     <div className="p-margin-page max-w-[1600px] mx-auto">
       <Link href="/dokumen" className="inline-flex items-center gap-2 text-text-secondary hover:text-accent-blue text-sm transition-colors mb-5">
         <ArrowLeft className="w-4 h-4" />
-        Kembali ke Dokumen
+        {c.backDok}
       </Link>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
         <div className="space-y-5">
           <div>
-            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-1">Maritime Dokumen · Port Call Ops</p>
-            <h1 className="font-display text-2xl text-white">Buat Notice of Readiness</h1>
-            <p className="text-text-secondary text-sm mt-1">Pemberitahuan kapal siap muat/bongkar ke charterer/principal.</p>
+            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-1">{t.kicker}</p>
+            <h1 className="font-display text-2xl text-white">{t.h1}</h1>
+            <p className="text-text-secondary text-sm mt-1">{t.desc}</p>
           </div>
 
           {fromPortCall && (
             <div className="rounded-md border border-accent-teal/30 bg-accent-teal/5 px-4 py-2.5 text-xs text-accent-teal">
-              Data kapal &amp; call terisi otomatis dari Port Call. Lengkapi waktu &amp; pihak penerima.
+              {t.fromPortCall}
             </div>
           )}
 
           <section className="bg-card-bg border border-card-border rounded-lg p-5">
-            <h2 className="font-display text-base text-white mb-4">Kapal &amp; Operasi</h2>
+            <h2 className="font-display text-base text-white mb-4">{t.secVessel}</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <Field label="No. NOR" value={form.docNumber} onChange={set('docNumber')} />
-              <Field label="Nama kapal" value={form.vesselName} onChange={set('vesselName')} />
+              <Field label={t.fVessel} value={form.vesselName} onChange={set('vesselName')} />
               <Field label="IMO" value={form.imo} onChange={set('imo')} />
-              <Field label="Bendera" value={form.flag ?? ''} onChange={set('flag')} />
-              <Field label="Pelabuhan" value={form.port} onChange={set('port')} />
+              <Field label={t.fFlag} value={form.flag ?? ''} onChange={set('flag')} />
+              <Field label={t.fPort} value={form.port} onChange={set('port')} />
               <Field label="Berth / area" value={form.berth ?? ''} onChange={set('berth')} />
-              <Field label="Operasi (Loading/Discharging)" value={form.operation} onChange={set('operation')} />
-              <Field label="Kargo" value={form.cargo} onChange={set('cargo')} />
+              <Field label={t.fOperation} value={form.operation} onChange={set('operation')} />
+              <Field label={t.fCargo} value={form.cargo} onChange={set('cargo')} />
             </div>
           </section>
 
           <section className="bg-card-bg border border-card-border rounded-lg p-5">
-            <h2 className="font-display text-base text-white mb-4">Kepada &amp; Waktu</h2>
+            <h2 className="font-display text-base text-white mb-4">{t.secTo}</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              <Field label="Kepada (charterer/principal)" value={form.toName} onChange={set('toName')} />
+              <Field label={t.fTo} value={form.toName} onChange={set('toName')} />
               <Field label="Attn" value={form.toAttn ?? ''} onChange={set('toAttn')} />
               <Field label="Master" value={form.masterName} onChange={set('masterName')} />
-              <Field label="Tgl tiba" value={form.arrivedDate} onChange={set('arrivedDate')} />
-              <Field label="Jam tiba" value={form.arrivedTime} onChange={set('arrivedTime')} />
-              <Field label="Tgl NOR" value={form.noticeDate} onChange={set('noticeDate')} />
-              <Field label="Jam NOR" value={form.noticeTime} onChange={set('noticeTime')} />
+              <Field label={t.fArrDate} value={form.arrivedDate} onChange={set('arrivedDate')} />
+              <Field label={t.fArrTime} value={form.arrivedTime} onChange={set('arrivedTime')} />
+              <Field label={t.fNorDate} value={form.noticeDate} onChange={set('noticeDate')} />
+              <Field label={t.fNorTime} value={form.noticeTime} onChange={set('noticeTime')} />
             </div>
             <div className="mt-3">
               <label className={labelCls}>Remarks</label>
@@ -174,18 +201,18 @@ export function NorForm() {
 
         <aside className="lg:sticky lg:top-5 space-y-3">
           <div className="bg-card-bg border border-card-border rounded-lg p-5">
-            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-3">Ringkasan</p>
+            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-3">{c.summary}</p>
             <div className="space-y-2 text-sm">
-              <div className="flex justify-between text-text-secondary"><span>Kapal</span><span className="text-text-primary text-right max-w-[60%] truncate">{form.vesselName || '—'}</span></div>
-              <div className="flex justify-between text-text-secondary"><span>Operasi</span><span className="text-text-primary">{form.operation || '—'}</span></div>
+              <div className="flex justify-between text-text-secondary"><span>{t.sVessel}</span><span className="text-text-primary text-right max-w-[60%] truncate">{form.vesselName || '—'}</span></div>
+              <div className="flex justify-between text-text-secondary"><span>{t.sOperation}</span><span className="text-text-primary">{form.operation || '—'}</span></div>
               <div className="flex justify-between text-text-secondary"><span>NOR</span><span className="font-mono text-text-primary">{form.noticeDate} {form.noticeTime}</span></div>
             </div>
           </div>
 
           <button type="button" onClick={saveDraft} disabled={busy !== null}
-            className="w-full inline-flex items-center justify-center gap-2 bg-[#2E86DE] hover:bg-accent-blue text-white rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60">
+            className="w-full inline-flex items-center justify-center gap-2 bg-accent-blue hover:bg-primary text-[#231a06] rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60">
             {busy === 'save' ? <Loader2 className="w-4 h-4 animate-spin" /> : savedId ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-            {savedId ? 'Simpan Perubahan' : 'Simpan Draft'}
+            {savedId ? c.saveChanges : c.saveDraft}
           </button>
           {savedMsg && <p className="text-center text-xs text-accent-teal -mt-1">{savedMsg}</p>}
 
@@ -193,12 +220,12 @@ export function NorForm() {
             <button type="button" onClick={() => generate(true)} disabled={busy !== null}
               className="flex-1 inline-flex items-center justify-center gap-2 border border-border-muted text-text-secondary hover:text-white hover:border-accent-blue/60 hover:bg-surface-tertiary rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60">
               {busy === 'download' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              Unduh
+              {c.download}
             </button>
             <button type="button" onClick={() => generate(false)} disabled={busy !== null}
               className="flex-1 inline-flex items-center justify-center gap-2 border border-border-muted text-text-secondary hover:text-white hover:border-accent-blue/60 hover:bg-surface-tertiary rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60">
               {busy === 'preview' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
-              Preview
+              {c.preview}
             </button>
           </div>
         </aside>

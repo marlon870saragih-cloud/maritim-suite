@@ -1,3 +1,4 @@
+import { Prisma, type DocType, type DocStatus } from '@prisma/client'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
@@ -10,6 +11,7 @@ export type DocRow = {
   vessel: string
   port: string
   status: string
+  date?: string
   editHref?: string
   viewHref?: string
   downloadHref?: string
@@ -45,6 +47,18 @@ export const DOC_META: Record<string, { label: string; edit: string; api: string
   FAL_3: { label: "Ship's Stores", edit: '/dokumen/new/FAL_3', api: 'ship-stores' },
   FAL_2: { label: 'Cargo Declaration', edit: '/dokumen/new/FAL_2', api: 'cargo-decl' },
   AGENCY_APPOINTMENT: { label: 'Agency Appointment', edit: '/dokumen/new/AGENCY_APPOINTMENT', api: 'appointment' },
+  // Dokumen generik (SimpleDocForm) — api lewat /api/documents/simple/[type].
+  SIB: { label: 'Port Clearance (SIB)', edit: '/dokumen/new/SIB', api: 'simple/SIB' },
+  CREW_SIGN_ON: { label: 'Crew Sign-On', edit: '/dokumen/new/CREW_SIGN_ON', api: 'simple/CREW_SIGN_ON' },
+  CREW_SIGN_OFF: { label: 'Crew Sign-Off', edit: '/dokumen/new/CREW_SIGN_OFF', api: 'simple/CREW_SIGN_OFF' },
+  SHORE_PASS: { label: 'Shore Pass', edit: '/dokumen/new/SHORE_PASS', api: 'simple/SHORE_PASS' },
+  FAL_4: { label: "Crew's Effects", edit: '/dokumen/new/FAL_4', api: 'simple/FAL_4' },
+  FAL_6: { label: 'Passenger List', edit: '/dokumen/new/FAL_6', api: 'simple/FAL_6' },
+  FAL_7: { label: 'Dangerous Goods', edit: '/dokumen/new/FAL_7', api: 'simple/FAL_7' },
+  MARITIME_DECLARATION_OF_HEALTH: { label: 'Declaration of Health', edit: '/dokumen/new/MARITIME_DECLARATION_OF_HEALTH', api: 'simple/MARITIME_DECLARATION_OF_HEALTH' },
+  NOTICE_OF_ARRIVAL: { label: 'Notice of Arrival', edit: '/dokumen/new/NOTICE_OF_ARRIVAL', api: 'simple/NOTICE_OF_ARRIVAL' },
+  CASH_TO_MASTER: { label: 'Cash to Master', edit: '/dokumen/new/CASH_TO_MASTER', api: 'simple/CASH_TO_MASTER' },
+  LETTER_OF_AUTHORIZATION: { label: 'Letter of Authorization', edit: '/dokumen/new/LETTER_OF_AUTHORIZATION', api: 'simple/LETTER_OF_AUTHORIZATION' },
 }
 
 /** Ringkasan satu dokumen terkait sebuah Port Call (untuk panel grup di Port Call). */
@@ -100,4 +114,68 @@ export async function getRecentDocuments(): Promise<DocRow[]> {
       downloadHref: m ? `/api/documents/${m.api}?id=${d.id}&download=1` : undefined,
     }
   })
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const fmtDate = (d: Date) => `${String(d.getDate()).padStart(2, '0')} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`
+
+export const ARCHIVE_PAGE_SIZE = 20
+export const DOC_STATUSES: DocStatus[] = ['DRAFT', 'FINAL', 'SENT', 'PAID', 'CANCELLED']
+
+export type DocSearch = { q?: string; type?: string; status?: string; page?: number }
+export type DocSearchResult = { rows: DocRow[]; total: number; page: number; pages: number }
+
+/**
+ * Arsip dokumen — cari & telusuri SEMUA dokumen tersimpan milik tenant (bukan
+ * hanya 10/30 terbaru). Filter: kata kunci (no. dokumen/port/kapal/principal),
+ * jenis, status; dengan paginasi. Selalu dibatasi tenantId sesi.
+ */
+export async function searchDocuments(params: DocSearch): Promise<DocSearchResult> {
+  const session = await getServerSession(authOptions)
+  if (!session?.user) return { rows: [], total: 0, page: 1, pages: 0 }
+
+  const page = Math.max(1, Math.floor(params.page ?? 1))
+  const q = params.q?.trim()
+  const where: Prisma.MaritimeDocumentWhereInput = { tenantId: session.user.tenantId }
+  if (params.type && DOC_META[params.type]) where.docType = params.type as DocType
+  if (params.status && (DOC_STATUSES as string[]).includes(params.status)) where.status = params.status as DocStatus
+  if (q) {
+    const contains = { contains: q, mode: 'insensitive' as const }
+    where.OR = [
+      { docNumber: contains },
+      { port: contains },
+      { vessel: { is: { name: contains } } },
+      { principal: { is: { name: contains } } },
+    ]
+  }
+
+  const [total, docs] = await Promise.all([
+    prisma.maritimeDocument.count({ where }),
+    prisma.maritimeDocument.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * ARCHIVE_PAGE_SIZE,
+      take: ARCHIVE_PAGE_SIZE,
+      include: { vessel: { select: { name: true } }, principal: { select: { name: true } } },
+    }),
+  ])
+
+  const rows: DocRow[] = docs.map((d) => {
+    const m = DOC_META[d.docType]
+    const li = (d.lineItems ?? {}) as Stored
+    return {
+      id: d.id,
+      docNumber: d.docNumber,
+      type: m?.label ?? d.docType.replace(/_/g, ' '),
+      vessel: d.vessel?.name ?? li.vesselName ?? li.vesselVoyage ?? li.toName ?? li.party ?? '—',
+      port: d.port ?? '—',
+      status: d.status,
+      date: fmtDate(d.createdAt),
+      editHref: m ? `${m.edit}?id=${d.id}` : undefined,
+      viewHref: m ? `/api/documents/${m.api}?id=${d.id}` : undefined,
+      downloadHref: m ? `/api/documents/${m.api}?id=${d.id}&download=1` : undefined,
+    }
+  })
+
+  return { rows, total, page, pages: Math.max(1, Math.ceil(total / ARCHIVE_PAGE_SIZE)) }
 }

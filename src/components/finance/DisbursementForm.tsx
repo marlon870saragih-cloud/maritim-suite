@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { createLinkQuery } from '@/lib/link-params'
 import Link from 'next/link'
 import { ArrowLeft, Plus, Trash2, Download, Eye, Loader2, Save, Check } from 'lucide-react'
+import { useT, useLang, type Lang } from '@/lib/i18n'
+import { FORM_COMMON } from '@/lib/i18n-forms'
 import {
   SAMPLE_EPDA,
   SAMPLE_FPDA,
@@ -14,6 +16,40 @@ import {
 } from '@/lib/pdf/epda-data'
 
 type DocKind = 'epda' | 'fpda'
+type Bi = { id: string; en: string }
+
+const STR: Record<Lang, Record<string, string>> = {
+  id: {
+    back: 'Kembali ke Finance', kicker: 'Generator Keuangan', create: 'Buat', totalAuto: 'Total dihitung otomatis.',
+    fromPortCall: 'Partikular kapal & call terisi otomatis dari Port Call. Tinggal isi baris biaya di bawah.',
+    fromSrcPre: 'Partikular & baris biaya disalin dari', fromSrcPost: '. Ubah jadi nilai aktual, isi nomor & dana muka, lalu simpan sebagai FPDA baru.',
+    secPar: 'Partikular Kapal & Call', fVessel: 'Nama kapal', fPrincipal: 'Principal', fPort: 'Port', fPortCode: 'Port code', fCargo: 'Cargo',
+    secDoc: 'Detail Dokumen', fNo: 'No. dokumen', fIssued: 'Diterbitkan', fCurrency: 'Mata uang',
+    fAgency: 'Agency handling (%)', fUsd: 'Kurs USD (indikatif)', fAdvance: 'Dana muka diterima',
+    lumpMode: 'Mode Lump Sum', lumpHint: '— satu angka total, tanpa rincian seksi A/B/C/D', fLumpDesc: 'Uraian', fLumpAmt: 'Jumlah lump sum',
+    lumpNotePre: 'Agency handling', lumpNotePost: 'tetap dihitung di atas jumlah ini. Bila lump sum sudah termasuk agency, set Agency % = 0.',
+    thDesc: 'Deskripsi', thQtyBasis: 'Qty / Basis', thRate: 'Rate', thAmount: 'Jumlah',
+    phCost: 'Deskripsi biaya', phBasis: 'keterangan (mis. per GT per call)', phQty: 'Qty', phRate: 'Rate', phAmount: 'Jumlah',
+    secSummary: 'Ringkasan Biaya', subAll: 'Subtotal (A+B+C+D)', lumpSumLabel: 'Lump Sum', sAgency: 'Agency handling',
+    totalDisb: 'Total Disbursements', advanceReceived: 'Dana muka diterima',
+    balanceBilled: 'Saldo Ditagih ke Principal', refund: 'Refund ke Principal', indicative: 'indikatif',
+  },
+  en: {
+    back: 'Back to Finance', kicker: 'Finance Generator', create: 'Create', totalAuto: 'Total computed automatically.',
+    fromPortCall: 'Vessel & call particulars auto-filled from Port Call. Just fill the cost lines below.',
+    fromSrcPre: 'Particulars & cost lines copied from', fromSrcPost: '. Change to actual values, set the number & advance, then save as a new FPDA.',
+    secPar: 'Vessel & Call Particulars', fVessel: 'Vessel name', fPrincipal: 'Principal', fPort: 'Port', fPortCode: 'Port code', fCargo: 'Cargo',
+    secDoc: 'Document Details', fNo: 'Doc no.', fIssued: 'Issued', fCurrency: 'Currency',
+    fAgency: 'Agency handling (%)', fUsd: 'USD rate (indicative)', fAdvance: 'Advance received',
+    lumpMode: 'Lump Sum Mode', lumpHint: '— a single total, no A/B/C/D section breakdown', fLumpDesc: 'Description', fLumpAmt: 'Lump sum amount',
+    lumpNotePre: 'Agency handling', lumpNotePost: 'is still computed on top of this amount. If the lump sum already includes agency, set Agency % = 0.',
+    thDesc: 'Description', thQtyBasis: 'Qty / Basis', thRate: 'Rate', thAmount: 'Amount',
+    phCost: 'Cost description', phBasis: 'note (e.g. per GT per call)', phQty: 'Qty', phRate: 'Rate', phAmount: 'Amount',
+    secSummary: 'Cost Summary', subAll: 'Subtotal (A+B+C+D)', lumpSumLabel: 'Lump Sum', sAgency: 'Agency handling',
+    totalDisb: 'Total Disbursements', advanceReceived: 'Advance received',
+    balanceBilled: 'Balance Billed to Principal', refund: 'Refund to Principal', indicative: 'indicative',
+  },
+}
 
 type Meta = Pick<
   EpdaData,
@@ -62,25 +98,34 @@ function Field({
 
 const CONFIG: Record<
   DocKind,
-  { label: string; sample: EpdaData; lead: string; validDocLabel: string; summaryTotalLabel: string }
+  { label: string; sample: EpdaData; lead: Bi; validDocLabel: Bi; summaryTotalLabel: string }
 > = {
   epda: {
     label: 'EPDA',
     sample: SAMPLE_EPDA,
-    lead: 'Estimasi biaya port call (proforma) untuk meminta dana muka ke principal.',
-    validDocLabel: 'Berlaku s/d',
+    lead: {
+      id: 'Estimasi biaya port call (proforma) untuk meminta dana muka ke principal.',
+      en: 'Estimated port call costs (proforma) to request an advance from the principal.',
+    },
+    validDocLabel: { id: 'Berlaku s/d', en: 'Valid until' },
     summaryTotalLabel: 'Estimated Total',
   },
   fpda: {
     label: 'FPDA',
     sample: SAMPLE_FPDA,
-    lead: 'Laporan biaya aktual (final) — direkonsiliasi dengan dana muka yang sudah diterima.',
-    validDocLabel: 'Jatuh tempo bayar',
+    lead: {
+      id: 'Laporan biaya aktual (final) — direkonsiliasi dengan dana muka yang sudah diterima.',
+      en: 'Actual (final) cost report — reconciled against the advance already received.',
+    },
+    validDocLabel: { id: 'Jatuh tempo bayar', en: 'Payment due' },
     summaryTotalLabel: 'Total Disbursements',
   },
 }
 
 export function DisbursementForm({ type }: { type: DocKind }) {
+  const t = useT(STR)
+  const c = useT(FORM_COMMON)
+  const { lang } = useLang()
   const cfg = CONFIG[type]
   const sample = cfg.sample
   const endpoint = `/api/documents/${type}`
@@ -265,10 +310,10 @@ export function DisbursementForm({ type }: { type: DocKind }) {
       const j = (await res.json()) as { id: string }
       setSavedId(j.id)
       window.history.replaceState(null, '', `${formRoute}?id=${j.id}`)
-      setSavedMsg('Tersimpan ✓')
+      setSavedMsg(c.saved)
       setTimeout(() => setSavedMsg(''), 3000)
     } catch {
-      alert('Gagal menyimpan. Pastikan Anda sudah login.')
+      alert(c.saveFail)
     } finally {
       setBusy(null)
     }
@@ -297,7 +342,7 @@ export function DisbursementForm({ type }: { type: DocKind }) {
       }
       setTimeout(() => URL.revokeObjectURL(url), 60000)
     } catch {
-      alert('Gagal membuat PDF. Coba lagi.')
+      alert(c.pdfFail)
     } finally {
       setBusy(null)
     }
@@ -310,7 +355,7 @@ export function DisbursementForm({ type }: { type: DocKind }) {
         className="inline-flex items-center gap-2 text-text-secondary hover:text-accent-blue text-sm transition-colors mb-5"
       >
         <ArrowLeft className="w-4 h-4" />
-        Kembali ke Finance
+        {t.back}
       </Link>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
@@ -318,36 +363,36 @@ export function DisbursementForm({ type }: { type: DocKind }) {
         <div className="space-y-5">
           <div>
             <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-1">
-              Generator Keuangan · {cfg.label}
+              {t.kicker} · {cfg.label}
             </p>
-            <h1 className="font-display text-2xl text-white">Buat {cfg.label}</h1>
-            <p className="text-text-secondary text-sm mt-1">{cfg.lead} Total dihitung otomatis.</p>
+            <h1 className="font-display text-2xl text-white">{t.create} {cfg.label}</h1>
+            <p className="text-text-secondary text-sm mt-1">{cfg.lead[lang]} {t.totalAuto}</p>
           </div>
 
           {fromPortCall && (
             <div className="rounded-md border border-accent-teal/30 bg-accent-teal/5 px-4 py-2.5 text-xs text-accent-teal">
-              Partikular kapal &amp; call terisi otomatis dari Port Call. Tinggal isi baris biaya di bawah.
+              {t.fromPortCall}
             </div>
           )}
           {fromSource && (
             <div className="rounded-md border border-accent-teal/30 bg-accent-teal/5 px-4 py-2.5 text-xs text-accent-teal">
-              Partikular &amp; baris biaya disalin dari {fromSource}. Ubah jadi nilai aktual, isi nomor &amp; dana muka, lalu simpan sebagai FPDA baru.
+              {t.fromSrcPre} {fromSource}{t.fromSrcPost}
             </div>
           )}
 
           {/* Partikular */}
           <section className="bg-card-bg border border-card-border rounded-lg p-5">
-            <h2 className="font-display text-base text-white mb-4">Partikular Kapal &amp; Call</h2>
+            <h2 className="font-display text-base text-white mb-4">{t.secPar}</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              <Field label="Nama kapal" value={par.vesselName} onChange={setParF('vesselName')} />
-              <Field label="Principal" value={par.principal} onChange={setParF('principal')} />
+              <Field label={t.fVessel} value={par.vesselName} onChange={setParF('vesselName')} />
+              <Field label={t.fPrincipal} value={par.principal} onChange={setParF('principal')} />
               <Field label="IMO" value={par.imo} onChange={setParF('imo')} />
               <Field label="Flag" value={par.flag} onChange={setParF('flag')} />
-              <Field label="Port" value={par.port} onChange={setParF('port')} />
-              <Field label="Port code" value={par.portCode} onChange={setParF('portCode')} />
+              <Field label={t.fPort} value={par.port} onChange={setParF('port')} />
+              <Field label={t.fPortCode} value={par.portCode} onChange={setParF('portCode')} />
               <Field label="GT" value={par.gt} onChange={setParF('gt')} />
               <Field label="NRT" value={par.nrt} onChange={setParF('nrt')} />
-              <Field label="Cargo" value={par.cargo} onChange={setParF('cargo')} />
+              <Field label={t.fCargo} value={par.cargo} onChange={setParF('cargo')} />
               <Field label="ETA" value={par.eta} onChange={setParF('eta')} />
               <Field label="ETD" value={par.etd} onChange={setParF('etd')} />
               <Field label="LOA" value={par.loa} onChange={setParF('loa')} />
@@ -357,17 +402,17 @@ export function DisbursementForm({ type }: { type: DocKind }) {
 
           {/* Detail dokumen */}
           <section className="bg-card-bg border border-card-border rounded-lg p-5">
-            <h2 className="font-display text-base text-white mb-4">Detail Dokumen</h2>
+            <h2 className="font-display text-base text-white mb-4">{t.secDoc}</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              <Field label="No. dokumen" value={meta.docNumber} onChange={setMetaF('docNumber')} />
-              <Field label="Diterbitkan" value={meta.issuedAt} onChange={setMetaF('issuedAt')} />
-              <Field label={cfg.validDocLabel} value={meta.validUntil} onChange={setMetaF('validUntil')} />
-              <Field label="Mata uang" value={meta.currency} onChange={setMetaF('currency')} />
-              <Field label="Agency handling (%)" type="number" value={meta.agencyPct} onChange={setMetaF('agencyPct')} />
-              <Field label="Kurs USD (indikatif)" type="number" value={meta.usdRate ?? 0} onChange={setMetaF('usdRate')} />
+              <Field label={t.fNo} value={meta.docNumber} onChange={setMetaF('docNumber')} />
+              <Field label={t.fIssued} value={meta.issuedAt} onChange={setMetaF('issuedAt')} />
+              <Field label={cfg.validDocLabel[lang]} value={meta.validUntil} onChange={setMetaF('validUntil')} />
+              <Field label={t.fCurrency} value={meta.currency} onChange={setMetaF('currency')} />
+              <Field label={t.fAgency} type="number" value={meta.agencyPct} onChange={setMetaF('agencyPct')} />
+              <Field label={t.fUsd} type="number" value={meta.usdRate ?? 0} onChange={setMetaF('usdRate')} />
               {type === 'fpda' && (
                 <Field
-                  label="Dana muka diterima"
+                  label={t.fAdvance}
                   type="number"
                   value={meta.advanceReceived ?? 0}
                   onChange={setMetaF('advanceReceived')}
@@ -385,15 +430,15 @@ export function DisbursementForm({ type }: { type: DocKind }) {
                 onChange={(e) => setLump((p) => ({ ...p, on: e.target.checked }))}
                 className="w-4 h-4 accent-accent-blue"
               />
-              <span className="text-sm text-text-primary font-medium">Mode Lump Sum</span>
-              <span className="text-xs text-text-secondary">— satu angka total, tanpa rincian seksi A/B/C/D</span>
+              <span className="text-sm text-text-primary font-medium">{t.lumpMode}</span>
+              <span className="text-xs text-text-secondary">{t.lumpHint}</span>
             </label>
             {lump.on && (
               <div className="grid grid-cols-1 md:grid-cols-[1fr_200px] gap-3 mt-4">
-                <Field label="Uraian" value={lump.desc} onChange={(v) => setLump((p) => ({ ...p, desc: v }))} />
-                <Field label="Jumlah lump sum" type="number" value={lump.amount} onChange={(v) => setLump((p) => ({ ...p, amount: Number(v) || 0 }))} />
+                <Field label={t.fLumpDesc} value={lump.desc} onChange={(v) => setLump((p) => ({ ...p, desc: v }))} />
+                <Field label={t.fLumpAmt} type="number" value={lump.amount} onChange={(v) => setLump((p) => ({ ...p, amount: Number(v) || 0 }))} />
                 <p className="md:col-span-2 text-xs text-text-secondary/80">
-                  Agency handling {meta.agencyPct}% tetap dihitung di atas jumlah ini. Bila lump sum sudah termasuk agency, set Agency % = 0.
+                  {t.lumpNotePre} {meta.agencyPct}% {t.lumpNotePost}
                 </p>
               </div>
             )}
@@ -408,15 +453,15 @@ export function DisbursementForm({ type }: { type: DocKind }) {
                   {sec.title}
                 </h2>
                 <span className="text-xs font-mono text-text-secondary">
-                  Subtotal {sec.letter}: <span className="text-white">{fmt(sectionSubtotal(sec))}</span>
+                  {c.subtotal} {sec.letter}: <span className="text-white">{fmt(sectionSubtotal(sec))}</span>
                 </span>
               </div>
 
               <div className="hidden md:grid grid-cols-12 gap-2 px-1 mb-1.5 text-[9px] font-mono uppercase tracking-wider text-text-secondary/60">
-                <div className="col-span-5">Deskripsi</div>
-                <div className="col-span-2">Qty / Basis</div>
-                <div className="col-span-2 text-right">Rate</div>
-                <div className="col-span-2 text-right">Jumlah</div>
+                <div className="col-span-5">{t.thDesc}</div>
+                <div className="col-span-2">{t.thQtyBasis}</div>
+                <div className="col-span-2 text-right">{t.thRate}</div>
+                <div className="col-span-2 text-right">{t.thAmount}</div>
                 <div className="col-span-1" />
               </div>
 
@@ -427,40 +472,40 @@ export function DisbursementForm({ type }: { type: DocKind }) {
                       <input
                         value={it.description}
                         onChange={(e) => updateItem(si, ii, 'description', e.target.value)}
-                        placeholder="Deskripsi biaya"
+                        placeholder={t.phCost}
                         className={inputCls}
                       />
                       <input
                         value={it.basis ?? ''}
                         onChange={(e) => updateItem(si, ii, 'basis', e.target.value)}
-                        placeholder="keterangan (mis. per GT per call)"
+                        placeholder={t.phBasis}
                         className={inputCls + ' text-xs py-1.5'}
                       />
                     </div>
                     <input
                       value={it.qty ?? ''}
                       onChange={(e) => updateItem(si, ii, 'qty', e.target.value)}
-                      placeholder="Qty"
+                      placeholder={t.phQty}
                       className={`${inputCls} col-span-5 md:col-span-2`}
                     />
                     <input
                       type="number"
                       value={it.rate ?? 0}
                       onChange={(e) => updateItem(si, ii, 'rate', e.target.value)}
-                      placeholder="Rate"
+                      placeholder={t.phRate}
                       className={`${inputCls} col-span-3 md:col-span-2 text-right`}
                     />
                     <input
                       type="number"
                       value={it.amount}
                       onChange={(e) => updateItem(si, ii, 'amount', e.target.value)}
-                      placeholder="Jumlah"
+                      placeholder={t.phAmount}
                       className={`${inputCls} col-span-3 md:col-span-2 text-right`}
                     />
                     <button
                       type="button"
                       onClick={() => removeItem(si, ii)}
-                      aria-label="Hapus baris"
+                      aria-label={c.deleteRow}
                       className="col-span-1 flex items-center justify-center h-9 rounded text-text-secondary
                                  hover:text-status-danger hover:bg-status-danger/10 transition-colors"
                     >
@@ -477,7 +522,7 @@ export function DisbursementForm({ type }: { type: DocKind }) {
                            hover:text-white transition-colors"
               >
                 <Plus className="w-3.5 h-3.5" />
-                Tambah baris
+                {c.addRow}
               </button>
             </section>
           ))}
@@ -487,52 +532,52 @@ export function DisbursementForm({ type }: { type: DocKind }) {
         <aside className="lg:sticky lg:top-5 space-y-3">
           <div className="bg-card-bg border border-card-border rounded-lg p-5">
             <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-3">
-              Ringkasan Biaya
+              {t.secSummary}
             </p>
             <div className="space-y-2 text-sm">
               {!lump.on &&
                 sections.map((sec) => (
                   <div key={sec.letter} className="flex justify-between text-text-secondary">
-                    <span>Subtotal {sec.letter}</span>
+                    <span>{c.subtotal} {sec.letter}</span>
                     <span className="font-mono text-text-primary">{fmt(sectionSubtotal(sec))}</span>
                   </div>
                 ))}
               {!lump.on && <div className="border-t border-border-muted my-2" />}
               <div className="flex justify-between text-text-secondary">
-                <span>{lump.on ? 'Lump Sum' : 'Subtotal (A+B+C+D)'}</span>
+                <span>{lump.on ? t.lumpSumLabel : t.subAll}</span>
                 <span className="font-mono text-text-primary">{fmt(totals.subtotal)}</span>
               </div>
               <div className="flex justify-between text-text-secondary">
-                <span>Agency handling {meta.agencyPct}%</span>
+                <span>{t.sAgency} {meta.agencyPct}%</span>
                 <span className="font-mono text-text-primary">{fmt(totals.agencyAmount)}</span>
               </div>
               {type === 'fpda' && (
                 <>
                   <div className="flex justify-between text-text-primary font-medium">
-                    <span>Total Disbursements</span>
+                    <span>{t.totalDisb}</span>
                     <span className="font-mono">{fmt(totals.total)}</span>
                   </div>
                   <div className="flex justify-between text-text-secondary">
-                    <span>Dana muka diterima</span>
+                    <span>{t.advanceReceived}</span>
                     <span className="font-mono">({fmt(advance)})</span>
                   </div>
                 </>
               )}
             </div>
 
-            <div className="mt-3 -mx-5 -mb-5 px-5 py-3 bg-[#0D2A50] border-t border-[#1D4A8A] rounded-b-lg">
-              <p className="text-[10px] font-mono uppercase tracking-wider text-accent-blue/70">
+            <div className="mt-3 -mx-5 -mb-5 px-5 py-3 bg-accent-blue/10 border-t border-accent-blue/30 rounded-b-lg">
+              <p className="text-[10px] font-mono uppercase tracking-wider text-accent-blue/80">
                 {type === 'fpda'
                   ? balance >= 0
-                    ? 'Saldo Ditagih ke Principal'
-                    : 'Refund ke Principal'
+                    ? t.balanceBilled
+                    : t.refund
                   : cfg.summaryTotalLabel}
               </p>
               <p className="font-display text-xl text-white">
                 {meta.currency} {fmt(type === 'fpda' ? Math.abs(balance) : totals.total)}
               </p>
               {type === 'epda' && totals.usd ? (
-                <p className="text-[11px] text-text-secondary mt-0.5">~ USD {fmt(totals.usd)} (indikatif)</p>
+                <p className="text-[11px] text-text-secondary mt-0.5">~ USD {fmt(totals.usd)} ({t.indicative})</p>
               ) : null}
             </div>
           </div>
@@ -541,8 +586,7 @@ export function DisbursementForm({ type }: { type: DocKind }) {
             type="button"
             onClick={saveDraft}
             disabled={busy !== null}
-            className="w-full inline-flex items-center justify-center gap-2 bg-[#2E86DE] hover:bg-accent-blue
-                       text-white rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60"
+            className="w-full inline-flex items-center justify-center gap-2 bg-accent-blue hover:bg-primary text-[#231a06] rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60"
           >
             {busy === 'save' ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -551,7 +595,7 @@ export function DisbursementForm({ type }: { type: DocKind }) {
             ) : (
               <Save className="w-4 h-4" />
             )}
-            {savedId ? 'Simpan Perubahan' : 'Simpan Draft'}
+            {savedId ? c.saveChanges : c.saveDraft}
           </button>
           {savedMsg && <p className="text-center text-xs text-accent-teal -mt-1">{savedMsg}</p>}
 
@@ -565,7 +609,7 @@ export function DisbursementForm({ type }: { type: DocKind }) {
                          rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60"
             >
               {busy === 'download' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              Unduh
+              {c.download}
             </button>
             <button
               type="button"
@@ -576,14 +620,11 @@ export function DisbursementForm({ type }: { type: DocKind }) {
                          rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60"
             >
               {busy === 'preview' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
-              Preview
+              {c.preview}
             </button>
           </div>
 
-          <p className="text-[11px] text-text-secondary/70 leading-relaxed">
-            Kop perusahaan pada PDF otomatis dari profil perusahaan Anda (yang login). Draft
-            tersimpan bisa dibuka &amp; diunduh ulang dari halaman Finance.
-          </p>
+          <p className="text-[11px] text-text-secondary/70 leading-relaxed">{c.pdfNote}</p>
         </aside>
       </div>
     </div>

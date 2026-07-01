@@ -1,6 +1,6 @@
 import React from 'react'
 import { Document, Page, View, Text, StyleSheet } from '@react-pdf/renderer'
-import { NAVY, GOLD, INK, GRAY, LINE, base, Letterhead, DocFooter } from './base'
+import { NAVY, GOLD, INK, GRAY, base, Letterhead, DocFooter } from './base'
 import { type ProtestData } from './protest-data'
 
 const lp = StyleSheet.create({

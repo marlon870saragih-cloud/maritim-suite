@@ -11,7 +11,7 @@ export function QuickActions() {
       <button
         type="button"
         onClick={() => router.push('/dokumen/new/FAL_BUNDLE')}
-        className="bg-[#2E86DE] hover:bg-accent-blue text-white px-5 py-2 rounded
+        className="bg-accent-blue hover:bg-primary text-[#231a06] px-5 py-2 rounded
                    font-mono uppercase tracking-wider text-sm transition-colors flex items-center gap-2"
       >
         <Plus className="w-[18px] h-[18px]" />
@@ -20,7 +20,7 @@ export function QuickActions() {
       <button
         type="button"
         onClick={() => router.push('/dokumen/new/ARRIVAL_REPORT')}
-        className="bg-surface-tertiary hover:bg-[#162844] border border-border-muted text-text-primary
+        className="bg-surface-tertiary hover:bg-surface-container-high border border-border-muted text-text-primary
                    px-5 py-2 rounded font-mono uppercase tracking-wider text-sm transition-colors"
       >
         Arrival Report
@@ -28,7 +28,7 @@ export function QuickActions() {
       <button
         type="button"
         onClick={() => router.push('/dokumen/new/SOF')}
-        className="bg-surface-tertiary hover:bg-[#162844] border border-border-muted text-text-primary
+        className="bg-surface-tertiary hover:bg-surface-container-high border border-border-muted text-text-primary
                    px-5 py-2 rounded font-mono uppercase tracking-wider text-sm transition-colors"
       >
         Statement of Facts

@@ -17,6 +17,8 @@ import { BunkerReqForm } from '@/components/dokumen/BunkerReqForm'
 import { NoteProtestForm } from '@/components/dokumen/NoteProtestForm'
 import { DamageForm } from '@/components/dokumen/DamageForm'
 import { UllageForm } from '@/components/dokumen/UllageForm'
+import { SimpleDocForm } from '@/components/dokumen/SimpleDocForm'
+import { getSimpleSchema } from '@/lib/pdf/simple-docs'
 
 export default function NewDocumentPage({ params }: { params: { type: string } }) {
   // Dokumen operasional yang sudah punya generator.
@@ -26,7 +28,7 @@ export default function NewDocumentPage({ params }: { params: { type: string } }
   if (params.type === 'FAL_1' || params.type === 'FAL_BUNDLE') return <GenDecForm />
   if (params.type === 'FAL_3') return <ShipStoresForm />
   if (params.type === 'FAL_2') return <CargoDeclForm />
-  if (params.type === 'AGENCY_APPOINTMENT' || params.type === 'SIB') return <AppointmentForm />
+  if (params.type === 'AGENCY_APPOINTMENT') return <AppointmentForm />
   if (params.type === 'ARRIVAL_REPORT') return <ReportForm kind="ARRIVAL" />
   if (params.type === 'DEPARTURE_REPORT') return <ReportForm kind="DEPARTURE" />
   if (params.type === 'LETTER_OF_PROTEST') return <ProtestForm />
@@ -38,6 +40,9 @@ export default function NewDocumentPage({ params }: { params: { type: string } }
   if (params.type === 'NOTE_OF_PROTEST') return <NoteProtestForm />
   if (params.type === 'DAMAGE_REPORT') return <DamageForm />
   if (params.type === 'ULLAGE_REPORT') return <UllageForm />
+
+  // Dokumen surat/daftar generik (SIB, Sign-On/Off, Shore Pass, FAL 4/6/7).
+  if (getSimpleSchema(params.type)) return <SimpleDocForm type={params.type} />
 
   const label = params.type.replace(/_/g, ' ')
   return (

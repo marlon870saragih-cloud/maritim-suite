@@ -5,6 +5,29 @@ import { createLinkQuery } from '@/lib/link-params'
 import Link from 'next/link'
 import { ArrowLeft, Download, Eye, Loader2, Save, Check } from 'lucide-react'
 import { SAMPLE_LOI, type LoiData } from '@/lib/pdf/loi-data'
+import { useT, type Lang } from '@/lib/i18n'
+import { FORM_COMMON } from '@/lib/i18n-forms'
+
+const STR: Record<Lang, Record<string, string>> = {
+  id: {
+    kicker: 'Maritime Dokumen · Clearance & SIB', h1: 'Buat Letter of Indemnity',
+    desc: 'Surat jaminan ganti rugi (mis. serah-terima kargo tanpa B/L asli).',
+    fromPortCall: 'Data kapal, pelabuhan & kargo terisi otomatis dari Port Call. Lengkapi pihak & isi jaminan.',
+    secIssue: 'Penerbitan & Pihak', fPlace: 'Tempat', fDate: 'Tanggal', fFrom: 'Dari (pemberi jaminan)', fTo: 'Kepada (penerima)', fSubject: 'Perihal (Re:)',
+    secVessel: 'Kapal & Kargo', fVessel: 'Nama kapal', fFlag: 'Bendera', fVoyage: 'No. Voyage', fPort: 'Pelabuhan', fBl: 'No. B/L', fCargo: 'Kargo', fCargoQty: 'Jumlah kargo',
+    secUndertaking: 'Isi Jaminan', fUndertaking: 'Pernyataan jaminan (undertaking)', fAmount: 'Nilai / batas jaminan', fValidity: 'Masa berlaku', fSignName: 'Nama penanda tangan', fSignTitle: 'Jabatan penanda tangan',
+    sVessel: 'Kapal', sFrom: 'Dari', sDate: 'Tanggal',
+  },
+  en: {
+    kicker: 'Maritime Documents · Clearance & SIB', h1: 'Create Letter of Indemnity',
+    desc: 'Letter of indemnity (e.g. cargo delivery without the original B/L).',
+    fromPortCall: 'Vessel, port & cargo auto-filled from Port Call. Complete the parties & undertaking.',
+    secIssue: 'Issuance & Parties', fPlace: 'Place', fDate: 'Date', fFrom: 'From (indemnifier)', fTo: 'To (recipient)', fSubject: 'Subject (Re:)',
+    secVessel: 'Vessel & Cargo', fVessel: 'Vessel name', fFlag: 'Flag', fVoyage: 'Voyage no.', fPort: 'Port', fBl: 'B/L no.', fCargo: 'Cargo', fCargoQty: 'Cargo qty',
+    secUndertaking: 'Undertaking', fUndertaking: 'Undertaking statement', fAmount: 'Value / indemnity limit', fValidity: 'Validity', fSignName: 'Signatory name', fSignTitle: 'Signatory title',
+    sVessel: 'Vessel', sFrom: 'From', sDate: 'Date',
+  },
+}
 
 const inputCls =
   'w-full bg-surface border border-border-muted rounded px-2.5 py-2 text-sm text-text-primary ' +
@@ -24,6 +47,8 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
 type FormState = Omit<LoiData, 'tenant'>
 
 export function LoiForm() {
+  const t = useT(STR)
+  const c = useT(FORM_COMMON)
   const { tenant: _t, ...sample } = SAMPLE_LOI
   const [form, setForm] = useState<FormState>(sample)
   const [busy, setBusy] = useState<null | 'preview' | 'download' | 'save'>(null)
@@ -83,10 +108,10 @@ export function LoiForm() {
       const j = (await res.json()) as { id: string }
       setSavedId(j.id)
       window.history.replaceState(null, '', `/dokumen/new/LETTER_OF_INDEMNITY?id=${j.id}`)
-      setSavedMsg('Tersimpan ✓')
+      setSavedMsg(c.saved)
       setTimeout(() => setSavedMsg(''), 3000)
     } catch {
-      alert('Gagal menyimpan. Pastikan Anda sudah login.')
+      alert(c.saveFail)
     } finally {
       setBusy(null)
     }
@@ -115,7 +140,7 @@ export function LoiForm() {
       }
       setTimeout(() => URL.revokeObjectURL(url), 60000)
     } catch {
-      alert('Gagal membuat PDF. Coba lagi.')
+      alert(c.pdfFail)
     } finally {
       setBusy(null)
     }
@@ -125,81 +150,81 @@ export function LoiForm() {
     <div className="p-margin-page max-w-[1600px] mx-auto">
       <Link href="/dokumen" className="inline-flex items-center gap-2 text-text-secondary hover:text-accent-blue text-sm transition-colors mb-5">
         <ArrowLeft className="w-4 h-4" />
-        Kembali ke Dokumen
+        {c.backDok}
       </Link>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
         <div className="space-y-5">
           <div>
-            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-1">Maritime Dokumen · Clearance &amp; SIB</p>
-            <h1 className="font-display text-2xl text-white">Buat Letter of Indemnity</h1>
-            <p className="text-text-secondary text-sm mt-1">Surat jaminan ganti rugi (mis. serah-terima kargo tanpa B/L asli).</p>
+            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-1">{t.kicker}</p>
+            <h1 className="font-display text-2xl text-white">{t.h1}</h1>
+            <p className="text-text-secondary text-sm mt-1">{t.desc}</p>
           </div>
 
           {fromPortCall && (
             <div className="rounded-md border border-accent-teal/30 bg-accent-teal/5 px-4 py-2.5 text-xs text-accent-teal">
-              Data kapal, pelabuhan &amp; kargo terisi otomatis dari Port Call. Lengkapi pihak &amp; isi jaminan.
+              {t.fromPortCall}
             </div>
           )}
 
           <section className="bg-card-bg border border-card-border rounded-lg p-5">
-            <h2 className="font-display text-base text-white mb-4">Penerbitan &amp; Pihak</h2>
+            <h2 className="font-display text-base text-white mb-4">{t.secIssue}</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <Field label="No. LOI" value={form.docNumber} onChange={set('docNumber')} />
-              <Field label="Tempat" value={form.place} onChange={set('place')} />
-              <Field label="Tanggal" value={form.date} onChange={set('date')} />
-              <Field label="Dari (pemberi jaminan)" value={form.fromName} onChange={set('fromName')} />
-              <Field label="Kepada (penerima)" value={form.toName} onChange={set('toName')} />
+              <Field label={t.fPlace} value={form.place} onChange={set('place')} />
+              <Field label={t.fDate} value={form.date} onChange={set('date')} />
+              <Field label={t.fFrom} value={form.fromName} onChange={set('fromName')} />
+              <Field label={t.fTo} value={form.toName} onChange={set('toName')} />
               <Field label="Attn" value={form.toAttn ?? ''} onChange={set('toAttn')} />
             </div>
             <div className="mt-3">
-              <Field label="Perihal (Re:)" value={form.subject} onChange={set('subject')} />
+              <Field label={t.fSubject} value={form.subject} onChange={set('subject')} />
             </div>
           </section>
 
           <section className="bg-card-bg border border-card-border rounded-lg p-5">
-            <h2 className="font-display text-base text-white mb-4">Kapal &amp; Kargo</h2>
+            <h2 className="font-display text-base text-white mb-4">{t.secVessel}</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              <Field label="Nama kapal" value={form.vesselName} onChange={set('vesselName')} />
+              <Field label={t.fVessel} value={form.vesselName} onChange={set('vesselName')} />
               <Field label="IMO" value={form.imo} onChange={set('imo')} />
-              <Field label="Bendera" value={form.flag ?? ''} onChange={set('flag')} />
-              <Field label="No. Voyage" value={form.voyageNo ?? ''} onChange={set('voyageNo')} />
-              <Field label="Pelabuhan" value={form.port} onChange={set('port')} />
-              <Field label="No. B/L" value={form.blNumber ?? ''} onChange={set('blNumber')} />
-              <Field label="Kargo" value={form.cargo} onChange={set('cargo')} />
-              <Field label="Jumlah kargo" value={form.cargoQty ?? ''} onChange={set('cargoQty')} />
+              <Field label={t.fFlag} value={form.flag ?? ''} onChange={set('flag')} />
+              <Field label={t.fVoyage} value={form.voyageNo ?? ''} onChange={set('voyageNo')} />
+              <Field label={t.fPort} value={form.port} onChange={set('port')} />
+              <Field label={t.fBl} value={form.blNumber ?? ''} onChange={set('blNumber')} />
+              <Field label={t.fCargo} value={form.cargo} onChange={set('cargo')} />
+              <Field label={t.fCargoQty} value={form.cargoQty ?? ''} onChange={set('cargoQty')} />
             </div>
           </section>
 
           <section className="bg-card-bg border border-card-border rounded-lg p-5">
-            <h2 className="font-display text-base text-white mb-4">Isi Jaminan</h2>
+            <h2 className="font-display text-base text-white mb-4">{t.secUndertaking}</h2>
             <div>
-              <label className={labelCls}>Pernyataan jaminan (undertaking)</label>
+              <label className={labelCls}>{t.fUndertaking}</label>
               <textarea value={form.undertaking} onChange={(e) => set('undertaking')(e.target.value)} rows={7} className={inputCls} />
             </div>
             <div className="grid grid-cols-2 gap-3 mt-3">
-              <Field label="Nilai / batas jaminan" value={form.amount ?? ''} onChange={set('amount')} />
-              <Field label="Masa berlaku" value={form.validity ?? ''} onChange={set('validity')} />
-              <Field label="Nama penanda tangan" value={form.signatoryName} onChange={set('signatoryName')} />
-              <Field label="Jabatan penanda tangan" value={form.signatoryTitle} onChange={set('signatoryTitle')} />
+              <Field label={t.fAmount} value={form.amount ?? ''} onChange={set('amount')} />
+              <Field label={t.fValidity} value={form.validity ?? ''} onChange={set('validity')} />
+              <Field label={t.fSignName} value={form.signatoryName} onChange={set('signatoryName')} />
+              <Field label={t.fSignTitle} value={form.signatoryTitle} onChange={set('signatoryTitle')} />
             </div>
           </section>
         </div>
 
         <aside className="lg:sticky lg:top-5 space-y-3">
           <div className="bg-card-bg border border-card-border rounded-lg p-5">
-            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-3">Ringkasan</p>
+            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-3">{c.summary}</p>
             <div className="space-y-2 text-sm">
-              <div className="flex justify-between text-text-secondary"><span>Kapal</span><span className="text-text-primary text-right max-w-[60%] truncate">{form.vesselName || '—'}</span></div>
-              <div className="flex justify-between text-text-secondary"><span>Dari</span><span className="text-text-primary text-right max-w-[60%] truncate">{form.fromName || '—'}</span></div>
-              <div className="flex justify-between text-text-secondary"><span>Tanggal</span><span className="font-mono text-text-primary">{form.date || '—'}</span></div>
+              <div className="flex justify-between text-text-secondary"><span>{t.sVessel}</span><span className="text-text-primary text-right max-w-[60%] truncate">{form.vesselName || '—'}</span></div>
+              <div className="flex justify-between text-text-secondary"><span>{t.sFrom}</span><span className="text-text-primary text-right max-w-[60%] truncate">{form.fromName || '—'}</span></div>
+              <div className="flex justify-between text-text-secondary"><span>{t.sDate}</span><span className="font-mono text-text-primary">{form.date || '—'}</span></div>
             </div>
           </div>
 
           <button type="button" onClick={saveDraft} disabled={busy !== null}
-            className="w-full inline-flex items-center justify-center gap-2 bg-[#2E86DE] hover:bg-accent-blue text-white rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60">
+            className="w-full inline-flex items-center justify-center gap-2 bg-accent-blue hover:bg-primary text-[#231a06] rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60">
             {busy === 'save' ? <Loader2 className="w-4 h-4 animate-spin" /> : savedId ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-            {savedId ? 'Simpan Perubahan' : 'Simpan Draft'}
+            {savedId ? c.saveChanges : c.saveDraft}
           </button>
           {savedMsg && <p className="text-center text-xs text-accent-teal -mt-1">{savedMsg}</p>}
 
@@ -207,12 +232,12 @@ export function LoiForm() {
             <button type="button" onClick={() => generate(true)} disabled={busy !== null}
               className="flex-1 inline-flex items-center justify-center gap-2 border border-border-muted text-text-secondary hover:text-white hover:border-accent-blue/60 hover:bg-surface-tertiary rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60">
               {busy === 'download' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              Unduh
+              {c.download}
             </button>
             <button type="button" onClick={() => generate(false)} disabled={busy !== null}
               className="flex-1 inline-flex items-center justify-center gap-2 border border-border-muted text-text-secondary hover:text-white hover:border-accent-blue/60 hover:bg-surface-tertiary rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60">
               {busy === 'preview' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
-              Preview
+              {c.preview}
             </button>
           </div>
         </aside>

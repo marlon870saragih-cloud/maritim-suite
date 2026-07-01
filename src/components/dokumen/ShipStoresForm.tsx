@@ -5,6 +5,27 @@ import { createLinkQuery } from '@/lib/link-params'
 import Link from 'next/link'
 import { ArrowLeft, Plus, Trash2, Download, Eye, Loader2, Save, Check } from 'lucide-react'
 import { SAMPLE_SHIPSTORES, type ShipStoresData, type StoreItem } from '@/lib/pdf/shipstores-data'
+import { useT, type Lang } from '@/lib/i18n'
+import { FORM_COMMON } from '@/lib/i18n-forms'
+
+const STR: Record<Lang, Record<string, string>> = {
+  id: {
+    kicker: 'Maritime Dokumen · FAL Form 3', h1: "Buat Ship's Stores Declaration", desc: 'Deklarasi perbekalan kapal (IMO FAL 3).',
+    fromPortCall: 'Data kapal terisi otomatis dari Port Call. Lengkapi daftar perbekalan di bawah.',
+    secVessel: 'Kapal & Call', fVessel: 'Nama kapal', fFlag: 'Bendera', fPort: 'Pelabuhan', fMode: 'Arrival / Departure', fMaster: 'Master',
+    secList: 'Daftar Perbekalan', itemWord: 'item', thItem: 'Artikel / Item', thQty: 'Jumlah', thUnit: 'Satuan', thLoc: 'Lokasi',
+    phItem: 'Nama item', phQty: 'Jumlah', phUnit: 'Satuan', phLoc: 'Lokasi', deleteItem: 'Hapus item', addItem: 'Tambah item',
+    sVessel: 'Kapal', sMode: 'Mode', totalItem: 'Total Item',
+  },
+  en: {
+    kicker: 'Maritime Documents · FAL Form 3', h1: "Create Ship's Stores Declaration", desc: "Ship's stores declaration (IMO FAL 3).",
+    fromPortCall: 'Vessel details auto-filled from Port Call. Complete the stores list below.',
+    secVessel: 'Vessel & Call', fVessel: 'Vessel name', fFlag: 'Flag', fPort: 'Port', fMode: 'Arrival / Departure', fMaster: 'Master',
+    secList: 'Stores List', itemWord: 'items', thItem: 'Article / Item', thQty: 'Quantity', thUnit: 'Unit', thLoc: 'Location',
+    phItem: 'Item name', phQty: 'Quantity', phUnit: 'Unit', phLoc: 'Location', deleteItem: 'Delete item', addItem: 'Add item',
+    sVessel: 'Vessel', sMode: 'Mode', totalItem: 'Total Items',
+  },
+}
 
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v))
 
@@ -27,6 +48,8 @@ type Head = Omit<ShipStoresData, 'tenant' | 'stores'>
 const emptyStore = (): StoreItem => ({ item: '', quantity: '', unit: '', location: '' })
 
 export function ShipStoresForm() {
+  const t = useT(STR)
+  const c = useT(FORM_COMMON)
   const { tenant: _t, stores: _s, ...sampleHead } = SAMPLE_SHIPSTORES
   const [head, setHead] = useState<Head>(sampleHead)
   const [stores, setStores] = useState<StoreItem[]>(clone(SAMPLE_SHIPSTORES.stores))
@@ -95,10 +118,10 @@ export function ShipStoresForm() {
       const j = (await res.json()) as { id: string }
       setSavedId(j.id)
       window.history.replaceState(null, '', `/dokumen/new/FAL_3?id=${j.id}`)
-      setSavedMsg('Tersimpan ✓')
+      setSavedMsg(c.saved)
       setTimeout(() => setSavedMsg(''), 3000)
     } catch {
-      alert('Gagal menyimpan. Pastikan Anda sudah login.')
+      alert(c.saveFail)
     } finally {
       setBusy(null)
     }
@@ -127,7 +150,7 @@ export function ShipStoresForm() {
       }
       setTimeout(() => URL.revokeObjectURL(url), 60000)
     } catch {
-      alert('Gagal membuat PDF. Coba lagi.')
+      alert(c.pdfFail)
     } finally {
       setBusy(null)
     }
@@ -137,56 +160,56 @@ export function ShipStoresForm() {
     <div className="p-margin-page max-w-[1600px] mx-auto">
       <Link href="/dokumen" className="inline-flex items-center gap-2 text-text-secondary hover:text-accent-blue text-sm transition-colors mb-5">
         <ArrowLeft className="w-4 h-4" />
-        Kembali ke Dokumen
+        {c.backDok}
       </Link>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
         <div className="space-y-5">
           <div>
-            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-1">Maritime Dokumen · FAL Form 3</p>
-            <h1 className="font-display text-2xl text-white">Buat Ship&apos;s Stores Declaration</h1>
-            <p className="text-text-secondary text-sm mt-1">Deklarasi perbekalan kapal (IMO FAL 3).</p>
+            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-1">{t.kicker}</p>
+            <h1 className="font-display text-2xl text-white">{t.h1}</h1>
+            <p className="text-text-secondary text-sm mt-1">{t.desc}</p>
           </div>
 
           {fromPortCall && (
             <div className="rounded-md border border-accent-teal/30 bg-accent-teal/5 px-4 py-2.5 text-xs text-accent-teal">
-              Data kapal terisi otomatis dari Port Call. Lengkapi daftar perbekalan di bawah.
+              {t.fromPortCall}
             </div>
           )}
 
           <section className="bg-card-bg border border-card-border rounded-lg p-5">
-            <h2 className="font-display text-base text-white mb-4">Kapal &amp; Call</h2>
+            <h2 className="font-display text-base text-white mb-4">{t.secVessel}</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <Field label="No. dokumen" value={head.docNumber} onChange={set('docNumber')} />
-              <Field label="Nama kapal" value={head.vesselName} onChange={set('vesselName')} />
+              <Field label={t.fVessel} value={head.vesselName} onChange={set('vesselName')} />
               <Field label="IMO" value={head.imo} onChange={set('imo')} />
-              <Field label="Bendera" value={head.flag ?? ''} onChange={set('flag')} />
-              <Field label="Pelabuhan" value={head.port} onChange={set('port')} />
-              <Field label="Arrival / Departure" value={head.mode} onChange={set('mode')} />
-              <Field label="Master" value={head.master} onChange={set('master')} />
+              <Field label={t.fFlag} value={head.flag ?? ''} onChange={set('flag')} />
+              <Field label={t.fPort} value={head.port} onChange={set('port')} />
+              <Field label={t.fMode} value={head.mode} onChange={set('mode')} />
+              <Field label={t.fMaster} value={head.master} onChange={set('master')} />
             </div>
           </section>
 
           <section className="bg-card-bg border border-card-border rounded-lg p-5">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="font-display text-base text-white">Daftar Perbekalan</h2>
-              <span className="text-xs font-mono text-text-secondary">{stores.length} item</span>
+              <h2 className="font-display text-base text-white">{t.secList}</h2>
+              <span className="text-xs font-mono text-text-secondary">{stores.length} {t.itemWord}</span>
             </div>
             <div className="hidden md:grid grid-cols-12 gap-2 px-1 mb-1.5 text-[9px] font-mono uppercase tracking-wider text-text-secondary/60">
-              <div className="col-span-4">Artikel / Item</div>
-              <div className="col-span-2 text-right">Jumlah</div>
-              <div className="col-span-2">Satuan</div>
-              <div className="col-span-3">Lokasi</div>
+              <div className="col-span-4">{t.thItem}</div>
+              <div className="col-span-2 text-right">{t.thQty}</div>
+              <div className="col-span-2">{t.thUnit}</div>
+              <div className="col-span-3">{t.thLoc}</div>
               <div className="col-span-1" />
             </div>
             <div className="space-y-2">
               {stores.map((s, i) => (
                 <div key={i} className="grid grid-cols-12 gap-2 items-start">
-                  <input value={s.item} onChange={(e) => updateStore(i, 'item', e.target.value)} placeholder="Nama item" className={`${inputCls} col-span-6 md:col-span-4`} />
-                  <input value={s.quantity} onChange={(e) => updateStore(i, 'quantity', e.target.value)} placeholder="Jumlah" className={`${inputCls} col-span-3 md:col-span-2 text-right`} />
-                  <input value={s.unit} onChange={(e) => updateStore(i, 'unit', e.target.value)} placeholder="Satuan" className={`${inputCls} col-span-3 md:col-span-2`} />
-                  <input value={s.location ?? ''} onChange={(e) => updateStore(i, 'location', e.target.value)} placeholder="Lokasi" className={`${inputCls} col-span-11 md:col-span-3`} />
-                  <button type="button" onClick={() => removeStore(i)} aria-label="Hapus item" className="col-span-1 flex items-center justify-center h-9 rounded text-text-secondary hover:text-status-danger hover:bg-status-danger/10 transition-colors">
+                  <input value={s.item} onChange={(e) => updateStore(i, 'item', e.target.value)} placeholder={t.phItem} className={`${inputCls} col-span-6 md:col-span-4`} />
+                  <input value={s.quantity} onChange={(e) => updateStore(i, 'quantity', e.target.value)} placeholder={t.phQty} className={`${inputCls} col-span-3 md:col-span-2 text-right`} />
+                  <input value={s.unit} onChange={(e) => updateStore(i, 'unit', e.target.value)} placeholder={t.phUnit} className={`${inputCls} col-span-3 md:col-span-2`} />
+                  <input value={s.location ?? ''} onChange={(e) => updateStore(i, 'location', e.target.value)} placeholder={t.phLoc} className={`${inputCls} col-span-11 md:col-span-3`} />
+                  <button type="button" onClick={() => removeStore(i)} aria-label={t.deleteItem} className="col-span-1 flex items-center justify-center h-9 rounded text-text-secondary hover:text-status-danger hover:bg-status-danger/10 transition-colors">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
@@ -194,7 +217,7 @@ export function ShipStoresForm() {
             </div>
             <button type="button" onClick={addStore} className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-accent-blue hover:text-white transition-colors">
               <Plus className="w-3.5 h-3.5" />
-              Tambah item
+              {t.addItem}
             </button>
             <div className="mt-4">
               <label className={labelCls}>Remarks</label>
@@ -205,21 +228,21 @@ export function ShipStoresForm() {
 
         <aside className="lg:sticky lg:top-5 space-y-3">
           <div className="bg-card-bg border border-card-border rounded-lg p-5">
-            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-3">Ringkasan</p>
+            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-3">{c.summary}</p>
             <div className="space-y-2 text-sm">
-              <div className="flex justify-between text-text-secondary"><span>Kapal</span><span className="text-text-primary text-right max-w-[60%] truncate">{head.vesselName || '—'}</span></div>
-              <div className="flex justify-between text-text-secondary"><span>Mode</span><span className="text-text-primary">{head.mode}</span></div>
+              <div className="flex justify-between text-text-secondary"><span>{t.sVessel}</span><span className="text-text-primary text-right max-w-[60%] truncate">{head.vesselName || '—'}</span></div>
+              <div className="flex justify-between text-text-secondary"><span>{t.sMode}</span><span className="text-text-primary">{head.mode}</span></div>
             </div>
-            <div className="mt-3 -mx-5 -mb-5 px-5 py-3 bg-[#0D2A50] border-t border-[#1D4A8A] rounded-b-lg">
-              <p className="text-[10px] font-mono uppercase tracking-wider text-accent-blue/70">Total Item</p>
-              <p className="font-display text-xl text-white">{stores.length} item</p>
+            <div className="mt-3 -mx-5 -mb-5 px-5 py-3 bg-accent-blue/10 border-t border-accent-blue/30 rounded-b-lg">
+              <p className="text-[10px] font-mono uppercase tracking-wider text-accent-blue/80">{t.totalItem}</p>
+              <p className="font-display text-xl text-white">{stores.length} {t.itemWord}</p>
             </div>
           </div>
 
           <button type="button" onClick={saveDraft} disabled={busy !== null}
-            className="w-full inline-flex items-center justify-center gap-2 bg-[#2E86DE] hover:bg-accent-blue text-white rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60">
+            className="w-full inline-flex items-center justify-center gap-2 bg-accent-blue hover:bg-primary text-[#231a06] rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60">
             {busy === 'save' ? <Loader2 className="w-4 h-4 animate-spin" /> : savedId ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-            {savedId ? 'Simpan Perubahan' : 'Simpan Draft'}
+            {savedId ? c.saveChanges : c.saveDraft}
           </button>
           {savedMsg && <p className="text-center text-xs text-accent-teal -mt-1">{savedMsg}</p>}
 
@@ -227,12 +250,12 @@ export function ShipStoresForm() {
             <button type="button" onClick={() => generate(true)} disabled={busy !== null}
               className="flex-1 inline-flex items-center justify-center gap-2 border border-border-muted text-text-secondary hover:text-white hover:border-accent-blue/60 hover:bg-surface-tertiary rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60">
               {busy === 'download' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              Unduh
+              {c.download}
             </button>
             <button type="button" onClick={() => generate(false)} disabled={busy !== null}
               className="flex-1 inline-flex items-center justify-center gap-2 border border-border-muted text-text-secondary hover:text-white hover:border-accent-blue/60 hover:bg-surface-tertiary rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60">
               {busy === 'preview' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
-              Preview
+              {c.preview}
             </button>
           </div>
         </aside>

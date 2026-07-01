@@ -1,7 +1,7 @@
 import React from 'react'
 import { Document, Page, View, Text, StyleSheet } from '@react-pdf/renderer'
 import { NAVY, GOLD, INK, GRAY, GRAYL, LINE, ROW, WHITE, fmt, base, Letterhead, DocFooter } from './base'
-import { type InvoiceData, lineAmount, computeInvoiceTotals } from './invoice-data'
+import { type InvoiceData, lineAmount, isTaxable, computeInvoiceTotals } from './invoice-data'
 
 const iv = StyleSheet.create({
   // header kanan
@@ -33,6 +33,7 @@ const iv = StyleSheet.create({
   cDesc: { flex: 1, paddingRight: 8 },
   cName: { fontFamily: 'Inter', fontWeight: 600, fontSize: 9.5, color: INK },
   cDetail: { fontFamily: 'Inter', fontSize: 7.6, color: GRAYL, marginTop: 1.5 },
+  exemptTag: { fontFamily: 'Inter', fontWeight: 700, fontSize: 6.2, letterSpacing: 0.5, color: GRAY, marginTop: 2, textTransform: 'uppercase' },
   cQty: { width: 40, textAlign: 'right', fontFamily: 'Inter', fontSize: 9, color: INK },
   cUnit: { width: 92, textAlign: 'right', fontFamily: 'Inter', fontSize: 9, color: INK },
   cAmt: { width: 100, textAlign: 'right', fontFamily: 'Inter', fontWeight: 600, fontSize: 9, color: NAVY },
@@ -83,7 +84,7 @@ function BankRow({ k, v }: { k: string; v: string }) {
 
 export function InvoiceDocument({ data }: { data: InvoiceData }) {
   const t = data.tenant
-  const { subtotal, agency, vat, totalDue } = computeInvoiceTotals(data)
+  const { subtotal, agency, dpp, vat, totalDue, hasExempt } = computeInvoiceTotals(data)
   const footRef = `${data.docNumber} · ${data.vesselVoyage} · ${data.portCall}`
 
   return (
@@ -131,6 +132,7 @@ export function InvoiceDocument({ data }: { data: InvoiceData }) {
             <View style={iv.cDesc}>
               <Text style={iv.cName}>{l.description}</Text>
               {l.detail ? <Text style={iv.cDetail}>{l.detail}</Text> : null}
+              {!isTaxable(l) ? <Text style={iv.exemptTag}>Non-taxable · Bebas PPN</Text> : null}
             </View>
             <Text style={iv.cQty}>{l.qty}</Text>
             <Text style={iv.cUnit}>{fmt(l.unitPrice)}</Text>
@@ -166,8 +168,16 @@ export function InvoiceDocument({ data }: { data: InvoiceData }) {
                   {data.currency} {fmt(agency)}
                 </Text>
               </View>
+              {hasExempt ? (
+                <View style={iv.totLine}>
+                  <Text style={iv.totLabel}>Taxable base (DPP)</Text>
+                  <Text style={iv.totVal}>
+                    {data.currency} {fmt(dpp)}
+                  </Text>
+                </View>
+              ) : null}
               <View style={iv.totLine}>
-                <Text style={iv.totLabel}>VAT (PPN) {data.vatPct}%</Text>
+                <Text style={iv.totLabel}>VAT (PPN) {data.vatPct}%{hasExempt ? ' · atas DPP' : ''}</Text>
                 <Text style={iv.totVal}>
                   {data.currency} {fmt(vat)}
                 </Text>

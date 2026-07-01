@@ -11,40 +11,21 @@ import {
   Building2,
   Settings,
   Lock,
+  Sparkles,
+  BookOpen,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useT } from '@/lib/i18n'
+import { DOC_CATEGORIES } from '@/lib/doc-categories'
+import { useMobileNav } from './MobileNav'
+
+const DOK_COUNT = new Set(DOC_CATEGORIES.flatMap((c) => c.docs.map((d) => d.type))).size
 
 const navItems = [
-  {
-    id: 'finance',
-    label: 'Finance Generator',
-    sublabel: 'EPDA · FPDA · Invoice',
-    href: '/finance',
-    icon: DollarSign,
-  },
-  {
-    id: 'dokumen',
-    label: 'Maritime Dokumen',
-    sublabel: 'FAL · SOF · NOR · Clearance',
-    href: '/dokumen',
-    icon: FileText,
-    count: 29,
-  },
-  {
-    id: 'portcall',
-    label: 'Port Call Manager',
-    sublabel: 'Status · Timeline · Task',
-    href: '/portcall',
-    icon: Ship,
-  },
-  {
-    id: 'tracker',
-    label: 'DA & Invoice Tracker',
-    sublabel: 'Outstanding · Aging',
-    href: '/tracker',
-    icon: BarChart3,
-    locked: true,
-  },
+  { id: 'finance', label: 'Finance Generator', sublabel: 'EPDA · FPDA · Invoice', href: '/finance', icon: DollarSign },
+  { id: 'dokumen', label: 'Maritime Dokumen', sublabel: 'FAL · SOF · NOR · Clearance', href: '/dokumen', icon: FileText, count: DOK_COUNT },
+  { id: 'portcall', label: 'Port Call Manager', sublabel: 'Status · Timeline · Task', href: '/portcall', icon: Ship },
+  { id: 'tracker', label: 'DA & Invoice Tracker', sublabel: 'Outstanding · Aging', href: '/tracker', icon: BarChart3, locked: true },
 ] as const
 
 export type ChromeUser = {
@@ -53,6 +34,22 @@ export type ChromeUser = {
   roleLabel: string
   planLabel: string
   trialDaysLeft: number | null
+  companyName: string
+}
+
+const SB = {
+  id: {
+    aiTitle: 'Asisten Dokumen AI', aiDesc: 'Ngobrol · buat dokumen & port call',
+    sectMain: 'Menu Utama', sectMaster: 'Master Data',
+    vesselLabel: 'Vessel Database', principalLabel: 'Principal & Kontak',
+    vesselWord: 'kapal', principalWord: 'principal', settings: 'Pengaturan', guide: 'Panduan',
+  },
+  en: {
+    aiTitle: 'AI Document Assistant', aiDesc: 'Chat · create documents & port calls',
+    sectMain: 'Main menu', sectMaster: 'Master Data',
+    vesselLabel: 'Vessel Database', principalLabel: 'Principals & Contacts',
+    vesselWord: 'vessels', principalWord: 'principals', settings: 'Settings', guide: 'User Guide',
+  },
 }
 
 export function Sidebar({
@@ -67,35 +64,60 @@ export function Sidebar({
   user: ChromeUser
 }) {
   const pathname = usePathname()
+  const t = useT(SB)
+  const { open, setOpen } = useMobileNav()
 
   return (
-    <nav
-      className="w-[240px] h-screen fixed left-0 top-0
-                 bg-surface-secondary border-r border-border-muted
-                 flex flex-col z-20"
-    >
+    <>
+      {/* Overlay gelap di mobile saat drawer terbuka */}
+      <div
+        onClick={() => setOpen(false)}
+        aria-hidden="true"
+        className={cn(
+          'fixed inset-0 z-30 bg-black/50 backdrop-blur-[1px] md:hidden transition-opacity duration-200',
+          open ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        )}
+      />
+      <nav
+        className={cn(
+          'w-[240px] h-screen fixed top-0 bg-surface-secondary border-r border-border-muted flex flex-col z-40 print:hidden',
+          'transition-[left] duration-200 md:left-0',
+          open ? 'left-0 shadow-2xl' : '-left-[240px]'
+        )}
+      >
       {/* Brand */}
       <div className="px-4 py-5 border-b border-border-muted">
         <div className="flex items-center gap-3 mb-1">
-          <div
-            className="w-8 h-8 rounded bg-accent-blue/20 flex items-center
-                       justify-center border border-accent-blue/30"
-          >
+          <div className="w-8 h-8 rounded bg-accent-blue/15 flex items-center justify-center border border-accent-blue/30">
             <Ship className="w-4 h-4 text-accent-blue" />
           </div>
-          <span className="font-display text-base text-text-primary font-normal">
-            Maritime Suite
-          </span>
+          <span className="font-display text-base text-text-primary font-normal">Maritime Suite</span>
         </div>
-        <p className="text-[10px] text-text-secondary uppercase tracking-widest ml-11 font-mono">
-          PT Tribuana Solusi Maritim
+        <p className="text-[10px] text-accent-blue uppercase tracking-widest ml-11 font-mono truncate">
+          {user.companyName}
         </p>
       </div>
 
       {/* Navigation */}
       <div className="flex-1 px-2 py-3 space-y-1 overflow-y-auto">
-        <p className="px-3 py-2 text-[9px] text-border-muted uppercase tracking-widest font-mono">
-          Menu Utama
+        <Link
+          href="/finance/asisten"
+          className={cn(
+            'flex items-center gap-3 px-3 py-2.5 rounded relative border transition-all duration-200 group mb-1',
+            pathname.startsWith('/finance/asisten')
+              ? 'bg-accent-blue/20 border-accent-blue/55'
+              : 'bg-accent-blue/[0.08] border-accent-blue/30 hover:bg-accent-blue/15'
+          )}
+        >
+          <Sparkles className="w-4 h-4 flex-shrink-0 text-accent-blue" />
+          <div className="flex-1 min-w-0">
+            <p className="text-[12px] font-medium text-text-primary truncate">{t.aiTitle}</p>
+            <p className="text-[10px] text-accent-blue/80 truncate">{t.aiDesc}</p>
+          </div>
+        </Link>
+
+        <p className="px-3 py-2 text-[9px] text-text-secondary uppercase tracking-widest font-mono">
+          {t.sectMain}
         </p>
         {navItems.map((item) => {
           const isActive = pathname.startsWith(item.href)
@@ -108,46 +130,39 @@ export function Sidebar({
               href={isLocked ? '#' : item.href}
               onClick={isLocked ? (e) => e.preventDefault() : undefined}
               className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded relative',
-                'border transition-all duration-200 group',
+                'flex items-center gap-3 px-3 py-2.5 rounded relative border transition-all duration-200 group',
                 isActive
-                  ? 'bg-[#0D2A50] border-[#1D4A8A] text-white'
+                  ? 'bg-surface-tertiary border-border-muted'
                   : isLocked
-                    ? 'border-transparent text-text-secondary opacity-40 cursor-not-allowed'
-                    : 'border-transparent text-text-secondary hover:bg-[#0D2244] hover:border-[#1A3A6A]'
+                    ? 'border-transparent opacity-40 cursor-not-allowed'
+                    : 'border-transparent hover:bg-surface-tertiary/60 hover:border-border-muted'
               )}
             >
-              {/* Active indicator */}
               <div
                 className={cn(
-                  'absolute left-0 top-1/2 -translate-y-1/2 w-[3px] rounded-r',
-                  'transition-all duration-200',
-                  isActive
-                    ? 'h-[70%] bg-accent-teal'
-                    : 'h-0 group-hover:h-[60%] group-hover:bg-accent-blue'
+                  'absolute left-0 top-1/2 -translate-y-1/2 w-[3px] rounded-r transition-all duration-200',
+                  isActive ? 'h-[70%] bg-accent-blue' : 'h-0 group-hover:h-[60%] group-hover:bg-accent-blue/60'
                 )}
               />
-
               <Icon
                 className={cn(
                   'w-4 h-4 flex-shrink-0 transition-colors duration-200',
-                  isActive ? 'text-accent-teal' : 'text-[#3D5A80] group-hover:text-accent-blue'
+                  isActive ? 'text-accent-blue' : 'text-text-secondary/70 group-hover:text-accent-blue'
                 )}
               />
-
               <div className="flex-1 min-w-0">
                 <p
                   className={cn(
                     'text-[12px] font-medium truncate transition-colors duration-200',
-                    isActive ? 'text-white' : 'text-[#4A6A8A] group-hover:text-[#B8D4F8]'
+                    isActive ? 'text-text-primary' : 'text-text-secondary group-hover:text-text-primary'
                   )}
                 >
                   {item.label}
                 </p>
                 <p
                   className={cn(
-                    'text-[10px] truncate transition-colors duration-200',
-                    isActive ? 'text-accent-blue/70' : 'text-[#1E3A5F] group-hover:text-[#3A5A7A]'
+                    'text-[10px] truncate font-mono transition-colors duration-200',
+                    isActive ? 'text-accent-blue/70' : 'text-text-secondary/55 group-hover:text-text-secondary/80'
                   )}
                 >
                   {item.sublabel}
@@ -159,36 +174,25 @@ export function Sidebar({
                   className={cn(
                     'text-[9px] px-1.5 py-0.5 rounded-full font-mono border',
                     isActive
-                      ? 'bg-[#0A1E3A] text-accent-teal border-[#0D4A3A]'
-                      : 'bg-[#0D2A50] text-accent-blue border-[#1A3A6A]'
+                      ? 'bg-accent-blue/15 text-accent-blue border-accent-blue/40'
+                      : 'bg-surface-tertiary text-text-secondary border-border-muted'
                   )}
                 >
                   {item.count}
                 </span>
               )}
-
-              {isLocked && <Lock className="w-3 h-3 text-[#1A2E45] flex-shrink-0" />}
+              {isLocked && <Lock className="w-3 h-3 text-text-secondary/50 flex-shrink-0" />}
             </Link>
           )
         })}
 
-        {/* Master Data section */}
-        <p className="px-3 py-2 mt-4 text-[9px] text-border-muted uppercase tracking-widest font-mono">
-          Master Data
+        {/* Master Data */}
+        <p className="px-3 py-2 mt-4 text-[9px] text-text-secondary uppercase tracking-widest font-mono">
+          {t.sectMaster}
         </p>
         {[
-          {
-            href: '/settings/vessels',
-            label: 'Vessel Database',
-            sublabel: `${vesselCount} kapal`,
-            icon: Database,
-          },
-          {
-            href: '/settings/principals',
-            label: 'Principal & Kontak',
-            sublabel: `${principalCount} principal`,
-            icon: Building2,
-          },
+          { href: '/settings/vessels', label: t.vesselLabel, sublabel: `${vesselCount} ${t.vesselWord}`, icon: Database },
+          { href: '/settings/principals', label: t.principalLabel, sublabel: `${principalCount} ${t.principalWord}`, icon: Building2 },
         ].map((item) => {
           const isActive = pathname.startsWith(item.href)
           const Icon = item.icon
@@ -198,19 +202,28 @@ export function Sidebar({
               key={item.href}
               href={item.href}
               className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded relative',
-                'border transition-all duration-200 group',
+                'flex items-center gap-3 px-3 py-2.5 rounded relative border transition-all duration-200 group',
                 isActive
-                  ? 'bg-[#0D2A50] border-[#1D4A8A]'
-                  : 'border-transparent text-text-secondary hover:bg-[#0D2244] hover:border-[#1A3A6A]'
+                  ? 'bg-surface-tertiary border-border-muted'
+                  : 'border-transparent hover:bg-surface-tertiary/60 hover:border-border-muted'
               )}
             >
-              <Icon className="w-4 h-4 text-[#3D5A80] group-hover:text-accent-blue transition-colors" />
+              <Icon
+                className={cn(
+                  'w-4 h-4 transition-colors',
+                  isActive ? 'text-accent-blue' : 'text-text-secondary/70 group-hover:text-accent-blue'
+                )}
+              />
               <div>
-                <p className="text-[12px] font-medium text-[#4A6A8A] group-hover:text-[#B8D4F8] transition-colors">
+                <p
+                  className={cn(
+                    'text-[12px] font-medium transition-colors',
+                    isActive ? 'text-text-primary' : 'text-text-secondary group-hover:text-text-primary'
+                  )}
+                >
                   {item.label}
                 </p>
-                <p className="text-[10px] text-[#1E3A5F]">{item.sublabel}</p>
+                <p className="text-[10px] font-mono text-text-secondary/55">{item.sublabel}</p>
               </div>
             </Link>
           )
@@ -220,36 +233,38 @@ export function Sidebar({
       {/* Bottom */}
       <div className="p-3 border-t border-border-muted space-y-1">
         <Link
-          href="/settings"
-          className="flex items-center gap-3 px-3 py-2 rounded border border-transparent
-                     text-text-secondary hover:bg-[#0D2244] hover:border-[#1A3A6A]
-                     transition-all duration-200 group"
+          href="/panduan"
+          className="flex items-center gap-3 px-3 py-2 rounded border border-transparent hover:bg-surface-tertiary/60 hover:border-border-muted transition-all duration-200 group"
         >
-          <Settings className="w-4 h-4 text-[#2A4A6A] group-hover:text-accent-blue transition-colors" />
-          <span className="text-[11px] text-[#2A4A6A] group-hover:text-[#7AAAD8] transition-colors">
-            Pengaturan
+          <BookOpen className="w-4 h-4 text-text-secondary/70 group-hover:text-accent-blue transition-colors" />
+          <span className="text-[11px] text-text-secondary group-hover:text-text-primary transition-colors">
+            {t.guide}
+          </span>
+        </Link>
+        <Link
+          href="/settings"
+          className="flex items-center gap-3 px-3 py-2 rounded border border-transparent hover:bg-surface-tertiary/60 hover:border-border-muted transition-all duration-200 group"
+        >
+          <Settings className="w-4 h-4 text-text-secondary/70 group-hover:text-accent-blue transition-colors" />
+          <span className="text-[11px] text-text-secondary group-hover:text-text-primary transition-colors">
+            {t.settings}
           </span>
         </Link>
 
         <div className="flex items-center gap-3 px-3 py-2">
-          <div
-            className="w-8 h-8 rounded-full bg-[#0D3060] border border-[#1A3A6A]
-                       flex items-center justify-center text-[11px] font-semibold text-accent-blue flex-shrink-0"
-          >
+          <div className="w-8 h-8 rounded-full bg-accent-blue/15 border border-accent-blue/35 flex items-center justify-center text-[11px] font-semibold text-accent-blue flex-shrink-0">
             {user.initials}
           </div>
           <div>
-            <p className="text-[11px] font-medium text-[#4A7A9A]">{user.name}</p>
-            <p className="text-[9px] text-[#1E3A5F]">{user.roleLabel}</p>
-            <span
-              className="text-[9px] bg-[#041E38] text-accent-teal px-2 py-0.5 rounded-full
-                         border border-[#0D4A3A] uppercase tracking-wider font-mono mt-1 inline-block"
-            >
+            <p className="text-[11px] font-medium text-text-primary">{user.name}</p>
+            <p className="text-[9px] text-text-secondary">{user.roleLabel}</p>
+            <span className="text-[9px] bg-accent-blue/12 text-accent-blue px-2 py-0.5 rounded-full border border-accent-blue/30 uppercase tracking-wider font-mono mt-1 inline-block">
               {user.planLabel}
             </span>
           </div>
         </div>
       </div>
-    </nav>
+      </nav>
+    </>
   )
 }

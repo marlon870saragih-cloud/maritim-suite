@@ -1,6 +1,6 @@
 import React from 'react'
 import { Document, Page, View, Text, StyleSheet } from '@react-pdf/renderer'
-import { NAVY, GOLD, INK, GRAY, GRAYL, LINE, ROW, WHITE, base, Letterhead, DocFooter } from './base'
+import { NAVY, GOLD, INK, GRAY, LINE, ROW, WHITE, base, Letterhead, DocFooter } from './base'
 import { type SofData } from './sof-data'
 
 const sf = StyleSheet.create({

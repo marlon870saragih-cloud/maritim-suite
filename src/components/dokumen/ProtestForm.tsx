@@ -5,6 +5,29 @@ import { createLinkQuery } from '@/lib/link-params'
 import Link from 'next/link'
 import { ArrowLeft, Download, Eye, Loader2, Save, Check } from 'lucide-react'
 import { SAMPLE_PROTEST, type ProtestData } from '@/lib/pdf/protest-data'
+import { useT, type Lang } from '@/lib/i18n'
+import { FORM_COMMON } from '@/lib/i18n-forms'
+
+const STR: Record<Lang, Record<string, string>> = {
+  id: {
+    kicker: 'Maritime Dokumen · Port Call Ops', h1: 'Buat Letter of Protest',
+    desc: 'Surat protes resmi atas keterlambatan, kekurangan, atau kerusakan selama port call.',
+    fromPortCall: 'Data kapal & pelabuhan terisi otomatis dari Port Call. Lengkapi pihak tertuju & isi protes.',
+    secVessel: 'Kapal & Penerbitan', fVessel: 'Nama kapal', fFlag: 'Bendera', fPort: 'Pelabuhan', fPlace: 'Tempat terbit', fDate: 'Tanggal',
+    secProtest: 'Tertuju & Isi Protes', fTo: 'Kepada (pihak diprotes)', fSubject: 'Perihal (Re:)', fStatement: 'Pernyataan protes',
+    fHold: 'Pihak dimintai tanggung jawab', fRemarks: 'Catatan (without prejudice)',
+    sVessel: 'Kapal', sTo: 'Tertuju', sDate: 'Tanggal',
+  },
+  en: {
+    kicker: 'Maritime Documents · Port Call Ops', h1: 'Create Letter of Protest',
+    desc: 'Formal letter of protest over delay, shortage, or damage during the port call.',
+    fromPortCall: 'Vessel & port auto-filled from Port Call. Complete the addressee & protest content.',
+    secVessel: 'Vessel & Issuance', fVessel: 'Vessel name', fFlag: 'Flag', fPort: 'Port', fPlace: 'Place of issue', fDate: 'Date',
+    secProtest: 'Addressee & Protest', fTo: 'To (party protested)', fSubject: 'Subject (Re:)', fStatement: 'Protest statement',
+    fHold: 'Party held responsible', fRemarks: 'Remarks (without prejudice)',
+    sVessel: 'Vessel', sTo: 'Addressee', sDate: 'Date',
+  },
+}
 
 const inputCls =
   'w-full bg-surface border border-border-muted rounded px-2.5 py-2 text-sm text-text-primary ' +
@@ -24,6 +47,8 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
 type FormState = Omit<ProtestData, 'tenant'>
 
 export function ProtestForm() {
+  const t = useT(STR)
+  const c = useT(FORM_COMMON)
   const { tenant: _t, ...sample } = SAMPLE_PROTEST
   const [form, setForm] = useState<FormState>(sample)
   const [busy, setBusy] = useState<null | 'preview' | 'download' | 'save'>(null)
@@ -80,10 +105,10 @@ export function ProtestForm() {
       const j = (await res.json()) as { id: string }
       setSavedId(j.id)
       window.history.replaceState(null, '', `/dokumen/new/LETTER_OF_PROTEST?id=${j.id}`)
-      setSavedMsg('Tersimpan ✓')
+      setSavedMsg(c.saved)
       setTimeout(() => setSavedMsg(''), 3000)
     } catch {
-      alert('Gagal menyimpan. Pastikan Anda sudah login.')
+      alert(c.saveFail)
     } finally {
       setBusy(null)
     }
@@ -112,7 +137,7 @@ export function ProtestForm() {
       }
       setTimeout(() => URL.revokeObjectURL(url), 60000)
     } catch {
-      alert('Gagal membuat PDF. Coba lagi.')
+      alert(c.pdfFail)
     } finally {
       setBusy(null)
     }
@@ -122,55 +147,55 @@ export function ProtestForm() {
     <div className="p-margin-page max-w-[1600px] mx-auto">
       <Link href="/dokumen" className="inline-flex items-center gap-2 text-text-secondary hover:text-accent-blue text-sm transition-colors mb-5">
         <ArrowLeft className="w-4 h-4" />
-        Kembali ke Dokumen
+        {c.backDok}
       </Link>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
         <div className="space-y-5">
           <div>
-            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-1">Maritime Dokumen · Port Call Ops</p>
-            <h1 className="font-display text-2xl text-white">Buat Letter of Protest</h1>
-            <p className="text-text-secondary text-sm mt-1">Surat protes resmi atas keterlambatan, kekurangan, atau kerusakan selama port call.</p>
+            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-1">{t.kicker}</p>
+            <h1 className="font-display text-2xl text-white">{t.h1}</h1>
+            <p className="text-text-secondary text-sm mt-1">{t.desc}</p>
           </div>
 
           {fromPortCall && (
             <div className="rounded-md border border-accent-teal/30 bg-accent-teal/5 px-4 py-2.5 text-xs text-accent-teal">
-              Data kapal &amp; pelabuhan terisi otomatis dari Port Call. Lengkapi pihak tertuju &amp; isi protes.
+              {t.fromPortCall}
             </div>
           )}
 
           <section className="bg-card-bg border border-card-border rounded-lg p-5">
-            <h2 className="font-display text-base text-white mb-4">Kapal &amp; Penerbitan</h2>
+            <h2 className="font-display text-base text-white mb-4">{t.secVessel}</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <Field label="No. LOP" value={form.docNumber} onChange={set('docNumber')} />
-              <Field label="Nama kapal" value={form.vesselName} onChange={set('vesselName')} />
+              <Field label={t.fVessel} value={form.vesselName} onChange={set('vesselName')} />
               <Field label="IMO" value={form.imo} onChange={set('imo')} />
-              <Field label="Bendera" value={form.flag ?? ''} onChange={set('flag')} />
-              <Field label="Pelabuhan" value={form.port} onChange={set('port')} />
-              <Field label="Tempat terbit" value={form.place} onChange={set('place')} />
-              <Field label="Tanggal" value={form.date} onChange={set('date')} />
+              <Field label={t.fFlag} value={form.flag ?? ''} onChange={set('flag')} />
+              <Field label={t.fPort} value={form.port} onChange={set('port')} />
+              <Field label={t.fPlace} value={form.place} onChange={set('place')} />
+              <Field label={t.fDate} value={form.date} onChange={set('date')} />
               <Field label="Master" value={form.masterName} onChange={set('masterName')} />
             </div>
           </section>
 
           <section className="bg-card-bg border border-card-border rounded-lg p-5">
-            <h2 className="font-display text-base text-white mb-4">Tertuju &amp; Isi Protes</h2>
+            <h2 className="font-display text-base text-white mb-4">{t.secProtest}</h2>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Kepada (pihak diprotes)" value={form.toName} onChange={set('toName')} />
+              <Field label={t.fTo} value={form.toName} onChange={set('toName')} />
               <Field label="Attn" value={form.toAttn ?? ''} onChange={set('toAttn')} />
             </div>
             <div className="mt-3">
-              <Field label="Perihal (Re:)" value={form.subject} onChange={set('subject')} />
+              <Field label={t.fSubject} value={form.subject} onChange={set('subject')} />
             </div>
             <div className="mt-3">
-              <label className={labelCls}>Pernyataan protes</label>
+              <label className={labelCls}>{t.fStatement}</label>
               <textarea value={form.statement} onChange={(e) => set('statement')(e.target.value)} rows={5} className={inputCls} />
             </div>
             <div className="mt-3">
-              <Field label="Pihak dimintai tanggung jawab" value={form.holdResponsible} onChange={set('holdResponsible')} />
+              <Field label={t.fHold} value={form.holdResponsible} onChange={set('holdResponsible')} />
             </div>
             <div className="mt-3">
-              <label className={labelCls}>Catatan (without prejudice)</label>
+              <label className={labelCls}>{t.fRemarks}</label>
               <textarea value={form.remarks ?? ''} onChange={(e) => set('remarks')(e.target.value)} rows={2} className={inputCls} />
             </div>
           </section>
@@ -178,18 +203,18 @@ export function ProtestForm() {
 
         <aside className="lg:sticky lg:top-5 space-y-3">
           <div className="bg-card-bg border border-card-border rounded-lg p-5">
-            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-3">Ringkasan</p>
+            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-3">{c.summary}</p>
             <div className="space-y-2 text-sm">
-              <div className="flex justify-between text-text-secondary"><span>Kapal</span><span className="text-text-primary text-right max-w-[60%] truncate">{form.vesselName || '—'}</span></div>
-              <div className="flex justify-between text-text-secondary"><span>Tertuju</span><span className="text-text-primary text-right max-w-[60%] truncate">{form.toName || '—'}</span></div>
-              <div className="flex justify-between text-text-secondary"><span>Tanggal</span><span className="font-mono text-text-primary">{form.date || '—'}</span></div>
+              <div className="flex justify-between text-text-secondary"><span>{t.sVessel}</span><span className="text-text-primary text-right max-w-[60%] truncate">{form.vesselName || '—'}</span></div>
+              <div className="flex justify-between text-text-secondary"><span>{t.sTo}</span><span className="text-text-primary text-right max-w-[60%] truncate">{form.toName || '—'}</span></div>
+              <div className="flex justify-between text-text-secondary"><span>{t.sDate}</span><span className="font-mono text-text-primary">{form.date || '—'}</span></div>
             </div>
           </div>
 
           <button type="button" onClick={saveDraft} disabled={busy !== null}
-            className="w-full inline-flex items-center justify-center gap-2 bg-[#2E86DE] hover:bg-accent-blue text-white rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60">
+            className="w-full inline-flex items-center justify-center gap-2 bg-accent-blue hover:bg-primary text-[#231a06] rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60">
             {busy === 'save' ? <Loader2 className="w-4 h-4 animate-spin" /> : savedId ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-            {savedId ? 'Simpan Perubahan' : 'Simpan Draft'}
+            {savedId ? c.saveChanges : c.saveDraft}
           </button>
           {savedMsg && <p className="text-center text-xs text-accent-teal -mt-1">{savedMsg}</p>}
 
@@ -197,12 +222,12 @@ export function ProtestForm() {
             <button type="button" onClick={() => generate(true)} disabled={busy !== null}
               className="flex-1 inline-flex items-center justify-center gap-2 border border-border-muted text-text-secondary hover:text-white hover:border-accent-blue/60 hover:bg-surface-tertiary rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60">
               {busy === 'download' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              Unduh
+              {c.download}
             </button>
             <button type="button" onClick={() => generate(false)} disabled={busy !== null}
               className="flex-1 inline-flex items-center justify-center gap-2 border border-border-muted text-text-secondary hover:text-white hover:border-accent-blue/60 hover:bg-surface-tertiary rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60">
               {busy === 'preview' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
-              Preview
+              {c.preview}
             </button>
           </div>
         </aside>

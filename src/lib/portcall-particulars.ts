@@ -68,6 +68,25 @@ export function portCallToParticulars(pc: PortCallForDoc) {
   }
 }
 
+/**
+ * Partikular untuk SPK (SpkForm). Hanya field yang ada di Port Call: kapal,
+ * GT/NRT, cargo, tanggal & port muat, principal. Pihak sub-agen (toCompany/
+ * toContact/dst.) TIDAK ada di Port Call → tetap diisi manual.
+ */
+export function portCallToSpk(pc: PortCallForDoc) {
+  const v = pc.vessel
+  const gtNrt = [fmtNum(v?.gt), fmtNum(v?.nrt)].filter(Boolean).join(' / ')
+  const loadPort = [pc.port, pc.portCode ? `(${pc.portCode})` : ''].filter(Boolean).join(' ')
+  return {
+    vesselName: v?.name ?? '',
+    gtNrt,
+    cargo: cargoLine(pc),
+    loadingDate: fmtDocDate(pc.eta),
+    loadPort,
+    principal: pc.principal?.name ?? '',
+  }
+}
+
 /** Header untuk Invoice (InvoiceForm). Bill-to dari principal, vessel dari kapal. */
 export function portCallToInvoiceHead(pc: PortCallForDoc) {
   const callRef = [

@@ -1,90 +1,30 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { ClipboardList, Ship, Receipt, Users, type LucideIcon } from 'lucide-react'
+import { useT, useLang, type Lang } from '@/lib/i18n'
+import { DOC_CATEGORIES } from '@/lib/doc-categories'
 
-type Category = {
-  id: string
-  title: string
-  count: number
-  icon: LucideIcon
-  tags: string[]
-  href: string
-  bar: string
-  iconText: string
-  badge: string
-  hoverBorder: string
-}
-
-// Class warna ditulis literal (bukan template) agar Tailwind JIT meng-generate-nya.
-const CATEGORIES: Category[] = [
-  {
-    id: 'fal',
-    title: 'FAL Forms',
-    count: 7,
-    icon: ClipboardList,
-    tags: ['FAL 1', 'FAL 5', 'FAL 2'],
-    href: '/dokumen/new/FAL_1',
-    bar: 'bg-accent-blue',
-    iconText: 'text-accent-blue',
-    badge: 'bg-accent-blue/10 text-accent-blue',
-    hoverBorder: 'hover:border-accent-blue/50',
-  },
-  {
-    id: 'portcall',
-    title: 'Port Call Ops',
-    count: 14,
-    icon: Ship,
-    tags: ['NOR', 'SOF', 'Time Sheet', 'Ullage', 'Summary'],
-    href: '/dokumen/new/SOF',
-    bar: 'bg-accent-teal',
-    iconText: 'text-accent-teal',
-    badge: 'bg-accent-teal/10 text-accent-teal',
-    hoverBorder: 'hover:border-accent-teal/50',
-  },
-  {
-    id: 'clearance',
-    title: 'Clearance & SIB',
-    count: 6,
-    icon: Receipt,
-    tags: ['Agency Appt.', 'SIB', 'LOI'],
-    href: '/dokumen/new/AGENCY_APPOINTMENT',
-    bar: 'bg-accent-amber',
-    iconText: 'text-accent-amber',
-    badge: 'bg-accent-amber/10 text-accent-amber',
-    hoverBorder: 'hover:border-accent-amber/50',
-  },
-  {
-    id: 'crew',
-    title: 'Crew & Husbandry',
-    count: 5,
-    icon: Users,
-    tags: ['Crew List', 'Crew Change', 'Sign-On'],
-    href: '/dokumen/new/FAL_5',
-    bar: 'bg-accent-purple',
-    iconText: 'text-accent-purple',
-    badge: 'bg-accent-purple/10 text-accent-purple',
-    hoverBorder: 'hover:border-accent-purple/50',
-  },
-]
+const DOCS_WORD: Record<Lang, string> = { id: 'dokumen', en: 'documents' }
 
 export function CategoryGrid() {
   const router = useRouter()
+  const docsWord = useT(DOCS_WORD)
+  const { lang } = useLang()
 
   return (
     <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      {CATEGORIES.map((cat) => {
+      {DOC_CATEGORIES.map((cat) => {
         const Icon = cat.icon
         return (
           <button
             key={cat.id}
             type="button"
-            onClick={() => router.push(cat.href)}
+            onClick={() => router.push(`/dokumen/kategori/${cat.id}`)}
             className={`text-left bg-card-bg border border-card-border rounded-lg p-5 relative
                         overflow-hidden group transition-colors cursor-pointer ${cat.hoverBorder}`}
           >
             <div className={`absolute left-0 top-0 bottom-0 w-1 ${cat.bar}`} />
-            <div className="flex justify-between items-start mb-4">
+            <div className="flex justify-between items-start mb-3">
               <div className="flex items-center gap-3">
                 <div className={`p-2 bg-surface-tertiary rounded-md ${cat.iconText}`}>
                   <Icon className="w-5 h-5" />
@@ -92,19 +32,25 @@ export function CategoryGrid() {
                 <h3 className="font-display text-lg text-white">{cat.title}</h3>
               </div>
               <span className={`px-2 py-1 rounded text-xs font-mono ${cat.badge}`}>
-                {cat.count} dokumen
+                {cat.docs.length} {docsWord}
               </span>
             </div>
-            <div className="flex flex-wrap gap-2 mt-4">
-              {cat.tags.map((tag) => (
+            <p className="text-text-secondary text-sm mb-4">{cat.blurb[lang]}</p>
+            <div className="flex flex-wrap gap-2">
+              {cat.docs.slice(0, 4).map((doc) => (
                 <span
-                  key={tag}
+                  key={doc.type + doc.label.en}
                   className="px-2 py-1 bg-surface-tertiary border border-border-muted rounded
-                             text-xs text-text-secondary font-mono uppercase"
+                             text-xs text-text-secondary font-mono"
                 >
-                  {tag}
+                  {doc.label[lang]}
                 </span>
               ))}
+              {cat.docs.length > 4 && (
+                <span className="px-2 py-1 text-xs text-text-secondary/60 font-mono">
+                  +{cat.docs.length - 4}
+                </span>
+              )}
             </div>
           </button>
         )

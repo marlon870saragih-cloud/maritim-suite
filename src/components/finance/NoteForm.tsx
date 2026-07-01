@@ -15,9 +15,38 @@ import {
   type NoteLine,
 } from '@/lib/pdf/note-data'
 import type { InvoiceData } from '@/lib/pdf/invoice-data'
+import { useT, useLang, type Lang } from '@/lib/i18n'
+import { FORM_COMMON } from '@/lib/i18n-forms'
 
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v))
 const fmt = (n: number) => (n || 0).toLocaleString('en-US')
+
+const STR: Record<Lang, Record<string, string>> = {
+  id: {
+    back: 'Kembali ke Finance', kicker: 'Generator Keuangan', create: 'Buat', totalAuto: 'Total dihitung otomatis.',
+    titleDebit: 'Nota Debit', titleCredit: 'Nota Kredit',
+    leadDebit: 'Menambah tagihan ke principal (biaya di luar FDA / koreksi naik).',
+    leadCredit: 'Mengurangi / mengembalikan kelebihan tagihan ke principal.',
+    fromSrcPre: 'Pihak & referensi disalin dari', fromSrcPost: '. Tinggal isi baris penyesuaian di bawah.',
+    secDetail: 'Detail Nota', fNo: 'No. nota', fDate: 'Tanggal', fCurrency: 'Mata uang', fRef: 'Ref. dokumen', fVat: 'PPN (%)',
+    toDebit: 'Didebit Kepada', toCredit: 'Dikredit Kepada', fName: 'Nama', fNpwp: 'NPWP', fAddr: 'Alamat', fReason: 'Alasan penyesuaian',
+    secLines: 'Baris Penyesuaian', thDesc: 'Deskripsi', thQty: 'Qty', thUnit: 'Unit', thAmount: 'Jumlah',
+    phDesc: 'Deskripsi penyesuaian', phDetail: 'keterangan (opsional)', sVat: 'PPN',
+    totalDebit: 'Total Tambahan', totalCredit: 'Total Pengurangan',
+  },
+  en: {
+    back: 'Back to Finance', kicker: 'Finance Generator', create: 'Create', totalAuto: 'Total computed automatically.',
+    titleDebit: 'Debit Note', titleCredit: 'Credit Note',
+    leadDebit: 'Adds a charge to the principal (costs beyond FDA / upward correction).',
+    leadCredit: 'Reduces / refunds an overcharge to the principal.',
+    fromSrcPre: 'Party & reference copied from', fromSrcPost: '. Just fill the adjustment lines below.',
+    secDetail: 'Note Details', fNo: 'Note no.', fDate: 'Date', fCurrency: 'Currency', fRef: 'Ref. document', fVat: 'VAT (%)',
+    toDebit: 'Debited To', toCredit: 'Credited To', fName: 'Name', fNpwp: 'NPWP', fAddr: 'Address', fReason: 'Adjustment reason',
+    secLines: 'Adjustment Lines', thDesc: 'Description', thQty: 'Qty', thUnit: 'Unit', thAmount: 'Amount',
+    phDesc: 'Adjustment description', phDetail: 'note (optional)', sVat: 'VAT',
+    totalDebit: 'Total Addition', totalCredit: 'Total Reduction',
+  },
+}
 
 const inputCls =
   'w-full bg-surface border border-border-muted rounded px-2.5 py-2 text-sm text-text-primary ' +
@@ -47,6 +76,10 @@ function Field({
 type Head = Omit<NoteData, 'tenant' | 'lines' | 'kind'>
 
 export function NoteForm({ kind }: { kind: NoteKind }) {
+  const t = useT(STR)
+  const c = useT(FORM_COMMON)
+  useLang()
+  const title = kind === 'debit' ? t.titleDebit : t.titleCredit
   const sample = kind === 'debit' ? SAMPLE_DEBIT : SAMPLE_CREDIT
   const meta = NOTE_META[kind]
   const endpoint = `/api/documents/${kind}-note`
@@ -130,10 +163,10 @@ export function NoteForm({ kind }: { kind: NoteKind }) {
       const j = (await res.json()) as { id: string }
       setSavedId(j.id)
       window.history.replaceState(null, '', `${formRoute}?id=${j.id}`)
-      setSavedMsg('Tersimpan ✓')
+      setSavedMsg(c.saved)
       setTimeout(() => setSavedMsg(''), 3000)
     } catch {
-      alert('Gagal menyimpan. Pastikan Anda sudah login.')
+      alert(c.saveFail)
     } finally {
       setBusy(null)
     }
@@ -162,13 +195,13 @@ export function NoteForm({ kind }: { kind: NoteKind }) {
       }
       setTimeout(() => URL.revokeObjectURL(url), 60000)
     } catch {
-      alert('Gagal membuat PDF. Coba lagi.')
+      alert(c.pdfFail)
     } finally {
       setBusy(null)
     }
   }
 
-  const totalLabel = kind === 'debit' ? 'Total Tambahan' : 'Total Pengurangan'
+  const totalLabel = kind === 'debit' ? t.totalDebit : t.totalCredit
 
   return (
     <div className="p-margin-page max-w-[1600px] mx-auto">
@@ -177,53 +210,51 @@ export function NoteForm({ kind }: { kind: NoteKind }) {
         className="inline-flex items-center gap-2 text-text-secondary hover:text-accent-blue text-sm transition-colors mb-5"
       >
         <ArrowLeft className="w-4 h-4" />
-        Kembali ke Finance
+        {t.back}
       </Link>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
         <div className="space-y-5">
           <div>
             <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-1">
-              Generator Keuangan · {meta.titleId}
+              {t.kicker} · {title}
             </p>
-            <h1 className="font-display text-2xl text-white">Buat {meta.titleId}</h1>
+            <h1 className="font-display text-2xl text-white">{t.create} {title}</h1>
             <p className="text-text-secondary text-sm mt-1">
-              {kind === 'debit'
-                ? 'Menambah tagihan ke principal (biaya di luar FDA / koreksi naik).'
-                : 'Mengurangi / mengembalikan kelebihan tagihan ke principal.'}{' '}
-              Total dihitung otomatis.
+              {kind === 'debit' ? t.leadDebit : t.leadCredit}{' '}
+              {t.totalAuto}
             </p>
           </div>
 
           {fromSource && (
             <div className="rounded-md border border-accent-teal/30 bg-accent-teal/5 px-4 py-2.5 text-xs text-accent-teal">
-              Pihak &amp; referensi disalin dari {fromSource}. Tinggal isi baris penyesuaian di bawah.
+              {t.fromSrcPre} {fromSource}{t.fromSrcPost}
             </div>
           )}
 
           <section className="bg-card-bg border border-card-border rounded-lg p-5">
-            <h2 className="font-display text-base text-white mb-4">Detail Nota</h2>
+            <h2 className="font-display text-base text-white mb-4">{t.secDetail}</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              <Field label="No. nota" value={head.docNumber} onChange={setF('docNumber')} />
-              <Field label="Tanggal" value={head.noteDate} onChange={setF('noteDate')} />
-              <Field label="Mata uang" value={head.currency} onChange={setF('currency')} />
-              <Field label="Ref. dokumen" value={head.refDoc ?? ''} onChange={setF('refDoc')} />
+              <Field label={t.fNo} value={head.docNumber} onChange={setF('docNumber')} />
+              <Field label={t.fDate} value={head.noteDate} onChange={setF('noteDate')} />
+              <Field label={t.fCurrency} value={head.currency} onChange={setF('currency')} />
+              <Field label={t.fRef} value={head.refDoc ?? ''} onChange={setF('refDoc')} />
               <Field label="Vessel / Voyage" value={head.vesselVoyage ?? ''} onChange={setF('vesselVoyage')} />
-              <Field label="PPN (%)" type="number" value={head.vatPct} onChange={setF('vatPct')} />
+              <Field label={t.fVat} type="number" value={head.vatPct} onChange={setF('vatPct')} />
             </div>
           </section>
 
           <section className="bg-card-bg border border-card-border rounded-lg p-5">
             <h2 className="font-display text-base text-white mb-4">
-              {kind === 'debit' ? 'Didebit Kepada' : 'Dikredit Kepada'}
+              {kind === 'debit' ? t.toDebit : t.toCredit}
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <Field label="Nama" value={head.toName} onChange={setF('toName')} />
-              <Field label="NPWP" value={head.toNpwp ?? ''} onChange={setF('toNpwp')} />
-              <Field label="Alamat" value={head.toAddress ?? ''} onChange={setF('toAddress')} />
+              <Field label={t.fName} value={head.toName} onChange={setF('toName')} />
+              <Field label={t.fNpwp} value={head.toNpwp ?? ''} onChange={setF('toNpwp')} />
+              <Field label={t.fAddr} value={head.toAddress ?? ''} onChange={setF('toAddress')} />
             </div>
             <div className="mt-3">
-              <label className={labelCls}>Alasan penyesuaian</label>
+              <label className={labelCls}>{t.fReason}</label>
               <textarea
                 value={head.reason}
                 onChange={(e) => setF('reason')(e.target.value)}
@@ -235,16 +266,16 @@ export function NoteForm({ kind }: { kind: NoteKind }) {
 
           <section className="bg-card-bg border border-card-border rounded-lg p-5">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="font-display text-base text-white">Baris Penyesuaian</h2>
+              <h2 className="font-display text-base text-white">{t.secLines}</h2>
               <span className="text-xs font-mono text-text-secondary">
-                Subtotal: <span className="text-white">{fmt(totals.subtotal)}</span>
+                {c.subtotal}: <span className="text-white">{fmt(totals.subtotal)}</span>
               </span>
             </div>
             <div className="hidden md:grid grid-cols-12 gap-2 px-1 mb-1.5 text-[9px] font-mono uppercase tracking-wider text-text-secondary/60">
-              <div className="col-span-6">Deskripsi</div>
-              <div className="col-span-1 text-right">Qty</div>
-              <div className="col-span-2 text-right">Unit</div>
-              <div className="col-span-2 text-right">Jumlah</div>
+              <div className="col-span-6">{t.thDesc}</div>
+              <div className="col-span-1 text-right">{t.thQty}</div>
+              <div className="col-span-2 text-right">{t.thUnit}</div>
+              <div className="col-span-2 text-right">{t.thAmount}</div>
               <div className="col-span-1" />
             </div>
             <div className="space-y-2">
@@ -254,13 +285,13 @@ export function NoteForm({ kind }: { kind: NoteKind }) {
                     <input
                       value={l.description}
                       onChange={(e) => updateLine(i, 'description', e.target.value)}
-                      placeholder="Deskripsi penyesuaian"
+                      placeholder={t.phDesc}
                       className={inputCls}
                     />
                     <input
                       value={l.detail ?? ''}
                       onChange={(e) => updateLine(i, 'detail', e.target.value)}
-                      placeholder="keterangan (opsional)"
+                      placeholder={t.phDetail}
                       className={inputCls + ' text-xs py-1.5'}
                     />
                   </div>
@@ -282,7 +313,7 @@ export function NoteForm({ kind }: { kind: NoteKind }) {
                   <button
                     type="button"
                     onClick={() => removeLine(i)}
-                    aria-label="Hapus baris"
+                    aria-label={c.deleteRow}
                     className="col-span-1 flex items-center justify-center h-9 rounded text-text-secondary
                                hover:text-status-danger hover:bg-status-danger/10 transition-colors"
                   >
@@ -297,26 +328,26 @@ export function NoteForm({ kind }: { kind: NoteKind }) {
               className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-accent-blue hover:text-white transition-colors"
             >
               <Plus className="w-3.5 h-3.5" />
-              Tambah baris
+              {c.addRow}
             </button>
           </section>
         </div>
 
         <aside className="lg:sticky lg:top-5 space-y-3">
           <div className="bg-card-bg border border-card-border rounded-lg p-5">
-            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-3">Ringkasan</p>
+            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-3">{c.summary}</p>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between text-text-secondary">
-                <span>Subtotal</span>
+                <span>{c.subtotal}</span>
                 <span className="font-mono text-text-primary">{fmt(totals.subtotal)}</span>
               </div>
               <div className="flex justify-between text-text-secondary">
-                <span>PPN {head.vatPct}%</span>
+                <span>{t.sVat} {head.vatPct}%</span>
                 <span className="font-mono text-text-primary">{fmt(totals.vat)}</span>
               </div>
             </div>
-            <div className="mt-3 -mx-5 -mb-5 px-5 py-3 bg-[#0D2A50] border-t border-[#1D4A8A] rounded-b-lg">
-              <p className="text-[10px] font-mono uppercase tracking-wider text-accent-blue/70">{totalLabel}</p>
+            <div className="mt-3 -mx-5 -mb-5 px-5 py-3 bg-accent-blue/10 border-t border-accent-blue/30 rounded-b-lg">
+              <p className="text-[10px] font-mono uppercase tracking-wider text-accent-blue/80">{totalLabel}</p>
               <p className="font-display text-xl text-white">
                 {head.currency} {fmt(totals.total)}
               </p>
@@ -327,11 +358,10 @@ export function NoteForm({ kind }: { kind: NoteKind }) {
             type="button"
             onClick={saveDraft}
             disabled={busy !== null}
-            className="w-full inline-flex items-center justify-center gap-2 bg-[#2E86DE] hover:bg-accent-blue
-                       text-white rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60"
+            className="w-full inline-flex items-center justify-center gap-2 bg-accent-blue hover:bg-primary text-[#231a06] rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60"
           >
             {busy === 'save' ? <Loader2 className="w-4 h-4 animate-spin" /> : savedId ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-            {savedId ? 'Simpan Perubahan' : 'Simpan Draft'}
+            {savedId ? c.saveChanges : c.saveDraft}
           </button>
           {savedMsg && <p className="text-center text-xs text-accent-teal -mt-1">{savedMsg}</p>}
 
@@ -345,7 +375,7 @@ export function NoteForm({ kind }: { kind: NoteKind }) {
                          rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60"
             >
               {busy === 'download' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              Unduh
+              {c.download}
             </button>
             <button
               type="button"
@@ -356,14 +386,11 @@ export function NoteForm({ kind }: { kind: NoteKind }) {
                          rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60"
             >
               {busy === 'preview' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
-              Preview
+              {c.preview}
             </button>
           </div>
 
-          <p className="text-[11px] text-text-secondary/70 leading-relaxed">
-            Kop perusahaan pada PDF otomatis dari profil perusahaan Anda. Draft tersimpan bisa dibuka &amp;
-            diunduh ulang dari halaman Finance.
-          </p>
+          <p className="text-[11px] text-text-secondary/70 leading-relaxed">{c.pdfNote}</p>
         </aside>
       </div>
     </div>

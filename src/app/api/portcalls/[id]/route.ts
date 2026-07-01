@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { portCallFields } from '@/lib/portcalls'
-import { portCallToParticulars, portCallToInvoiceHead } from '@/lib/portcall-particulars'
+import { portCallToParticulars, portCallToInvoiceHead, portCallToSpk } from '@/lib/portcall-particulars'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -27,6 +27,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   return Response.json({
     particulars: portCallToParticulars(pc),
     invoice: portCallToInvoiceHead(pc),
+    spk: portCallToSpk(pc),
   })
 }
 

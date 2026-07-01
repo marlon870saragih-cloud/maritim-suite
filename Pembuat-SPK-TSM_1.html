@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pembuat SPK — TSM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy:#0A1628;
+    --navy-2:#15263d;
+    --gold:#C2A14D;
+    --gold-soft:#e7d9af;
+    --paper:#ffffff;
+    --ink:#1f2a37;
+    --muted:#6b7686;
+    --line:#e3e7ee;
+    --bg:#eef1f5;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--ink);
+  }
+  .app{display:flex;min-height:100vh;}
+  /* ---------- FORM PANE ---------- */
+  .panel{
+    width:420px;flex:0 0 420px;background:#fff;border-right:1px solid var(--line);
+    padding:22px 22px 60px;overflow-y:auto;height:100vh;
+  }
+  .panel h1{font-family:'Lora',serif;font-size:20px;margin:0 0 2px;color:var(--navy);}
+  .panel .sub{font-size:12.5px;color:var(--muted);margin:0 0 18px;}
+  .group{margin-bottom:22px;border:1px solid var(--line);border-radius:10px;overflow:hidden;}
+  .group > .ghead{
+    background:var(--navy);color:#fff;font-size:12px;font-weight:600;letter-spacing:.04em;
+    padding:9px 12px;text-transform:uppercase;
+  }
+  .group > .ghead small{display:block;font-weight:400;letter-spacing:0;text-transform:none;color:var(--gold-soft);font-size:11px;margin-top:2px;}
+  .gbody{padding:12px 12px 4px;}
+  label{display:block;font-size:11.5px;font-weight:600;color:#42505f;margin:0 0 4px;}
+  input,textarea{
+    width:100%;border:1px solid var(--line);border-radius:7px;padding:8px 10px;font:inherit;font-size:13px;
+    margin-bottom:12px;color:var(--ink);background:#fbfcfe;
+  }
+  input:focus,textarea:focus{outline:none;border-color:var(--gold);background:#fff;}
+  textarea{resize:vertical;min-height:84px;line-height:1.45;}
+  .row{display:flex;gap:10px;}
+  .row > div{flex:1;}
+  .actions{position:sticky;bottom:0;background:#fff;padding:14px 0 0;margin-top:6px;border-top:1px solid var(--line);}
+  .btn{
+    width:100%;background:var(--navy);color:#fff;border:none;border-radius:8px;padding:12px;
+    font-size:14px;font-weight:600;cursor:pointer;letter-spacing:.02em;
+  }
+  .btn:hover{background:var(--navy-2);}
+  .hint{font-size:11px;color:var(--muted);text-align:center;margin-top:8px;}
+  /* ---------- PREVIEW PANE ---------- */
+  .preview{flex:1;padding:34px;display:flex;justify-content:center;align-items:flex-start;overflow-y:auto;height:100vh;}
+  .document{
+    background:var(--paper);width:210mm;min-height:297mm;padding:24mm 22mm;
+    box-shadow:0 10px 40px rgba(10,22,40,.14);color:#1c2531;font-size:12.5px;line-height:1.6;
+  }
+  .doc-head{display:flex;align-items:center;gap:16px;border-bottom:3px solid var(--navy);padding-bottom:14px;}
+  .logo{flex:0 0 64px;}
+  .co-name{font-family:'Lora',serif;font-size:21px;font-weight:700;color:var(--navy);line-height:1.15;letter-spacing:.01em;}
+  .co-meta{font-size:11px;color:#56616f;margin-top:3px;line-height:1.5;}
+  .gold-rule{height:2px;background:var(--gold);margin-top:0;}
+  .title-block{text-align:center;margin:26px 0 4px;}
+  .title-block .t{font-family:'Lora',serif;font-size:18px;font-weight:700;letter-spacing:.16em;color:var(--navy);text-transform:uppercase;}
+  .title-block .u{width:120px;height:2px;background:var(--gold);margin:6px auto 0;}
+  .title-block .no{font-size:12px;color:#46505d;margin-top:8px;letter-spacing:.05em;}
+  .meta-line{display:flex;justify-content:flex-end;margin:18px 0 6px;font-size:12px;}
+  .addr{margin:10px 0 18px;font-size:12.5px;}
+  .addr b{color:var(--navy);}
+  .body p{margin:0 0 12px;text-align:justify;}
+  .detail{border:1px solid var(--line);border-radius:8px;margin:14px 0 16px;overflow:hidden;}
+  .detail table{width:100%;border-collapse:collapse;font-size:12px;}
+  .detail td{padding:7px 12px;border-bottom:1px solid var(--line);vertical-align:top;}
+  .detail tr:last-child td{border-bottom:none;}
+  .detail td.k{width:38%;color:#5a6573;font-weight:600;background:#f8fafc;}
+  .scope{white-space:pre-line;margin:6px 0 18px;}
+  .sign{margin-top:34px;display:flex;justify-content:flex-end;}
+  .sign-box{width:240px;text-align:center;font-size:12.5px;}
+  .sign-box .place{text-align:center;margin-bottom:54px;}
+  .sign-box .nm{font-weight:700;color:var(--navy);border-top:1px solid #2a3647;padding-top:4px;}
+  .sign-box .ttl{color:#56616f;font-size:11.5px;}
+  @media (max-width:1100px){
+    .app{flex-direction:column;}
+    .panel{width:100%;flex:none;height:auto;border-right:none;border-bottom:1px solid var(--line);}
+    .preview{height:auto;padding:18px;}
+    .document{width:100%;padding:18mm 14mm;}
+  }
+  /* ---------- PRINT ---------- */
+  @media print{
+    @page{size:A4;margin:0;}
+    body{background:#fff;}
+    .panel{display:none !important;}
+    .preview{padding:0;height:auto;overflow:visible;display:block;}
+    .document{box-shadow:none;width:auto;min-height:auto;padding:18mm 18mm;}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ============ FORM ============ -->
+  <div class="panel">
+    <h1>Pembuat SPK</h1>
+    <p class="sub">Isi kolom → preview langsung berubah → cetak PDF</p>
+
+    <div class="group">
+      <div class="ghead">Info Perusahaan <small>diisi sekali (per-company)</small></div>
+      <div class="gbody">
+        <label>Nama Perusahaan</label>
+        <input id="coName" value="PT TRIBUANA SOLUSI MARITIM">
+        <label>Alamat & Kontak</label>
+        <textarea id="coMeta" style="min-height:60px">Samarinda, Kalimantan Timur · Indonesia
+Ship Agency &amp; Husbandry Services
+agency@tribuanagency.com</textarea>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="ghead">Info Dokumen <small>diisi tiap kali (per-dokumen)</small></div>
+      <div class="gbody">
+        <div class="row">
+          <div><label>Nomor SPK</label><input id="spkNo" value="001/TSM/SPK/VI/2026"></div>
+        </div>
+        <div class="row">
+          <div><label>Tempat</label><input id="place" value="Samarinda"></div>
+          <div><label>Tanggal Surat</label><input id="docDate" value="30 Juni 2026"></div>
+        </div>
+
+        <label>Kepada (Nama)</label>
+        <input id="recName" value="Bapak Hardi">
+        <label>Perusahaan Penerima</label>
+        <input id="recCo" value="PT Perusahaan Pelayaran Samudera Karana Line">
+        <label>Ditunjuk Sebagai</label>
+        <input id="role" value="Sub-Agent">
+
+        <label>Nama Kapal</label>
+        <input id="vessel" value="MT Soechi Asia XXIX">
+        <div class="row">
+          <div><label>GT</label><input id="gt" value="3.868"></div>
+          <div><label>Muatan</label><input id="cargo" value="Biodiesel B40"></div>
+        </div>
+        <div class="row">
+          <div><label>Pelabuhan Muat</label><input id="loadPort" value="KGTE Balikpapan"></div>
+          <div><label>Pelabuhan Tujuan</label><input id="discPort" value="Morowali"></div>
+        </div>
+        <label>Tanggal Operasi</label>
+        <input id="opDate" value="30 Juni 2026">
+
+        <label>Ruang Lingkup Pekerjaan</label>
+        <textarea id="scope">1. Pengurusan dokumen kedatangan dan keberangkatan kapal (clearance in/out).
+2. Koordinasi jasa pandu, tunda, labuh, dan tambat.
+3. Pendampingan operasi muat di pelabuhan tujuan.
+4. Penyiapan dokumen FAL Forms, NOR, dan Statement of Facts.
+5. Pelaporan progres operasi kepada Principal.</textarea>
+
+        <div class="row">
+          <div><label>Penanda Tangan</label><input id="signName" value="Marlon Saragih"></div>
+          <div><label>Jabatan</label><input id="signTitle" value="Branch Manager"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn" onclick="window.print()">Cetak / Simpan PDF</button>
+      <p class="hint">Pilih "Save as PDF" di dialog cetak.</p>
+    </div>
+  </div>
+
+  <!-- ============ PREVIEW ============ -->
+  <div class="preview">
+    <div class="document" id="doc">
+      <div class="doc-head">
+        <div class="logo">
+          <svg viewBox="0 0 100 100" width="64" height="64" xmlns="http://www.w3.org/2000/svg">
+            <polygon points="50,3 91,26 91,74 50,97 9,74 9,26" fill="#0A1628" stroke="#C2A14D" stroke-width="3"/>
+            <polygon points="50,14 81,32 81,68 50,86 19,68 19,32" fill="none" stroke="#C2A14D" stroke-width="1"/>
+            <text x="50" y="58" text-anchor="middle" font-family="Lora, serif" font-size="26" font-weight="700" fill="#C2A14D" letter-spacing="1">TSM</text>
+          </svg>
+        </div>
+        <div>
+          <div class="co-name" id="pCoName">PT TRIBUANA SOLUSI MARITIM</div>
+          <div class="co-meta" id="pCoMeta"></div>
+        </div>
+      </div>
+      <div class="gold-rule"></div>
+
+      <div class="title-block">
+        <div class="t">Surat Penunjukan Kerja</div>
+        <div class="u"></div>
+        <div class="no">Nomor: <span id="pSpkNo"></span></div>
+      </div>
+
+      <div class="meta-line"><span id="pPlaceDate"></span></div>
+
+      <div class="addr">
+        Kepada Yth.<br>
+        <b id="pRecName"></b><br>
+        <span id="pRecCo"></span>
+      </div>
+
+      <div class="body">
+        <p>Dengan hormat,</p>
+        <p>Sehubungan dengan rencana operasi kapal <b id="pVessel1"></b>, dengan ini
+        <b id="pCoName2">PT Tribuana Solusi Maritim</b> menunjuk <b id="pRecCo2"></b>
+        sebagai <b id="pRole"></b> untuk menangani keagenan kapal tersebut dengan rincian sebagai berikut:</p>
+
+        <div class="detail">
+          <table>
+            <tr><td class="k">Nama Kapal</td><td id="dVessel"></td></tr>
+            <tr><td class="k">GT</td><td id="dGt"></td></tr>
+            <tr><td class="k">Muatan</td><td id="dCargo"></td></tr>
+            <tr><td class="k">Pelabuhan Muat</td><td id="dLoad"></td></tr>
+            <tr><td class="k">Pelabuhan Tujuan</td><td id="dDisc"></td></tr>
+            <tr><td class="k">Tanggal Operasi</td><td id="dOp"></td></tr>
+          </table>
+        </div>
+
+        <p>Adapun ruang lingkup pekerjaan yang menjadi tanggung jawab <b id="pRole2"></b> adalah sebagai berikut:</p>
+        <div class="scope" id="pScope"></div>
+
+        <p>Demikian surat penunjukan ini kami sampaikan. Atas kerja sama dan perhatiannya, kami ucapkan terima kasih.</p>
+      </div>
+
+      <div class="sign">
+        <div class="sign-box">
+          <div class="place"><span id="pSignPlaceDate"></span><br>Hormat kami,<br><span id="pSignCo"></span></div>
+          <div class="nm" id="pSignName"></div>
+          <div class="ttl" id="pSignTitle"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const f = id => document.getElementById(id);
+  function render(){
+    const v = id => f(id).value.trim();
+    const coName = v('coName');
+    f('pCoName').textContent = coName;
+    f('pCoName2').textContent = coName.replace(/^PT\s+/i,'PT ');
+    f('pSignCo').textContent = coName;
+    f('pCoMeta').innerHTML = v('coMeta').replace(/\n/g,'<br>');
+
+    f('pSpkNo').textContent = v('spkNo');
+    const placeDate = v('place') + ', ' + v('docDate');
+    f('pPlaceDate').textContent = placeDate;
+    f('pSignPlaceDate').textContent = placeDate;
+
+    f('pRecName').textContent = v('recName');
+    f('pRecCo').textContent = v('recCo');
+    f('pRecCo2').textContent = v('recCo');
+    f('pRole').textContent = v('role');
+    f('pRole2').textContent = v('role');
+
+    f('pVessel1').textContent = v('vessel');
+    f('dVessel').textContent = v('vessel');
+    f('dGt').textContent = v('gt');
+    f('dCargo').textContent = v('cargo');
+    f('dLoad').textContent = v('loadPort');
+    f('dDisc').textContent = v('discPort');
+    f('dOp').textContent = v('opDate');
+
+    f('pScope').textContent = v('scope');
+    f('pSignName').textContent = v('signName');
+    f('pSignTitle').textContent = v('signTitle');
+  }
+  document.querySelectorAll('input,textarea').forEach(el=>el.addEventListener('input',render));
+  render();
+</script>
+</body>
+</html>

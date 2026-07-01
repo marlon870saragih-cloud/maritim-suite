@@ -4,8 +4,14 @@ import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { ReceivablesTracker, type InvoiceRow, type PrincipalSummary, type AgingSummary } from '@/components/tracker/ReceivablesTracker'
 import { AGING, parseDocDate, overdueDays, bucketFor } from '@/lib/receivables'
+import { getLang, type Lang } from '@/lib/i18n-server'
 
 export const dynamic = 'force-dynamic'
+
+const PH: Record<Lang, { kicker: string; title: string; desc: string }> = {
+  id: { kicker: 'DA & Invoice Tracker', title: 'Pelacak tagihan & piutang', desc: 'Outstanding per principal, aging 30/60/90 hari, dan status pembayaran invoice keagenan.' },
+  en: { kicker: 'DA & Invoice Tracker', title: 'Receivables & invoice tracker', desc: 'Outstanding per principal, 30/60/90-day aging, and agency invoice payment status.' },
+}
 
 type InvStored = {
   billToName?: string
@@ -74,9 +80,9 @@ export default async function TrackerPage() {
   return (
     <div className="p-margin-page max-w-[1600px] mx-auto space-y-6">
       <PageHeader
-        kicker="DA & Invoice Tracker"
-        title="Pelacak tagihan & piutang"
-        description="Outstanding per principal, aging 30/60/90 hari, dan status pembayaran invoice keagenan."
+        kicker={PH[getLang()].kicker}
+        title={PH[getLang()].title}
+        description={PH[getLang()].desc}
       />
       <ReceivablesTracker
         rows={rows}

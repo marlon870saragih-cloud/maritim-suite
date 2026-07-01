@@ -5,6 +5,30 @@ import { useRouter } from 'next/navigation'
 import { Plus, Pencil, Trash2, Loader2, Building2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { DA_FORMATS } from '@/lib/principals'
+import { useT, type Lang } from '@/lib/i18n'
+
+const STR: Record<Lang, Record<string, string>> = {
+  id: {
+    addBtn: 'Tambah Principal',
+    errNameReq: 'Nama principal wajib diisi.', errSave: 'Gagal menyimpan.', errConn: 'Gagal terhubung ke server.', errDelete: 'Gagal menghapus.',
+    confirmPre: 'Hapus principal "', confirmPost: '"? Tindakan ini tidak bisa dibatalkan.',
+    emptyTitle: 'Belum ada principal', emptyDesc: 'Tambah principal sekali — dipakai otomatis sebagai bill-to di dokumen.',
+    thName: 'Nama Principal', thContact: 'Kontak', thAction: 'Aksi',
+    editTitle: 'Ubah Principal', dialogDesc: 'Data principal dipakai otomatis sebagai pihak tertagih (bill-to) di dokumen.',
+    fName: 'Nama Principal', fContact: 'Kontak (PIC)', fPhone: 'Telepon', fFormat: 'Format Dokumen Preferensi', fAddress: 'Alamat', phAddress: 'Alamat lengkap principal',
+    tipEdit: 'Ubah', tipDelete: 'Hapus', cancel: 'Batal', saveChanges: 'Simpan Perubahan',
+  },
+  en: {
+    addBtn: 'Add Principal',
+    errNameReq: 'Principal name is required.', errSave: 'Failed to save.', errConn: 'Failed to connect to server.', errDelete: 'Failed to delete.',
+    confirmPre: 'Delete principal "', confirmPost: '"? This action cannot be undone.',
+    emptyTitle: 'No principals yet', emptyDesc: 'Add a principal once — auto-used as the bill-to on documents.',
+    thName: 'Principal Name', thContact: 'Contact', thAction: 'Action',
+    editTitle: 'Edit Principal', dialogDesc: 'Principal data is auto-used as the bill-to party on documents.',
+    fName: 'Principal Name', fContact: 'Contact (PIC)', fPhone: 'Phone', fFormat: 'Preferred Document Format', fAddress: 'Address', phAddress: 'Full principal address',
+    tipEdit: 'Edit', tipDelete: 'Delete', cancel: 'Cancel', saveChanges: 'Save changes',
+  },
+}
 import {
   Dialog,
   DialogContent,
@@ -40,6 +64,7 @@ const inputCls =
 const labelCls = 'block text-[10px] font-mono uppercase tracking-wider text-text-secondary mb-1'
 
 export function PrincipalsManager({ principals }: { principals: Principal[] }) {
+  const t = useT(STR)
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<Principal | null>(null)
@@ -65,7 +90,7 @@ export function PrincipalsManager({ principals }: { principals: Principal[] }) {
 
   async function submit() {
     if (!form.name.trim()) {
-      setError('Nama principal wajib diisi.')
+      setError(t.errNameReq)
       return
     }
     setBusy(true)
@@ -77,30 +102,30 @@ export function PrincipalsManager({ principals }: { principals: Principal[] }) {
         body: JSON.stringify(form),
       })
       if (!res.ok) {
-        setError((await res.text()) || 'Gagal menyimpan.')
+        setError((await res.text()) || t.errSave)
         return
       }
       setOpen(false)
       router.refresh()
     } catch {
-      setError('Gagal terhubung ke server.')
+      setError(t.errConn)
     } finally {
       setBusy(false)
     }
   }
 
   async function remove(p: Principal) {
-    if (!confirm(`Hapus principal "${p.name}"? Tindakan ini tidak bisa dibatalkan.`)) return
+    if (!confirm(`${t.confirmPre}${p.name}${t.confirmPost}`)) return
     setDeletingId(p.id)
     try {
       const res = await fetch(`/api/principals/${p.id}`, { method: 'DELETE' })
       if (!res.ok) {
-        alert((await res.text()) || 'Gagal menghapus.')
+        alert((await res.text()) || t.errDelete)
         return
       }
       router.refresh()
     } catch {
-      alert('Gagal terhubung ke server.')
+      alert(t.errConn)
     } finally {
       setDeletingId(null)
     }
@@ -112,9 +137,9 @@ export function PrincipalsManager({ principals }: { principals: Principal[] }) {
         <button
           type="button"
           onClick={openAdd}
-          className="inline-flex items-center gap-2 bg-[#2E86DE] hover:bg-accent-blue text-white rounded px-4 py-2 text-sm font-medium transition-colors"
+          className="inline-flex items-center gap-2 bg-accent-blue hover:bg-primary text-[#231a06] rounded px-4 py-2 text-sm font-medium transition-colors"
         >
-          <Plus className="w-4 h-4" /> Tambah Principal
+          <Plus className="w-4 h-4" /> {t.addBtn}
         </button>
       </div>
 
@@ -125,17 +150,15 @@ export function PrincipalsManager({ principals }: { principals: Principal[] }) {
               <Building2 className="w-6 h-6" />
             </div>
             <div>
-              <p className="text-text-primary text-sm font-medium">Belum ada principal</p>
-              <p className="text-text-secondary text-xs mt-1">
-                Tambah principal sekali — dipakai otomatis sebagai bill-to di dokumen.
-              </p>
+              <p className="text-text-primary text-sm font-medium">{t.emptyTitle}</p>
+              <p className="text-text-secondary text-xs mt-1">{t.emptyDesc}</p>
             </div>
             <button
               type="button"
               onClick={openAdd}
-              className="inline-flex items-center gap-2 mt-1 bg-[#2E86DE] hover:bg-accent-blue text-white rounded px-4 py-2 text-sm font-medium transition-colors"
+              className="inline-flex items-center gap-2 mt-1 bg-accent-blue hover:bg-primary text-[#231a06] rounded px-4 py-2 text-sm font-medium transition-colors"
             >
-              <Plus className="w-4 h-4" /> Tambah Principal
+              <Plus className="w-4 h-4" /> {t.addBtn}
             </button>
           </div>
         ) : (
@@ -143,11 +166,11 @@ export function PrincipalsManager({ principals }: { principals: Principal[] }) {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-surface-secondary text-text-secondary font-mono uppercase tracking-widest border-b border-card-border text-[10px]">
-                  <th className="px-5 py-3 font-medium">Nama Principal</th>
-                  <th className="px-5 py-3 font-medium">Kontak</th>
+                  <th className="px-5 py-3 font-medium">{t.thName}</th>
+                  <th className="px-5 py-3 font-medium">{t.thContact}</th>
                   <th className="px-5 py-3 font-medium">Email</th>
                   <th className="px-5 py-3 font-medium">Format</th>
-                  <th className="px-5 py-3 font-medium text-right">Aksi</th>
+                  <th className="px-5 py-3 font-medium text-right">{t.thAction}</th>
                 </tr>
               </thead>
               <tbody className="text-sm">
@@ -172,7 +195,7 @@ export function PrincipalsManager({ principals }: { principals: Principal[] }) {
                         <button
                           type="button"
                           onClick={() => openEdit(p)}
-                          title="Ubah"
+                          title={t.tipEdit}
                           className="p-1.5 rounded text-text-secondary hover:text-accent-blue hover:bg-surface-tertiary transition-colors"
                         >
                           <Pencil className="w-4 h-4" />
@@ -181,7 +204,7 @@ export function PrincipalsManager({ principals }: { principals: Principal[] }) {
                           type="button"
                           onClick={() => remove(p)}
                           disabled={deletingId === p.id}
-                          title="Hapus"
+                          title={t.tipDelete}
                           className="p-1.5 rounded text-text-secondary hover:text-status-danger hover:bg-surface-tertiary transition-colors disabled:opacity-50"
                         >
                           {deletingId === p.id ? (
@@ -204,17 +227,17 @@ export function PrincipalsManager({ principals }: { principals: Principal[] }) {
         <DialogContent className="bg-surface-secondary border-card-border text-text-primary max-w-xl">
           <DialogHeader>
             <DialogTitle className="font-display text-white">
-              {editing ? 'Ubah Principal' : 'Tambah Principal'}
+              {editing ? t.editTitle : t.addBtn}
             </DialogTitle>
             <DialogDescription className="text-text-secondary">
-              Data principal dipakai otomatis sebagai pihak tertagih (bill-to) di dokumen.
+              {t.dialogDesc}
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
               <label className={labelCls}>
-                Nama Principal <span className="text-status-danger">*</span>
+                {t.fName} <span className="text-status-danger">*</span>
               </label>
               <input
                 name="name"
@@ -225,7 +248,7 @@ export function PrincipalsManager({ principals }: { principals: Principal[] }) {
               />
             </div>
             <div>
-              <label className={labelCls}>Kontak (PIC)</label>
+              <label className={labelCls}>{t.fContact}</label>
               <input
                 name="contactPerson"
                 value={form.contactPerson}
@@ -246,7 +269,7 @@ export function PrincipalsManager({ principals }: { principals: Principal[] }) {
               />
             </div>
             <div>
-              <label className={labelCls}>Telepon</label>
+              <label className={labelCls}>{t.fPhone}</label>
               <input
                 name="phone"
                 value={form.phone}
@@ -256,7 +279,7 @@ export function PrincipalsManager({ principals }: { principals: Principal[] }) {
               />
             </div>
             <div>
-              <label className={labelCls}>Format Dokumen Preferensi</label>
+              <label className={labelCls}>{t.fFormat}</label>
               <select
                 name="preferredFormat"
                 value={form.preferredFormat}
@@ -271,12 +294,12 @@ export function PrincipalsManager({ principals }: { principals: Principal[] }) {
               </select>
             </div>
             <div className="col-span-2">
-              <label className={labelCls}>Alamat</label>
+              <label className={labelCls}>{t.fAddress}</label>
               <textarea
                 name="address"
                 value={form.address}
                 onChange={(e) => set('address', e.target.value)}
-                placeholder="Alamat lengkap principal"
+                placeholder={t.phAddress}
                 rows={2}
                 className={inputCls + ' resize-none'}
               />
@@ -296,16 +319,16 @@ export function PrincipalsManager({ principals }: { principals: Principal[] }) {
               disabled={busy}
               className="px-4 py-2 rounded text-sm font-medium border border-border-muted text-text-secondary hover:text-white hover:bg-surface-tertiary transition-colors disabled:opacity-50"
             >
-              Batal
+              {t.cancel}
             </button>
             <button
               type="button"
               onClick={submit}
               disabled={busy}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded text-sm font-medium bg-[#2E86DE] hover:bg-accent-blue text-white transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded text-sm font-medium bg-accent-blue hover:bg-primary text-[#231a06] transition-colors disabled:opacity-50"
             >
               {busy && <Loader2 className="w-4 h-4 animate-spin" />}
-              {editing ? 'Simpan Perubahan' : 'Tambah Principal'}
+              {editing ? t.saveChanges : t.addBtn}
             </button>
           </div>
         </DialogContent>

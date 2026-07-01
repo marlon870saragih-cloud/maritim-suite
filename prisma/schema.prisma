@@ -21,6 +21,8 @@ model Tenant {
   bankAccount        String?
   bankHolder         String?
   bankSwift          String?
+  signerName         String?
+  signerTitle        String?
   plan               Plan      @default(TRIAL)
   modulesEnabled     String[]
   trialEndsAt        DateTime?
@@ -194,6 +196,7 @@ enum DocType {
   TIME_SHEET
   SIB
   AGENCY_APPOINTMENT
+  SPK
   LETTER_OF_PROTEST
   NOTE_OF_PROTEST
   LETTER_OF_INDEMNITY
@@ -201,6 +204,10 @@ enum DocType {
   CREW_SIGN_ON
   CREW_SIGN_OFF
   SHORE_PASS
+  MARITIME_DECLARATION_OF_HEALTH
+  NOTICE_OF_ARRIVAL
+  CASH_TO_MASTER
+  LETTER_OF_AUTHORIZATION
   EPDA
   FPDA
   FOA

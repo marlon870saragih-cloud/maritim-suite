@@ -79,7 +79,7 @@ export async function POST(req: Request) {
       port: data.portCall || null,
       currency: data.currency || 'IDR',
       lineItems: payload as object,
-      subtotals: { subtotal: totals.subtotal, agency: totals.agency, vat: totals.vat } as object,
+      subtotals: { subtotal: totals.subtotal, agency: totals.agency, dpp: totals.dpp, vat: totals.vat, exemptTotal: totals.exemptTotal } as object,
       grandTotal: totals.totalDue,
       agencyPct: data.agencyPct,
       agencyAmt: totals.agency,

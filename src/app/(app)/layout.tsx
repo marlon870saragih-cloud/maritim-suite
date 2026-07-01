@@ -52,6 +52,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     roleLabel: ROLE_LABEL[session.user.role] ?? session.user.role ?? 'Pengguna',
     planLabel: PLAN_LABEL[plan] ?? plan,
     trialDaysLeft,
+    // Nama perusahaan SELALU dari tenant terdaftar (DB) — terkunci, tak bisa
+    // diubah per-form, agar identitas dokumen tak bisa dimanipulasi.
+    companyName: tenant?.companyName ?? 'Maritime Suite',
   }
 
   return (

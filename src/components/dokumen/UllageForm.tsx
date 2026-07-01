@@ -5,6 +5,25 @@ import { createLinkQuery } from '@/lib/link-params'
 import Link from 'next/link'
 import { ArrowLeft, Plus, Trash2, Download, Eye, Loader2, Save, Check } from 'lucide-react'
 import { SAMPLE_ULLAGE, ullageTotalVolume, ullageTotalMt, type UllageData, type UllageTank } from '@/lib/pdf/ullage-data'
+import { useT, type Lang } from '@/lib/i18n'
+import { FORM_COMMON } from '@/lib/i18n-forms'
+
+const STR: Record<Lang, Record<string, string>> = {
+  id: {
+    kicker: 'Maritime Dokumen · Port Call Ops', h1: 'Buat Ullage Report', desc: 'Pengukuran tangki kargo cair → total volume & konversi MT.',
+    fromPortCall: 'Data kapal, pelabuhan & produk terisi otomatis dari Port Call. Lengkapi densitas & pengukuran tangki.',
+    secVessel: 'Kapal & Survei Kargo', fDate: 'Tanggal', fVessel: 'Nama kapal', fPort: 'Pelabuhan', fProduct: 'Produk (kargo)', fDensity: 'Densitas @15°C (kg/L)',
+    secTanks: 'Pengukuran Tangki', tankWord: 'tangki', thTank: 'Tangki', deleteTank: 'Hapus tangki', addTank: 'Tambah tangki',
+    resTitle: 'Hasil Pengukuran', resVol: 'Total volume', resDensity: 'Densitas',
+  },
+  en: {
+    kicker: 'Maritime Documents · Port Call Ops', h1: 'Create Ullage Report', desc: 'Liquid cargo tank gauging → total volume & MT conversion.',
+    fromPortCall: 'Vessel, port & product auto-filled from Port Call. Complete density & tank measurements.',
+    secVessel: 'Vessel & Cargo Survey', fDate: 'Date', fVessel: 'Vessel name', fPort: 'Port', fProduct: 'Product (cargo)', fDensity: 'Density @15°C (kg/L)',
+    secTanks: 'Tank Measurements', tankWord: 'tanks', thTank: 'Tank', deleteTank: 'Delete tank', addTank: 'Add tank',
+    resTitle: 'Measurement Result', resVol: 'Total volume', resDensity: 'Density',
+  },
+}
 
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v))
 const num = (n: number, d = 1) => (n || 0).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d })
@@ -28,6 +47,8 @@ type Head = Omit<UllageData, 'tenant' | 'tanks'>
 const emptyTank = (): UllageTank => ({ tank: '', ullage: '', tempC: '', volumeM3: 0 })
 
 export function UllageForm() {
+  const t = useT(STR)
+  const c = useT(FORM_COMMON)
   const { tenant: _t, tanks: _k, ...sampleHead } = SAMPLE_ULLAGE
   const [head, setHead] = useState<Head>(sampleHead)
   const [tanks, setTanks] = useState<UllageTank[]>(clone(SAMPLE_ULLAGE.tanks))
@@ -102,10 +123,10 @@ export function UllageForm() {
       const j = (await res.json()) as { id: string }
       setSavedId(j.id)
       window.history.replaceState(null, '', `/dokumen/new/ULLAGE_REPORT?id=${j.id}`)
-      setSavedMsg('Tersimpan ✓')
+      setSavedMsg(c.saved)
       setTimeout(() => setSavedMsg(''), 3000)
     } catch {
-      alert('Gagal menyimpan. Pastikan Anda sudah login.')
+      alert(c.saveFail)
     } finally {
       setBusy(null)
     }
@@ -134,7 +155,7 @@ export function UllageForm() {
       }
       setTimeout(() => URL.revokeObjectURL(url), 60000)
     } catch {
-      alert('Gagal membuat PDF. Coba lagi.')
+      alert(c.pdfFail)
     } finally {
       setBusy(null)
     }
@@ -144,46 +165,46 @@ export function UllageForm() {
     <div className="p-margin-page max-w-[1600px] mx-auto">
       <Link href="/dokumen" className="inline-flex items-center gap-2 text-text-secondary hover:text-accent-blue text-sm transition-colors mb-5">
         <ArrowLeft className="w-4 h-4" />
-        Kembali ke Dokumen
+        {c.backDok}
       </Link>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
         <div className="space-y-5">
           <div>
-            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-1">Maritime Dokumen · Port Call Ops</p>
-            <h1 className="font-display text-2xl text-white">Buat Ullage Report</h1>
-            <p className="text-text-secondary text-sm mt-1">Pengukuran tangki kargo cair → total volume &amp; konversi MT.</p>
+            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-1">{t.kicker}</p>
+            <h1 className="font-display text-2xl text-white">{t.h1}</h1>
+            <p className="text-text-secondary text-sm mt-1">{t.desc}</p>
           </div>
 
           {fromPortCall && (
             <div className="rounded-md border border-accent-teal/30 bg-accent-teal/5 px-4 py-2.5 text-xs text-accent-teal">
-              Data kapal, pelabuhan &amp; produk terisi otomatis dari Port Call. Lengkapi densitas &amp; pengukuran tangki.
+              {t.fromPortCall}
             </div>
           )}
 
           <section className="bg-card-bg border border-card-border rounded-lg p-5">
-            <h2 className="font-display text-base text-white mb-4">Kapal &amp; Survei Kargo</h2>
+            <h2 className="font-display text-base text-white mb-4">{t.secVessel}</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <Field label="No. dokumen" value={head.docNumber} onChange={setS('docNumber')} />
-              <Field label="Tanggal" value={head.date} onChange={setS('date')} />
-              <Field label="Nama kapal" value={head.vesselName} onChange={setS('vesselName')} />
+              <Field label={t.fDate} value={head.date} onChange={setS('date')} />
+              <Field label={t.fVessel} value={head.vesselName} onChange={setS('vesselName')} />
               <Field label="IMO" value={head.imo} onChange={setS('imo')} />
-              <Field label="Pelabuhan" value={head.port} onChange={setS('port')} />
+              <Field label={t.fPort} value={head.port} onChange={setS('port')} />
               <Field label="No. Voyage" value={head.voyageNo ?? ''} onChange={setS('voyageNo')} />
-              <Field label="Produk (kargo)" value={head.product} onChange={setS('product')} />
+              <Field label={t.fProduct} value={head.product} onChange={setS('product')} />
               <Field label="Condition" value={head.condition} onChange={setS('condition')} />
-              <Field label="Densitas @15°C (kg/L)" value={String(head.densityKgL)} onChange={setDensity} />
+              <Field label={t.fDensity} value={String(head.densityKgL)} onChange={setDensity} />
               <Field label="Surveyor" value={head.surveyor} onChange={setS('surveyor')} />
             </div>
           </section>
 
           <section className="bg-card-bg border border-card-border rounded-lg p-5">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="font-display text-base text-white">Pengukuran Tangki</h2>
-              <span className="text-xs font-mono text-text-secondary">{tanks.length} tangki</span>
+              <h2 className="font-display text-base text-white">{t.secTanks}</h2>
+              <span className="text-xs font-mono text-text-secondary">{tanks.length} {t.tankWord}</span>
             </div>
             <div className="hidden md:grid grid-cols-12 gap-2 px-1 mb-1.5 text-[9px] font-mono uppercase tracking-wider text-text-secondary/60">
-              <div className="col-span-4">Tangki</div>
+              <div className="col-span-4">{t.thTank}</div>
               <div className="col-span-3">Ullage</div>
               <div className="col-span-2">Temp °C</div>
               <div className="col-span-2">Volume m³</div>
@@ -196,7 +217,7 @@ export function UllageForm() {
                   <input value={tk.ullage} onChange={(e) => updateTank(i, 'ullage', e.target.value)} placeholder="1.85 m" className={`${inputCls} col-span-6 md:col-span-3`} />
                   <input value={tk.tempC} onChange={(e) => updateTank(i, 'tempC', e.target.value)} placeholder="31.5" className={`${inputCls} col-span-4 md:col-span-2`} />
                   <input value={String(tk.volumeM3)} onChange={(e) => updateTank(i, 'volumeM3', e.target.value)} placeholder="1450.5" className={`${inputCls} col-span-4 md:col-span-2`} />
-                  <button type="button" onClick={() => removeTank(i)} aria-label="Hapus tangki" className="col-span-1 flex items-center justify-center h-9 rounded text-text-secondary hover:text-status-danger hover:bg-status-danger/10 transition-colors">
+                  <button type="button" onClick={() => removeTank(i)} aria-label={t.deleteTank} className="col-span-1 flex items-center justify-center h-9 rounded text-text-secondary hover:text-status-danger hover:bg-status-danger/10 transition-colors">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
@@ -204,7 +225,7 @@ export function UllageForm() {
             </div>
             <button type="button" onClick={addTank} className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-accent-blue hover:text-white transition-colors">
               <Plus className="w-3.5 h-3.5" />
-              Tambah tangki
+              {t.addTank}
             </button>
             <div className="mt-4">
               <label className={labelCls}>Remarks</label>
@@ -215,21 +236,21 @@ export function UllageForm() {
 
         <aside className="lg:sticky lg:top-5 space-y-3">
           <div className="bg-card-bg border border-card-border rounded-lg p-5">
-            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-3">Hasil Pengukuran</p>
+            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest mb-3">{t.resTitle}</p>
             <div className="space-y-2 text-sm">
-              <div className="flex justify-between text-text-secondary"><span>Total volume</span><span className="font-mono text-text-primary">{num(totalVol, 1)} m³</span></div>
-              <div className="flex justify-between text-text-secondary"><span>Densitas</span><span className="font-mono text-text-primary">{head.densityKgL} kg/L</span></div>
+              <div className="flex justify-between text-text-secondary"><span>{t.resVol}</span><span className="font-mono text-text-primary">{num(totalVol, 1)} m³</span></div>
+              <div className="flex justify-between text-text-secondary"><span>{t.resDensity}</span><span className="font-mono text-text-primary">{head.densityKgL} kg/L</span></div>
             </div>
-            <div className="mt-3 -mx-5 -mb-5 px-5 py-3 bg-[#0D2A50] border-t border-[#1D4A8A] rounded-b-lg">
-              <p className="text-[10px] font-mono uppercase tracking-wider text-accent-blue/70">Total Quantity</p>
+            <div className="mt-3 -mx-5 -mb-5 px-5 py-3 bg-accent-blue/10 border-t border-accent-blue/30 rounded-b-lg">
+              <p className="text-[10px] font-mono uppercase tracking-wider text-accent-blue/80">Total Quantity</p>
               <p className="font-display text-xl text-white">{num(totalMt, 3)} MT</p>
             </div>
           </div>
 
           <button type="button" onClick={saveDraft} disabled={busy !== null}
-            className="w-full inline-flex items-center justify-center gap-2 bg-[#2E86DE] hover:bg-accent-blue text-white rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60">
+            className="w-full inline-flex items-center justify-center gap-2 bg-accent-blue hover:bg-primary text-[#231a06] rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60">
             {busy === 'save' ? <Loader2 className="w-4 h-4 animate-spin" /> : savedId ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-            {savedId ? 'Simpan Perubahan' : 'Simpan Draft'}
+            {savedId ? c.saveChanges : c.saveDraft}
           </button>
           {savedMsg && <p className="text-center text-xs text-accent-teal -mt-1">{savedMsg}</p>}
 
@@ -237,12 +258,12 @@ export function UllageForm() {
             <button type="button" onClick={() => generate(true)} disabled={busy !== null}
               className="flex-1 inline-flex items-center justify-center gap-2 border border-border-muted text-text-secondary hover:text-white hover:border-accent-blue/60 hover:bg-surface-tertiary rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60">
               {busy === 'download' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              Unduh
+              {c.download}
             </button>
             <button type="button" onClick={() => generate(false)} disabled={busy !== null}
               className="flex-1 inline-flex items-center justify-center gap-2 border border-border-muted text-text-secondary hover:text-white hover:border-accent-blue/60 hover:bg-surface-tertiary rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-60">
               {busy === 'preview' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
-              Preview
+              {c.preview}
             </button>
           </div>
         </aside>
