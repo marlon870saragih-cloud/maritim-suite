@@ -29,7 +29,11 @@ export const authOptions: NextAuthOptions = {
           name: user.name,
           role: user.role,
           tenantId: user.tenantId,
-          tenant: user.tenant,
+          // logoUrl (base64 ~8.7KB) DIBUANG dari sesi: kalau ikut, cookie JWT
+          // membengkak & kena batas header HTTP/2 proxy → login gagal
+          // (ERR_HTTP2_PROTOCOL_ERROR). Logo dibaca segar dari DB saat perlu
+          // (kop PDF via epdaTenantForSession, form profil via server page).
+          tenant: { ...user.tenant, logoUrl: null },
         }
       },
     }),
