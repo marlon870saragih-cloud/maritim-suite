@@ -765,7 +765,7 @@ export function PortCallManager({
             </p>
           )}
 
-          <div className="flex justify-end gap-2 pt-1">
+          <div className="sticky bottom-0 z-10 -mx-6 -mb-6 mt-1 flex justify-end gap-2 border-t border-card-border bg-surface-secondary px-6 py-3">
             <button
               type="button"
               onClick={() => setOpen(false)}
