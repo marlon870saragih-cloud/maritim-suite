@@ -1,21 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Sparkles, Loader2, Send, ArrowRight, Pencil, HelpCircle, FileText } from 'lucide-react'
+import { ArrowLeft, Sparkles, Loader2, ArrowUp, ArrowRight, HelpCircle, ShieldCheck, RotateCcw } from 'lucide-react'
 
-const inputCls =
-  'w-full bg-surface border border-border-muted rounded-lg px-3.5 py-3 text-sm text-text-primary ' +
-  'placeholder:text-text-secondary/40 focus:border-accent-purple focus:outline-none ' +
-  'focus:ring-1 focus:ring-accent-purple/40 transition-colors resize-none'
-
-const EXAMPLES = [
-  'Buatkan SPK penunjukan Karana Line (Pak Hardi, Balikpapan) untuk MT Soechi Asia, muat KGTE Balikpapan bongkar Morowali, cargo B40 6000 MT.',
-  'Buatkan invoice tagihan ke Soechi Lines untuk MT Soechi Asia di Samarinda, rincian: jasa pandu & tunda, clearance, dan agency fee. Ref FDA/2026/06/0142.',
-]
-
-// Label ramah untuk field yang sering muncul (fallback: humanize otomatis).
 const LABELS: Record<string, string> = {
   docNumber: 'No. dokumen', issuedAt: 'Tanggal', invoiceDate: 'Tanggal', noteDate: 'Tanggal',
   receiptDate: 'Tanggal', docDate: 'Tanggal', deliveryDate: 'Tanggal serah', statementDate: 'Tanggal',
@@ -26,7 +15,8 @@ const LABELS: Record<string, string> = {
   port: 'Pelabuhan', gtNrt: 'GT / NRT', imo: 'IMO', refDoc: 'Ref', refFda: 'Ref FDA', period: 'Periode',
   productGrade: 'Produk', forPayment: 'Untuk', reason: 'Alasan', neededBy: 'Dibutuhkan', loadingDate: 'Loading',
   deliveryTo: 'Kirim ke', place: 'Tempat', bargeName: 'Tongkang', lines: 'Baris', scopeItems: 'Lingkup kerja',
-  terms: 'Ketentuan', approvedByName: 'Penanda tangan',
+  terms: 'Ketentuan', approvedByName: 'Penanda tangan', events: 'Kronologi', crew: 'Awak', tanks: 'Tangki',
+  items: 'Item', stores: 'Perbekalan', documents: 'Dokumen', rows: 'Baris',
 }
 const SKIP = new Set(['sections', 'rows'])
 
@@ -34,8 +24,7 @@ function humanize(k: string) {
   return LABELS[k] ?? k.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase())
 }
 
-// Ringkas draft → daftar {label, value} hanya untuk field yang BENAR diisi AI
-// (string non-kosong, angka non-nol, array berisi). Angka 0 = placeholder uang → disembunyikan.
+// Ringkas draft → daftar {label,value} untuk field yang BENAR diisi AI (angka 0 uang disembunyikan).
 function summarize(draft: Record<string, unknown>): { label: string; value: string }[] {
   const rows: { label: string; value: string }[] = []
   for (const [k, v] of Object.entries(draft)) {
@@ -45,7 +34,8 @@ function summarize(draft: Record<string, unknown>): { label: string; value: stri
     } else if (typeof v === 'number') {
       if (v) rows.push({ label: humanize(k), value: String(v) })
     } else if (Array.isArray(v) && v.length) {
-      rows.push({ label: humanize(k), value: `${v.length} item` })
+      const filled = v.filter((it) => it && typeof it === 'object' && Object.values(it).some((x) => x !== '' && x !== 0 && x != null))
+      if (filled.length) rows.push({ label: humanize(k), value: `${filled.length} baris` })
     }
   }
   return rows
@@ -56,208 +46,250 @@ type ApiResult =
   | { kind: 'doc'; api: string; editHref: string; label: string; draft: Record<string, unknown> }
   | { kind: 'clarify'; question: string }
 
+type Msg =
+  | { id: number; role: 'user'; text: string }
+  | { id: number; role: 'ai'; kind: 'text' | 'clarify' | 'error'; text: string }
+  | { id: number; role: 'ai'; kind: 'doc'; doc: Doc }
+  | { id: number; role: 'ai'; kind: 'typing' }
+
+const GREETING = 'Halo Pak Marlon. Mau buat dokumen apa? Ceritakan seperti ngobrol — sebut kapal, kegiatan, dan pihaknya, sisanya saya yang rapikan.'
+const CHIPS = [
+  'Buatkan SPK sub-agen untuk kapal … di pelabuhan …',
+  'Buatkan invoice keagenan ke … untuk kapal …',
+  'Buat SOF kronologi kapal … di …',
+  'Buat rekap Port Call Summary kapal …',
+]
+
+type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never
+
+let nextId = 1
+const mk = (m: DistributiveOmit<Msg, 'id'>): Msg => ({ ...m, id: nextId++ } as Msg)
+
 export default function AsistenPage() {
   const router = useRouter()
-  const [text, setText] = useState('')
-  const [busy, setBusy] = useState<null | 'analyze' | 'confirm'>(null)
-  const [doc, setDoc] = useState<Doc | null>(null)
-  const [clarify, setClarify] = useState('')
-  const [status, setStatus] = useState('')
-  const [err, setErr] = useState('')
+  const [messages, setMessages] = useState<Msg[]>([mk({ role: 'ai', kind: 'text', text: GREETING })])
+  const [input, setInput] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [opening, setOpening] = useState<number | null>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const taRef = useRef<HTMLTextAreaElement>(null)
 
-  async function analyze() {
-    const instruction = text.trim()
-    if (!instruction) return
-    setBusy('analyze')
-    setErr('')
-    setClarify('')
-    setDoc(null)
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
+  }, [messages])
+
+  const onlyGreeting = messages.length === 1
+
+  async function send(raw: string) {
+    const instruction = raw.trim()
+    if (!instruction || busy) return
+    // Konteks percakapan: gabung semua giliran pengguna agar tindak lanjut ("ganti kotanya…")
+    // ikut dipertimbangkan saat AI mendraf ulang.
+    const priorUser = messages.filter((m): m is Extract<Msg, { role: 'user' }> => m.role === 'user').map((m) => m.text)
+    const combined = [...priorUser, instruction].join('. ')
+
+    setInput('')
+    setMessages((p) => [...p, mk({ role: 'user', text: instruction }), mk({ role: 'ai', kind: 'typing' })])
+    setBusy(true)
     try {
       const res = await fetch('/api/ai/draft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ instruction }),
+        body: JSON.stringify({ instruction: combined }),
       })
-      if (!res.ok) throw new Error((await res.text()) || 'Gagal')
+      const strip = (p: Msg[]) => p.filter((m) => m.role !== 'ai' || m.kind !== 'typing')
+      if (!res.ok) {
+        const msg = (await res.text()) || 'Maaf, gagal memproses. Coba perjelas permintaannya.'
+        setMessages((p) => [...strip(p), mk({ role: 'ai', kind: 'error', text: msg })])
+        return
+      }
       const r = (await res.json()) as ApiResult
-      if (r.kind === 'clarify') setClarify(r.question)
-      else setDoc({ api: r.api, editHref: r.editHref, label: r.label, draft: r.draft })
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Gagal memproses')
+      if (r.kind === 'clarify') {
+        setMessages((p) => [...strip(p), mk({ role: 'ai', kind: 'clarify', text: r.question })])
+      } else {
+        setMessages((p) => [...strip(p), mk({ role: 'ai', kind: 'doc', doc: { api: r.api, editHref: r.editHref, label: r.label, draft: r.draft } })])
+      }
+    } catch {
+      setMessages((p) => [...p.filter((m) => m.role !== 'ai' || m.kind !== 'typing'), mk({ role: 'ai', kind: 'error', text: 'Gagal terhubung ke server. Coba lagi.' })])
     } finally {
-      setBusy(null)
+      setBusy(false)
     }
   }
 
-  async function confirm() {
-    if (!doc) return
-    setBusy('confirm')
-    setErr('')
+  async function openForm(doc: Doc, msgId: number) {
+    if (opening !== null) return
+    setOpening(msgId)
     try {
-      setStatus('Menyiapkan dokumen…')
       const save = await fetch(`/api/documents/${doc.api}?save=1`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(doc.draft),
       })
-      if (!save.ok) throw new Error('Gagal menyiapkan dokumen')
+      if (!save.ok) throw new Error()
       const { id } = (await save.json()) as { id: string }
-      setStatus('Membuka form untuk Anda review…')
       router.push(`${doc.editHref}?id=${id}`)
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Gagal menyiapkan')
-      setBusy(null)
-      setStatus('')
+    } catch {
+      setMessages((p) => [...p, mk({ role: 'ai', kind: 'error', text: 'Gagal menyiapkan dokumen. Coba lagi.' })])
+      setOpening(null)
     }
   }
 
-  const fields = doc ? summarize(doc.draft) : []
+  function reset() {
+    nextId = 1
+    setMessages([mk({ role: 'ai', kind: 'text', text: GREETING })])
+    setInput('')
+    taRef.current?.focus()
+  }
+
+  function onKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      send(input)
+    }
+  }
 
   return (
-    <div className="p-margin-page max-w-[820px] mx-auto">
-      <Link
-        href="/finance"
-        className="inline-flex items-center gap-2 text-text-secondary hover:text-accent-blue text-sm transition-colors mb-5"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        Kembali ke Finance
-      </Link>
-
-      <div className="flex items-center gap-2 mb-1">
-        <Sparkles className="w-5 h-5 text-accent-purple" />
-        <h1 className="font-display text-2xl text-white">Asisten Dokumen</h1>
-        <span className="text-[10px] font-mono uppercase tracking-wider text-accent-purple/70 ml-1">Haiku · OpenRouter</span>
-      </div>
-      <p className="text-text-secondary text-sm mb-6">
-        Ceritakan dokumen yang Anda butuhkan. AI menentukan jenisnya &amp; mengisi field, lalu menampilkan
-        ringkasan untuk Anda konfirmasi. AI hanya mengisi bahasa — angka uang dihitung mesin.
-      </p>
-
-      <section className="bg-card-bg border border-accent-purple/30 rounded-lg p-5">
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          rows={4}
-          disabled={busy !== null}
-          placeholder="mis. Buatkan SPK penunjukan sub-agen untuk kapal MT … di pelabuhan …"
-          className={inputCls + ' disabled:opacity-60'}
-        />
-        <div className="flex items-center gap-3 mt-3">
-          <button
-            type="button"
-            onClick={analyze}
-            disabled={busy !== null || !text.trim()}
-            className="inline-flex items-center gap-2 bg-accent-purple/90 hover:bg-accent-purple text-white
-                       rounded-lg px-5 py-2.5 text-sm font-medium transition-colors disabled:opacity-50"
-          >
-            {busy === 'analyze' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            {doc || clarify ? 'Analisa Ulang' : 'Analisa'}
+    <div className="p-margin-page max-w-[820px] mx-auto flex flex-col h-[calc(100vh-2rem)]">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <Link href="/finance" className="inline-flex items-center gap-2 text-text-secondary hover:text-accent-blue text-sm transition-colors">
+          <ArrowLeft className="w-4 h-4" />
+          Kembali ke Finance
+        </Link>
+        {!onlyGreeting && (
+          <button type="button" onClick={reset} className="inline-flex items-center gap-1.5 text-text-secondary hover:text-white text-xs transition-colors">
+            <RotateCcw className="w-3.5 h-3.5" />
+            Percakapan baru
           </button>
-          {err && <span className="text-xs text-status-danger">{err}</span>}
+        )}
+      </div>
+
+      <div className="flex items-center gap-2.5 pb-3 border-b border-border-muted">
+        <div className="w-9 h-9 rounded-full bg-accent-purple/15 border border-accent-purple/30 flex items-center justify-center flex-shrink-0">
+          <Sparkles className="w-5 h-5 text-accent-purple" />
         </div>
-      </section>
+        <div>
+          <h1 className="font-display text-lg text-white leading-tight">Asisten Maritim</h1>
+          <p className="text-text-secondary text-xs">Ketik biasa — saya rapikan jadi dokumen. Angka uang dihitung mesin.</p>
+        </div>
+      </div>
 
-      {/* AI bertanya balik bila ambigu */}
-      {clarify && (
-        <section className="mt-4 bg-accent-amber/5 border border-accent-amber/40 rounded-lg p-5">
-          <div className="flex items-center gap-2 mb-1.5">
-            <HelpCircle className="w-4 h-4 text-accent-amber" />
-            <h2 className="font-display text-base text-white">AI butuh kejelasan</h2>
-          </div>
-          <p className="text-text-primary text-sm">{clarify}</p>
-          <p className="text-text-secondary text-xs mt-2">
-            Tambahkan jawabannya pada kotak instruksi di atas, lalu tekan <strong>Analisa Ulang</strong>.
-          </p>
-        </section>
-      )}
-
-      {/* Pratinjau & konfirmasi */}
-      {doc && (
-        <section className="mt-4 bg-card-bg border border-accent-teal/30 rounded-lg p-5">
-          <div className="flex items-center gap-2 mb-1">
-            <FileText className="w-4 h-4 text-accent-teal" />
-            <h2 className="font-display text-base text-white">Akan dibuat: {doc.label}</h2>
-          </div>
-          <p className="text-text-secondary text-xs mb-4">Yang berhasil AI isi dari permintaan Anda:</p>
-
-          {fields.length ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 mb-4">
-              {fields.map((f, i) => (
-                <div key={i} className="flex gap-2 text-sm">
-                  <span className="text-text-secondary min-w-[110px]">{f.label}</span>
-                  <span className="text-text-primary flex-1">{f.value}</span>
-                </div>
-              ))}
+      {/* Thread */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto py-4 space-y-3">
+        {messages.map((m) =>
+          m.role === 'user' ? (
+            <div key={m.id} className="flex justify-end">
+              <div className="max-w-[82%] bg-surface-tertiary border border-border-muted text-text-primary rounded-2xl rounded-br-sm px-3.5 py-2.5 text-sm leading-relaxed">
+                {m.text}
+              </div>
+            </div>
+          ) : m.kind === 'typing' ? (
+            <div key={m.id} className="flex justify-start">
+              <div className="bg-accent-purple/10 border border-accent-purple/25 rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-accent-purple/80 animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-accent-purple/60 animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-accent-purple/40 animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
             </div>
           ) : (
-            <p className="text-text-secondary text-sm mb-4">
-              Belum ada field spesifik yang terisi — Anda bisa langsung lengkapi di form.
-            </p>
-          )}
+            <div key={m.id} className="flex justify-start">
+              <div className={`max-w-[88%] rounded-2xl rounded-bl-sm px-3.5 py-2.5 text-sm leading-relaxed ${
+                m.kind === 'error'
+                  ? 'bg-status-danger/10 border border-status-danger/30 text-status-danger'
+                  : m.kind === 'clarify'
+                    ? 'bg-accent-amber/10 border border-accent-amber/30 text-text-primary'
+                    : 'bg-accent-purple/10 border border-accent-purple/25 text-text-primary'
+              }`}>
+                {m.kind === 'clarify' && (
+                  <span className="inline-flex items-center gap-1.5 text-accent-amber text-xs font-medium mb-1">
+                    <HelpCircle className="w-3.5 h-3.5" /> Butuh sedikit kejelasan
+                  </span>
+                )}
+                {m.kind === 'doc' ? <DocCard doc={m.doc} opening={opening === m.id} onOpen={() => openForm(m.doc, m.id)} /> : <p>{m.text}</p>}
+              </div>
+            </div>
+          ),
+        )}
 
-          <div className="rounded-md bg-surface/60 border border-border-muted px-3 py-2 mb-4">
-            <p className="text-[11px] text-text-secondary/80">
-              Field lain (termasuk angka uang &amp; yang tak Anda sebut) dikosongkan untuk Anda lengkapi di
-              form. Total dihitung otomatis.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              type="button"
-              onClick={confirm}
-              disabled={busy !== null}
-              className="inline-flex items-center gap-2 bg-accent-teal/90 hover:bg-accent-teal text-white
-                         rounded-lg px-5 py-2.5 text-sm font-medium transition-colors disabled:opacity-50"
-            >
-              {busy === 'confirm' ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
-              Buka form &amp; lengkapi
-            </button>
-            <button
-              type="button"
-              onClick={() => setDoc(null)}
-              disabled={busy !== null}
-              className="inline-flex items-center gap-2 border border-border-muted text-text-secondary
-                         hover:text-white hover:border-accent-blue/60 rounded-lg px-4 py-2.5 text-sm font-medium
-                         transition-colors disabled:opacity-50"
-            >
-              <Pencil className="w-4 h-4" />
-              Ubah instruksi
-            </button>
-            {status && <span className="text-xs text-accent-teal">{status}</span>}
-          </div>
-        </section>
-      )}
-
-      {/* Contoh */}
-      {!doc && !clarify && (
-        <div className="mt-6">
-          <p className="text-[10px] font-mono uppercase tracking-wider text-text-secondary/60 mb-2">Contoh</p>
-          <div className="space-y-2">
-            {EXAMPLES.map((ex, i) => (
+        {onlyGreeting && (
+          <div className="flex flex-col gap-2 pt-1">
+            {CHIPS.map((c) => (
               <button
-                key={i}
+                key={c}
                 type="button"
-                onClick={() => setText(ex)}
-                disabled={busy !== null}
-                className="block w-full text-left bg-card-bg border border-card-border rounded-md px-4 py-2.5
-                           text-xs text-text-secondary hover:text-text-primary hover:border-accent-purple/40
-                           transition-colors disabled:opacity-50"
+                onClick={() => { setInput(c); taRef.current?.focus() }}
+                className="text-left bg-card-bg border border-card-border rounded-lg px-3.5 py-2 text-xs text-text-secondary
+                           hover:text-text-primary hover:border-accent-purple/40 transition-colors"
               >
-                {ex}
+                {c}
               </button>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      <p className="mt-6 text-[11px] text-text-secondary/70 leading-relaxed">
-        Dokumen yang didukung (29) — <span className="text-text-primary">Finance:</span> SPK · EPDA · FPDA ·
-        Invoice · Kwitansi · Nota Debit · Nota Kredit · PR · PO · BDN · SOA. <span className="text-text-primary">Maritim:</span>{' '}
-        NOR · SOF · Arrival/Departure Report · Crew List · GenDec · Cargo Decl · Ship&apos;s Stores · Agency
-        Appointment · Letter of Protest · Note of Protest · Letter of Indemnity · Crew Change · Time Sheet ·
-        Bunker Req · Damage · Ullage · Port Call Summary. Angka uang/teknis dikosongkan — Anda lengkapi, total dihitung otomatis.
-      </p>
+      {/* Composer */}
+      <div className="border-t border-border-muted pt-3">
+        <div className="flex items-end gap-2 bg-surface border border-border-muted rounded-2xl px-3 py-2 focus-within:border-accent-purple/50 transition-colors">
+          <textarea
+            ref={taRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={onKey}
+            rows={1}
+            disabled={busy}
+            placeholder="Balas atau minta perubahan… (Enter kirim, Shift+Enter baris baru)"
+            className="flex-1 bg-transparent resize-none text-sm text-text-primary placeholder:text-text-secondary/40 focus:outline-none py-1.5 max-h-32"
+          />
+          <button
+            type="button"
+            onClick={() => send(input)}
+            disabled={busy || !input.trim()}
+            aria-label="Kirim"
+            className="w-9 h-9 rounded-full bg-accent-purple/90 hover:bg-accent-purple text-white flex items-center justify-center transition-colors disabled:opacity-40 flex-shrink-0"
+          >
+            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowUp className="w-4 h-4" />}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DocCard({ doc, opening, onOpen }: { doc: Doc; opening: boolean; onOpen: () => void }) {
+  const fields = summarize(doc.draft)
+  return (
+    <div>
+      <p className="mb-2">Siap — <span className="font-medium text-white">{doc.label}</span>. Bagian teksnya sudah saya isikan:</p>
+      <div className="bg-surface border border-border-muted rounded-lg p-3">
+        {fields.length ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-1 mb-2">
+            {fields.map((f, i) => (
+              <div key={i} className="flex gap-2 text-xs">
+                <span className="text-text-secondary min-w-[92px]">{f.label}</span>
+                <span className="text-text-primary flex-1">{f.value}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-text-secondary text-xs mb-2">Belum ada field spesifik — Anda bisa lengkapi langsung di form.</p>
+        )}
+        <div className="flex items-center gap-1.5 bg-status-success/10 border border-status-success/25 rounded-md px-2.5 py-1.5 mt-1">
+          <ShieldCheck className="w-3.5 h-3.5 text-status-success flex-shrink-0" />
+          <span className="text-[11px] text-status-success">Angka uang saya kosongkan — dihitung mesin, Anda tinggal cek.</span>
+        </div>
+        <div className="flex items-center gap-2 mt-3">
+          <button
+            type="button"
+            onClick={onOpen}
+            disabled={opening}
+            className="inline-flex items-center gap-1.5 bg-accent-teal/90 hover:bg-accent-teal text-white rounded-lg px-4 py-2 text-xs font-medium transition-colors disabled:opacity-50"
+          >
+            {opening ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRight className="w-3.5 h-3.5" />}
+            Buka form &amp; lengkapi
+          </button>
+          <span className="text-[11px] text-text-secondary">atau ketik perubahan di bawah</span>
+        </div>
+      </div>
     </div>
   )
 }
