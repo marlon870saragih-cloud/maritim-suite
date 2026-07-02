@@ -1,35 +1,71 @@
-// Ekstraktor dokumen maritim (operasional) — semua TEKS (tanpa uang). Pakai factory
-// generik: tiap dokumen cukup mendaftar field partikular. Field yang tak disebut user
+// Ekstraktor dokumen maritim (operasional). Pakai factory generik: tiap dokumen
+// mendaftar field partikular + (opsional) kolom daftar. Field yang tak disebut user
 // dikosongkan (tak jatuh ke nilai contoh). Field boilerplate (remarks, intro, scope,
 // undertaking, masterName, penanda tangan) TIDAK didaftar → tetap pakai default form.
+//
+// KEBIJAKAN ANGKA (lihat prinsip "angka dihitung mesin"):
+// - Angka FAKTUAL (transkripsi apa yang disebut user: jumlah, ullage, suhu, tanggal,
+//   GT/IMO) BOLEH diisi AI — sifatnya seperti kata, tanpa perhitungan.
+// - Angka UANG / HASIL HITUNG (harga, estimasi biaya, % laytime, densitas, rate) TIDAK
+//   PERNAH diisi AI → kolom bertanda `guard` dipaksa 0 (operator isi / mesin hitung).
 
 import type { ToolDef } from './openrouter'
 import { runToolExtraction, pickStrings, blankMissing } from './extract-util'
 
 type FieldDef = { key: string; desc: string }
+// Kolom baris daftar. number=true → nilai numerik; guard=true → angka uang/hasil-hitung
+// yang TIDAK ditanyakan ke AI & dipaksa 0 (operator/mesin). Tanpa guard = faktual (AI isi).
+type ListCol = { key: string; desc: string; number?: boolean; guard?: boolean }
 
 const NO_INVENT =
   'Jangan mengarang data yang tidak disebut pengguna (IMO, tanggal, nomor, dll) — kosongkan bila tak disebut. ' +
+  'Untuk baris daftar: isi HANYA baris yang benar-benar disebut pengguna; jangan menambah baris karangan. ' +
+  'JANGAN pernah menulis angka uang/tarif/harga/estimasi biaya — itu diisi operator, mesin yang menghitung. ' +
   'Gunakan Bahasa Indonesia/Inggris formal sesuai konteks dokumen.'
 
-/** Bangun ekstraktor untuk satu dokumen maritim dari daftar field. */
+/** Bangun ekstraktor untuk satu dokumen maritim dari daftar field (+ kolom daftar opsional). */
 export function makeMaritimeExtractor(opts: {
   toolName: string
   docDesc: string
   fields: FieldDef[]
-  listKey?: string // field daftar yang dipaksa skeleton kosong (hindari fallback contoh)
-  listSkeleton?: Record<string, unknown>[]
-  // Nilai tetap yang ditimpa ke hasil (mis. angka/objek uang/teknis → 0 agar tak pakai
-  // nilai contoh; operator isi di form).
+  listKey?: string // field daftar (mis. 'events', 'crew', 'tanks')
+  listDesc?: string // deskripsi daftar untuk tool
+  listColumns?: ListCol[] // kolom baris; kolom `guard` tak ditanyakan ke AI (dipaksa 0)
+  // Nilai tetap yang ditimpa ke hasil (angka uang/teknis skalar → 0; operator isi di form).
   overrides?: Record<string, unknown>
 }): (instruction: string) => Promise<Record<string, unknown>> {
   const properties: Record<string, object> = {}
   for (const f of opts.fields) properties[f.key] = { type: 'string', description: f.desc }
+
+  const cols = opts.listColumns ?? []
+  const aiCols = cols.filter((c) => !c.guard) // hanya kolom faktual yang ditanyakan ke AI
+  if (opts.listKey && aiCols.length) {
+    const itemProps: Record<string, object> = {}
+    for (const c of aiCols) itemProps[c.key] = { type: c.number ? 'number' : 'string', description: c.desc }
+    properties[opts.listKey] = {
+      type: 'array',
+      description:
+        opts.listDesc ?? 'Baris daftar — isi HANYA dari yang disebut pengguna; jangan mengarang baris.',
+      items: { type: 'object', properties: itemProps, required: [] },
+    }
+  }
+
   const tool: ToolDef = {
     type: 'function',
-    function: { name: opts.toolName, description: `Mengisi field ${opts.docDesc} (teks).`, parameters: { type: 'object', properties, required: [] } },
+    function: {
+      name: opts.toolName,
+      description: `Mengisi field ${opts.docDesc} (teks & angka faktual, tanpa uang).`,
+      parameters: { type: 'object', properties, required: [] },
+    },
   }
   const keys = opts.fields.map((f) => f.key)
+
+  // Baris kosong default (agar tak fallback ke baris contoh saat disimpan).
+  const emptyRow = (): Record<string, unknown> => {
+    const r: Record<string, unknown> = {}
+    for (const c of cols) r[c.key] = c.number ? 0 : ''
+    return r
+  }
 
   return async (instruction: string) => {
     const raw = (await runToolExtraction({
@@ -37,9 +73,37 @@ export function makeMaritimeExtractor(opts: {
       tool,
       instruction,
     })) as Record<string, unknown>
+
     const out = pickStrings<Record<string, unknown>>(raw, keys)
     blankMissing(out, keys)
-    if (opts.listKey) out[opts.listKey] = (opts.listSkeleton ?? [{}]).map((s) => ({ ...s }))
+
+    if (opts.listKey) {
+      const rawList = Array.isArray(raw[opts.listKey]) ? (raw[opts.listKey] as unknown[]) : []
+      out[opts.listKey] = rawList.length
+        ? rawList.map((it) => {
+            const src = it && typeof it === 'object' ? (it as Record<string, unknown>) : {}
+            const row: Record<string, unknown> = {}
+            for (const c of cols) {
+              if (c.guard) {
+                row[c.key] = c.number ? 0 : '' // uang/hasil-hitung → operator/mesin
+              } else if (c.number) {
+                const v = src[c.key]
+                row[c.key] =
+                  typeof v === 'number'
+                    ? v
+                    : v != null && v !== '' && Number.isFinite(Number(v))
+                      ? Number(v)
+                      : 0
+              } else {
+                const v = src[c.key]
+                row[c.key] = typeof v === 'string' ? v.trim() : v != null ? String(v) : ''
+              }
+            }
+            return row
+          })
+        : [emptyRow()]
+    }
+
     if (opts.overrides) Object.assign(out, opts.overrides)
     return out
   }
@@ -67,7 +131,7 @@ export const extractNor = makeMaritimeExtractor({
   ],
 })
 
-// ---- Arrival & Departure Report (struktur sama; events skeleton kosong) ----
+// ---- Arrival & Departure Report (events = kronologi faktual, AI boleh susun) ----
 export const extractReport = makeMaritimeExtractor({
   toolName: 'isi_report',
   docDesc: 'laporan pergerakan kapal (Arrival/Departure Report)',
@@ -86,7 +150,12 @@ export const extractReport = makeMaritimeExtractor({
     { key: 'cargoQty', desc: 'Jumlah muatan' },
   ],
   listKey: 'events',
-  listSkeleton: [{ date: '', time: '', desc: '' }],
+  listDesc: 'Kronologi kegiatan (waktu → uraian) yang disebut pengguna. Jangan mengarang.',
+  listColumns: [
+    { key: 'date', desc: 'Tanggal kejadian' },
+    { key: 'time', desc: 'Jam, mis. 08:30' },
+    { key: 'desc', desc: 'Uraian kegiatan' },
+  ],
 })
 
 // ---- Agency Appointment ----
@@ -151,7 +220,7 @@ export const extractLoi = makeMaritimeExtractor({
   ],
 })
 
-// ---- SOF (Statement of Facts) ----
+// ---- SOF (Statement of Facts) — events = kronologi faktual ----
 export const extractSof = makeMaritimeExtractor({
   toolName: 'isi_sof',
   docDesc: 'Statement of Facts (SOF)',
@@ -168,10 +237,15 @@ export const extractSof = makeMaritimeExtractor({
     { key: 'master', desc: 'Nakhoda' },
   ],
   listKey: 'events',
-  listSkeleton: [{ date: '', time: '', desc: '' }],
+  listDesc: 'Kronologi kegiatan kapal (waktu → uraian) yang disebut pengguna. Jangan mengarang.',
+  listColumns: [
+    { key: 'date', desc: 'Tanggal kejadian' },
+    { key: 'time', desc: 'Jam, mis. 08:30' },
+    { key: 'desc', desc: 'Uraian kegiatan' },
+  ],
 })
 
-// ---- Crew List (FAL 5) ----
+// ---- Crew List (FAL 5) — semua kolom faktual ----
 export const extractCrewList = makeMaritimeExtractor({
   toolName: 'isi_crewlist',
   docDesc: 'Crew List (FAL 5)',
@@ -187,7 +261,15 @@ export const extractCrewList = makeMaritimeExtractor({
     { key: 'masterName', desc: 'Nama nakhoda' },
   ],
   listKey: 'crew',
-  listSkeleton: [{ name: '', rank: '', nationality: '', passport: '', dob: '', seamanBook: '' }],
+  listDesc: 'Daftar awak yang disebut pengguna (nama, jabatan, kebangsaan, dll).',
+  listColumns: [
+    { key: 'name', desc: 'Nama awak' },
+    { key: 'rank', desc: 'Jabatan/rank' },
+    { key: 'nationality', desc: 'Kebangsaan' },
+    { key: 'passport', desc: 'No. paspor' },
+    { key: 'dob', desc: 'Tanggal lahir' },
+    { key: 'seamanBook', desc: 'No. buku pelaut' },
+  ],
 })
 
 // ---- General Declaration (FAL 1) — attachments standar tetap default ----
@@ -216,7 +298,7 @@ export const extractGenDec = makeMaritimeExtractor({
   ],
 })
 
-// ---- Ship's Stores (FAL 3) ----
+// ---- Ship's Stores (FAL 3) — quantity = faktual (bukan uang) ----
 export const extractShipStores = makeMaritimeExtractor({
   toolName: 'isi_shipstores',
   docDesc: "Ship's Stores Declaration (FAL 3)",
@@ -230,10 +312,16 @@ export const extractShipStores = makeMaritimeExtractor({
     { key: 'master', desc: 'Nakhoda' },
   ],
   listKey: 'stores',
-  listSkeleton: [{ item: '', quantity: '', unit: '', location: '' }],
+  listDesc: 'Daftar perbekalan yang disebut pengguna (nama, jumlah, satuan, lokasi).',
+  listColumns: [
+    { key: 'item', desc: 'Nama barang' },
+    { key: 'quantity', desc: 'Jumlah (faktual, mis. 500)' },
+    { key: 'unit', desc: 'Satuan (kg, ltr, ctn)' },
+    { key: 'location', desc: 'Lokasi simpan' },
+  ],
 })
 
-// ---- Cargo Declaration (FAL 2) ----
+// ---- Cargo Declaration (FAL 2) — kolom faktual (packages/weight = teks faktual) ----
 export const extractCargoDecl = makeMaritimeExtractor({
   toolName: 'isi_cargo',
   docDesc: 'Cargo Declaration (FAL 2)',
@@ -250,7 +338,14 @@ export const extractCargoDecl = makeMaritimeExtractor({
     { key: 'portOfDischarge', desc: 'Pelabuhan bongkar' },
   ],
   listKey: 'items',
-  listSkeleton: [{ blNo: '', marks: '', packages: '', description: '', weight: '' }],
+  listDesc: 'Daftar muatan yang disebut pengguna (B/L, kemasan, uraian, berat).',
+  listColumns: [
+    { key: 'blNo', desc: 'No. B/L' },
+    { key: 'marks', desc: 'Merek & nomor' },
+    { key: 'packages', desc: 'Jumlah & jenis kemasan' },
+    { key: 'description', desc: 'Uraian barang' },
+    { key: 'weight', desc: 'Berat kotor, mis. "6.000 MT"' },
+  ],
 })
 
 // ---- Note of Protest (statement/reservation legal = boilerplate, tetap default) ----
@@ -275,7 +370,7 @@ export const extractNoteProtest = makeMaritimeExtractor({
   ],
 })
 
-// ---- Crew Change Notice ----
+// ---- Crew Change Notice — kolom faktual ----
 export const extractCrewChange = makeMaritimeExtractor({
   toolName: 'isi_crewchange',
   docDesc: 'Crew Change Notice',
@@ -290,10 +385,18 @@ export const extractCrewChange = makeMaritimeExtractor({
     { key: 'toAttn', desc: 'U.p.' },
   ],
   listKey: 'crew',
-  listSkeleton: [{ name: '', rank: '', nationality: '', passport: '', action: '', remark: '' }],
+  listDesc: 'Daftar awak yang berganti (sign-on/off) yang disebut pengguna.',
+  listColumns: [
+    { key: 'name', desc: 'Nama awak' },
+    { key: 'rank', desc: 'Jabatan/rank' },
+    { key: 'nationality', desc: 'Kebangsaan' },
+    { key: 'passport', desc: 'No. paspor' },
+    { key: 'action', desc: 'Sign-on atau Sign-off' },
+    { key: 'remark', desc: 'Keterangan' },
+  ],
 })
 
-// ---- Port Call Summary (finance agregat → 0; documents skeleton) ----
+// ---- Port Call Summary (finance agregat → 0; documents = daftar faktual) ----
 export const extractPcSummary = makeMaritimeExtractor({
   toolName: 'isi_pcsummary',
   docDesc: 'Port Call Summary',
@@ -315,11 +418,16 @@ export const extractPcSummary = makeMaritimeExtractor({
     { key: 'principal', desc: 'Principal' },
   ],
   listKey: 'documents',
-  listSkeleton: [{ label: '', docNumber: '', status: '' }],
+  listDesc: 'Daftar dokumen terkait port call yang disebut pengguna.',
+  listColumns: [
+    { key: 'label', desc: 'Nama dokumen' },
+    { key: 'docNumber', desc: 'No. dokumen' },
+    { key: 'status', desc: 'Status' },
+  ],
   overrides: { finance: { epda: 0, fpda: 0, invoice: 0 } },
 })
 
-// ---- Time Sheet / Laytime (angka laytime & rate → 0; rows skeleton) ----
+// ---- Time Sheet / Laytime (waktu = faktual; % laytime = HASIL HITUNG → guard) ----
 export const extractTimeSheet = makeMaritimeExtractor({
   toolName: 'isi_timesheet',
   docDesc: 'Time Sheet / Laytime Statement',
@@ -339,11 +447,18 @@ export const extractTimeSheet = makeMaritimeExtractor({
     { key: 'laytimeCommenced', desc: 'Laytime mulai (tgl & jam)' },
   ],
   listKey: 'rows',
-  listSkeleton: [{ date: '', fromTime: '', toTime: '', description: '', percent: 0 }],
+  listDesc: 'Baris kronologi laytime (waktu → uraian) yang disebut pengguna.',
+  listColumns: [
+    { key: 'date', desc: 'Tanggal' },
+    { key: 'fromTime', desc: 'Dari jam' },
+    { key: 'toTime', desc: 'Sampai jam' },
+    { key: 'description', desc: 'Uraian' },
+    { key: 'percent', desc: '% laytime (dihitung mesin)', number: true, guard: true },
+  ],
   overrides: { laytimeAllowedHours: 0, demurrageRate: 0, despatchRate: 0 },
 })
 
-// ---- Bunker Requisition (harga/qty bunker → 0; lines skeleton) ----
+// ---- Bunker Requisition (grade/qty/sulphur = faktual; harga = uang → guard) ----
 export const extractBunkerReq = makeMaritimeExtractor({
   toolName: 'isi_bunkerreq',
   docDesc: 'Bunker Requisition',
@@ -361,10 +476,16 @@ export const extractBunkerReq = makeMaritimeExtractor({
     { key: 'deliveryPoint', desc: 'Titik serah (alongside/anchorage/berth)' },
   ],
   listKey: 'lines',
-  listSkeleton: [{ grade: '', quantityMt: 0, sulphurPct: '', unitPrice: 0 }],
+  listDesc: 'Daftar bunker yang diminta (grade, jumlah MT, sulphur) yang disebut pengguna.',
+  listColumns: [
+    { key: 'grade', desc: 'Grade bahan bakar, mis. HSD/MFO/MGO' },
+    { key: 'quantityMt', desc: 'Jumlah dalam MT bila disebut (faktual)', number: true },
+    { key: 'sulphurPct', desc: 'Kandungan sulphur %, mis. "0.5"' },
+    { key: 'unitPrice', desc: 'Harga (diisi operator)', number: true, guard: true },
+  ],
 })
 
-// ---- Damage / Survey Report (estimate per item → 0; items skeleton) ----
+// ---- Damage / Survey Report (temuan = faktual; estimasi biaya = uang → guard) ----
 export const extractDamage = makeMaritimeExtractor({
   toolName: 'isi_damage',
   docDesc: 'Damage / Survey Report',
@@ -382,10 +503,17 @@ export const extractDamage = makeMaritimeExtractor({
     { key: 'attendedBy', desc: 'Pihak yang hadir' },
   ],
   listKey: 'items',
-  listSkeleton: [{ location: '', description: '', cause: '', severity: '', estimate: 0 }],
+  listDesc: 'Daftar temuan kerusakan (lokasi, uraian, sebab, tingkat) yang disebut pengguna.',
+  listColumns: [
+    { key: 'location', desc: 'Lokasi kerusakan' },
+    { key: 'description', desc: 'Uraian kerusakan' },
+    { key: 'cause', desc: 'Dugaan sebab' },
+    { key: 'severity', desc: 'Tingkat (ringan/sedang/berat)' },
+    { key: 'estimate', desc: 'Estimasi biaya (diisi operator)', number: true, guard: true },
+  ],
 })
 
-// ---- Ullage Report (densitas → 0; tanks skeleton) ----
+// ---- Ullage Report (ullage/suhu = faktual; volume & densitas = hasil hitung → guard) ----
 export const extractUllage = makeMaritimeExtractor({
   toolName: 'isi_ullage',
   docDesc: 'Ullage Report',
@@ -401,6 +529,12 @@ export const extractUllage = makeMaritimeExtractor({
     { key: 'condition', desc: 'Kondisi (before/after loading, on arrival)' },
   ],
   listKey: 'tanks',
-  listSkeleton: [{ tank: '', ullage: '', tempC: '', volumeM3: 0 }],
+  listDesc: 'Daftar tangki dengan pembacaan ullage & suhu yang disebut pengguna.',
+  listColumns: [
+    { key: 'tank', desc: 'Nama/nomor tangki' },
+    { key: 'ullage', desc: 'Pembacaan ullage (cm/m)' },
+    { key: 'tempC', desc: 'Suhu °C' },
+    { key: 'volumeM3', desc: 'Volume m³ (dihitung mesin)', number: true, guard: true },
+  ],
   overrides: { densityKgL: 0 },
 })
