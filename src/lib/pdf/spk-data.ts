@@ -43,7 +43,7 @@ export type SpkData = {
 // nama perusahaan yang ter-hardcode di template.
 export function spkIntro(d: SpkData, mainAgent: string): string {
   return (
-    `Dengan hormat, sehubungan dengan kegiatan keagenan kapal di pelabuhan muat, dengan ini ${mainAgent} ` +
+    `Dengan hormat, sehubungan dengan kegiatan keagenan kapal di pelabuhan, dengan ini ${mainAgent} ` +
     `selaku Main Agent menunjuk ${d.toCompany} sebagai ${d.toRole} untuk menangani pelayanan keagenan ` +
     `kapal berikut:`
   )

@@ -29,6 +29,7 @@ export const DOC_META: Record<string, { label: string; edit: string; api: string
   PURCHASE_ORDER: { label: 'PO', edit: '/finance/po/baru', api: 'po' },
   BDN: { label: 'BDN', edit: '/finance/bdn/baru', api: 'bdn' },
   STATEMENT_OF_ACCOUNT: { label: 'SOA', edit: '/finance/soa/baru', api: 'soa' },
+  SPK: { label: 'SPK', edit: '/finance/spk/baru', api: 'spk' },
   NOR: { label: 'NOR', edit: '/dokumen/new/NOR', api: 'nor' },
   SOF: { label: 'SOF', edit: '/dokumen/new/SOF', api: 'sof' },
   ARRIVAL_REPORT: { label: 'Arrival Report', edit: '/dokumen/new/ARRIVAL_REPORT', api: 'arrival-report' },
