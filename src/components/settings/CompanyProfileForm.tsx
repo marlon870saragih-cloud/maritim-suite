@@ -1,15 +1,16 @@
 'use client'
 
 /* eslint-disable @next/next/no-img-element */
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Loader2, Check, Building2, Lock } from 'lucide-react'
+import { Loader2, Check, Building2, Lock, Upload, Trash2 } from 'lucide-react'
 import { useT, type Lang } from '@/lib/i18n'
 
 const STR: Record<Lang, Record<string, string>> = {
   id: {
     errNameReq: 'Nama perusahaan wajib diisi.', errSave: 'Gagal menyimpan.', errConn: 'Gagal terhubung ke server.',
-    logoAlt: 'Logo perusahaan', logoTitle: 'Logo perusahaan', logoActive: 'Logo aktif — muncul di kop semua dokumen.', logoNone: 'Belum ada logo.', logoChange: 'Ganti logo akan ditambahkan menyusul.',
+    logoAlt: 'Logo perusahaan', logoTitle: 'Logo perusahaan', logoActive: 'Logo aktif — muncul di kop semua dokumen.', logoNone: 'Belum ada logo.',
+    logoUpload: 'Unggah / ganti logo', logoHint: 'PNG transparan disarankan · maks ~2 MB · otomatis diperkecil.', logoRemove: 'Hapus logo', logoErrType: 'File harus berupa gambar.', logoReady: 'Logo baru siap — tekan Simpan Perubahan.',
     fCompanyName: 'Nama Perusahaan', fTagline: 'Tagline', fAddress: 'Alamat', fPhone: 'Telepon',
     nameLocked: 'Terkunci sesuai pendaftaran — tak bisa diubah demi mencegah manipulasi identitas dokumen. Hubungi admin bila perlu ganti.',
     secBank: 'Rekening Bank', fBankName: 'Nama Bank', fBankAcc: 'No. Rekening', fBankHolder: 'Atas Nama', fSwift: 'SWIFT (opsional)',
@@ -20,7 +21,8 @@ const STR: Record<Lang, Record<string, string>> = {
   },
   en: {
     errNameReq: 'Company name is required.', errSave: 'Failed to save.', errConn: 'Failed to connect to server.',
-    logoAlt: 'Company logo', logoTitle: 'Company logo', logoActive: 'Logo active — appears on every document letterhead.', logoNone: 'No logo yet.', logoChange: 'Logo replacement coming soon.',
+    logoAlt: 'Company logo', logoTitle: 'Company logo', logoActive: 'Logo active — appears on every document letterhead.', logoNone: 'No logo yet.',
+    logoUpload: 'Upload / replace logo', logoHint: 'Transparent PNG recommended · max ~2 MB · auto-resized.', logoRemove: 'Remove logo', logoErrType: 'File must be an image.', logoReady: 'New logo ready — press Save changes.',
     fCompanyName: 'Company Name', fTagline: 'Tagline', fAddress: 'Address', fPhone: 'Phone',
     nameLocked: 'Locked to your registration — cannot be changed, to prevent tampering with document identity. Contact admin if a change is needed.',
     secBank: 'Bank Account', fBankName: 'Bank Name', fBankAcc: 'Account No.', fBankHolder: 'Account Holder', fSwift: 'SWIFT (optional)',
@@ -60,12 +62,65 @@ export function CompanyProfileForm({ initial }: { initial: CompanyProfile }) {
   const router = useRouter()
   const { logoUrl, ...initialFields } = initial
   const [form, setForm] = useState<Record<string, string>>(initialFields)
+  const [logo, setLogo] = useState<string | null>(logoUrl)
+  const [logoChanged, setLogoChanged] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   const set = (k: string, v: string) =>
     setForm((p) => ({ ...p, [k]: v }))
+
+  // Perkecil logo di sisi klien (maks 480px, PNG transparan) sebelum simpan —
+  // menjaga base64 tetap kecil di DB & kop dokumen. SVG dibiarkan apa adanya.
+  function onPickLogo(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = '' // izinkan pilih file yang sama lagi
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setError(t.logoErrType)
+      return
+    }
+    setError('')
+    const reader = new FileReader()
+    reader.onload = () => {
+      const src = String(reader.result)
+      if (file.type === 'image/svg+xml') {
+        setLogo(src)
+        setLogoChanged(true)
+        setSaved(false)
+        return
+      }
+      const img = new Image()
+      img.onload = () => {
+        const max = 480
+        const scale = Math.min(1, max / Math.max(img.width, img.height))
+        const w = Math.round(img.width * scale)
+        const h = Math.round(img.height * scale)
+        const canvas = document.createElement('canvas')
+        canvas.width = w
+        canvas.height = h
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          setLogo(src)
+        } else {
+          ctx.drawImage(img, 0, 0, w, h)
+          setLogo(canvas.toDataURL('image/png'))
+        }
+        setLogoChanged(true)
+        setSaved(false)
+      }
+      img.src = src
+    }
+    reader.readAsDataURL(file)
+  }
+
+  function removeLogo() {
+    setLogo(null)
+    setLogoChanged(true)
+    setSaved(false)
+  }
 
   function onChange(k: string) {
     return (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -82,15 +137,19 @@ export function CompanyProfileForm({ initial }: { initial: CompanyProfile }) {
     setBusy(true)
     setError('')
     try {
+      // logoUrl hanya disertakan bila berubah (null = hapus) — agar simpan teks
+      // biasa tidak menimpa/menghapus logo yang sudah ada.
+      const payload = logoChanged ? { ...form, logoUrl: logo } : form
       const res = await fetch('/api/tenant', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       })
       if (!res.ok) {
         setError((await res.text()) || t.errSave)
         return
       }
+      setLogoChanged(false)
       setSaved(true)
       router.refresh()
     } catch {
@@ -105,17 +164,45 @@ export function CompanyProfileForm({ initial }: { initial: CompanyProfile }) {
       {/* Logo + identitas */}
       <div className="flex items-center gap-4 pb-5 border-b border-card-border/60">
         <div className="w-16 h-16 rounded-lg bg-surface border border-border-muted flex items-center justify-center overflow-hidden flex-shrink-0">
-          {logoUrl ? (
-            <img src={logoUrl} alt={t.logoAlt} className="max-w-full max-h-full object-contain" />
+          {logo ? (
+            <img src={logo} alt={t.logoAlt} className="max-w-full max-h-full object-contain" />
           ) : (
             <Building2 className="w-7 h-7 text-text-secondary" />
           )}
         </div>
-        <div>
+        <div className="min-w-0">
           <p className="text-text-primary text-sm font-medium">{t.logoTitle}</p>
           <p className="text-text-secondary text-xs mt-0.5">
-            {logoUrl ? t.logoActive : t.logoNone} {t.logoChange}
+            {logoChanged ? t.logoReady : logo ? t.logoActive : t.logoNone}
           </p>
+          <div className="flex items-center gap-2 mt-2">
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/svg+xml"
+              onChange={onPickLogo}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="inline-flex items-center gap-1.5 rounded border border-border-muted px-3 py-1.5 text-xs font-medium text-text-secondary hover:text-text-primary hover:border-accent-blue/60 hover:bg-surface-tertiary transition-colors"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              {t.logoUpload}
+            </button>
+            {logo && (
+              <button
+                type="button"
+                onClick={removeLogo}
+                className="inline-flex items-center gap-1.5 rounded border border-transparent px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:text-status-danger transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                {t.logoRemove}
+              </button>
+            )}
+          </div>
+          <p className="text-text-secondary/70 text-[11px] mt-1.5">{t.logoHint}</p>
         </div>
       </div>
 

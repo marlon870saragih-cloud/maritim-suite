@@ -13,7 +13,22 @@ export async function PATCH(req: Request) {
 
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>
   // companyName sengaja diabaikan di sini (terkunci sesuai pendaftaran → anti-manipulasi).
-  const data = tenantProfileFields(body)
+  const data: ReturnType<typeof tenantProfileFields> & { logoUrl?: string | null } =
+    tenantProfileFields(body)
+
+  // logoUrl HANYA disentuh bila dikirim (simpan teks biasa tak mengirimnya → logo aman).
+  // Terima data URL gambar; kirim null eksplisit untuk menghapus.
+  if (typeof body.logoUrl === 'string') {
+    if (!/^data:image\/(png|jpeg|jpg|webp|svg\+xml);/.test(body.logoUrl)) {
+      return new Response('Format logo tidak didukung', { status: 415 })
+    }
+    if (body.logoUrl.length > 2_500_000) {
+      return new Response('Logo terlalu besar (maks ~1,8 MB)', { status: 413 })
+    }
+    data.logoUrl = body.logoUrl
+  } else if (body.logoUrl === null) {
+    data.logoUrl = null
+  }
 
   await prisma.tenant.update({
     where: { id: session.user.tenantId },
