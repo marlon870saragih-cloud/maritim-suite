@@ -87,6 +87,9 @@ export default function AsistenPage() {
     // ikut dipertimbangkan saat AI mendraf ulang.
     const priorUser = messages.filter((m): m is Extract<Msg, { role: 'user' }> => m.role === 'user').map((m) => m.text)
     const combined = [...priorUser, instruction].join('. ')
+    // Bila AI sudah pernah bertanya di thread ini, jangan izinkan bertanya lagi →
+    // dia wajib memilih dokumen (stop loop "ditanya terus").
+    const allowClarify = !messages.some((m) => m.role === 'ai' && m.kind === 'clarify')
 
     setInput('')
     setMessages((p) => [...p, mk({ role: 'user', text: instruction }), mk({ role: 'ai', kind: 'typing' })])
@@ -95,7 +98,7 @@ export default function AsistenPage() {
       const res = await fetch('/api/ai/draft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ instruction: combined }),
+        body: JSON.stringify({ instruction: combined, allowClarify }),
       })
       const strip = (p: Msg[]) => p.filter((m) => m.role !== 'ai' || m.kind !== 'typing')
       if (!res.ok) {

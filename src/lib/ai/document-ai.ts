@@ -86,22 +86,29 @@ const CLARIFY_TOOL: ToolDef = {
 
 type Classification = { docType: string } | { clarify: string } | null
 
-/** Tentukan jenis dokumen, atau ajukan pertanyaan bila ambigu. */
-export async function classifyDocument(instruction: string): Promise<Classification> {
+/**
+ * Tentukan jenis dokumen. BIAS ke bertindak: hampir selalu pilih dokumen yang
+ * paling mungkin & langsung draf (detail yang kurang boleh kosong, diisi di form).
+ * Klarifikasi hanya untuk jenis dokumen yang benar-benar tak terbaca — dan bila
+ * `allowClarify=false`, WAJIB memilih (mencegah loop tanya-jawab berputar).
+ */
+export async function classifyDocument(instruction: string, allowClarify = true): Promise<Classification> {
   const list = CATALOG.map((c) => `- ${c.docType}: ${DOC_META[c.docType]?.label ?? c.docType} → untuk ${c.when}`).join('\n')
+  const guidance = allowClarify
+    ? `Panggil pilih_dokumen dengan jenis yang PALING MUNGKIN dari petunjuk yang ada — ini pilihan default. ` +
+      `JANGAN menanyakan detail seperti tanggal, nomor dokumen, angka, atau nama pihak; itu boleh dikosongkan dan dilengkapi nanti di form. ` +
+      `Panggil minta_klarifikasi HANYA bila benar-benar tak ada petunjuk jenis dokumen sama sekali (mis. sapaan kosong).`
+    : `WAJIB panggil pilih_dokumen dengan jenis yang paling mungkin. Jangan minta klarifikasi lagi — tebak yang paling masuk akal.`
   const resp = await chatCompletion({
     messages: [
       {
         role: 'system',
-        content:
-          `Tentukan satu jenis dokumen keagenan kapal yang dibutuhkan pengguna dari daftar berikut:\n${list}\n` +
-          `Jika jelas, panggil pilih_dokumen dengan kode yang paling sesuai. ` +
-          `Jika tidak jelas, panggil minta_klarifikasi dengan satu pertanyaan singkat. Jangan menebak bila ambigu.`,
+        content: `Tentukan satu jenis dokumen keagenan kapal yang dibutuhkan pengguna dari daftar berikut:\n${list}\n${guidance}`,
       },
       { role: 'user', content: instruction },
     ],
-    tools: [CLASSIFY_TOOL, CLARIFY_TOOL],
-    toolChoice: 'required',
+    tools: allowClarify ? [CLASSIFY_TOOL, CLARIFY_TOOL] : [CLASSIFY_TOOL],
+    toolChoice: allowClarify ? 'required' : { type: 'function', function: { name: 'pilih_dokumen' } },
   })
   const call = firstToolCall(resp)
   if (!call) return null
@@ -116,8 +123,8 @@ export type DraftResult =
   | { kind: 'clarify'; question: string }
 
 /** Klasifikasi + isi field, atau kembalikan pertanyaan klarifikasi. null bila gagal total. */
-export async function draftDocument(instruction: string): Promise<DraftResult | null> {
-  const c = await classifyDocument(instruction)
+export async function draftDocument(instruction: string, allowClarify = true): Promise<DraftResult | null> {
+  const c = await classifyDocument(instruction, allowClarify)
   if (!c) return null
   if ('clarify' in c) return { kind: 'clarify', question: c.clarify }
   const entry = CATALOG.find((e) => e.docType === c.docType)

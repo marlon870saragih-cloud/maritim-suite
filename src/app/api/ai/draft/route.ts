@@ -12,12 +12,15 @@ export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return new Response('Unauthorized', { status: 401 })
 
-  const body = (await req.json().catch(() => ({}))) as { instruction?: string }
+  const body = (await req.json().catch(() => ({}))) as { instruction?: string; allowClarify?: boolean }
   const instruction = (body.instruction || '').trim()
   if (!instruction) return new Response('Instruksi kosong', { status: 400 })
+  // allowClarify=false (dikirim klien setelah AI sudah bertanya sekali) → AI wajib memilih
+  // dokumen, tak boleh bertanya lagi → mencegah loop tanya-jawab berputar.
+  const allowClarify = body.allowClarify !== false
 
   try {
-    const result = await draftDocument(instruction)
+    const result = await draftDocument(instruction, allowClarify)
     if (!result) {
       return new Response('Belum bisa menentukan jenis dokumennya. Coba perjelas (mis. sebut "SPK" atau "invoice").', {
         status: 422,
