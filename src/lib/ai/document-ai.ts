@@ -17,7 +17,7 @@ import {
   extractNor, extractReport, extractAppointment, extractProtest, extractLoi,
   extractSof, extractCrewList, extractGenDec, extractShipStores, extractCargoDecl,
   extractNoteProtest, extractCrewChange, extractPcSummary, extractTimeSheet,
-  extractBunkerReq, extractDamage, extractUllage,
+  extractBunkerReq, extractDamage, extractUllage, extractBl,
 } from './maritime-extract'
 
 type Extractor = (instruction: string) => Promise<object>
@@ -48,7 +48,8 @@ const CATALOG: CatalogEntry[] = [
   { docType: 'FAL_5', when: 'daftar awak kapal (Crew List / FAL 5)', extract: extractCrewList },
   { docType: 'FAL_1', when: 'deklarasi umum kedatangan/keberangkatan (General Declaration / FAL 1)', extract: extractGenDec },
   { docType: 'FAL_3', when: "deklarasi perbekalan kapal (Ship's Stores / FAL 3)", extract: extractShipStores },
-  { docType: 'FAL_2', when: 'deklarasi muatan (Cargo Declaration / FAL 2)', extract: extractCargoDecl },
+  { docType: 'FAL_2', when: 'deklarasi muatan untuk clearance/bea cukai (Cargo Declaration / FAL 2)', extract: extractCargoDecl },
+  { docType: 'BILL_OF_LADING', when: 'menerbitkan Bill of Lading (B/L) atas muatan yang dimuat — dokumen kepemilikan kargo curah (CPO/batu bara/BBM), bukan manifes bea cukai', extract: extractBl },
   { docType: 'NOTE_OF_PROTEST', when: 'protes laut nakhoda atas cuaca buruk/peril of the sea (Sea Protest)', extract: extractNoteProtest },
   { docType: 'CREW_CHANGE_NOTICE', when: 'pemberitahuan pergantian awak (sign on/off) ke Imigrasi/Syahbandar', extract: extractCrewChange },
   { docType: 'PORT_CALL_SUMMARY', when: 'rekap satu port call (partikular, dokumen, ringkasan)', extract: extractPcSummary },

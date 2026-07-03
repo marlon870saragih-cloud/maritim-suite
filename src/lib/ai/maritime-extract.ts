@@ -538,3 +538,34 @@ export const extractUllage = makeMaritimeExtractor({
   ],
   overrides: { densityKgL: 0 },
 })
+
+// ---- Bill of Lading (CONGENBILL 2022) — semua teks/faktual. Field dgn default
+// bagus (consignee "TO ORDER", freightTerms, originalCount/copyCount, signedFor,
+// signatoryName) TIDAK didaftar → tetap pakai default form. ----
+export const extractBl = makeMaritimeExtractor({
+  toolName: 'isi_bl',
+  docDesc: 'Bill of Lading (B/L) muatan curah',
+  fields: [
+    { key: 'docNumber', desc: 'No. B/L bila disebut' },
+    { key: 'reference', desc: "Referensi/shipper's ref bila disebut" },
+    { key: 'shipper', desc: 'Shipper — nama & alamat pengirim muatan' },
+    { key: 'notifyParty', desc: 'Notify Party — pihak yang dikabari saat kapal tiba' },
+    { key: 'carrier', desc: 'Carrier/pengangkut (owner kapal) yang BL diterbitkan atas namanya' },
+    { key: 'vesselName', desc: 'Nama kapal' },
+    { key: 'voyageNo', desc: 'No. voyage' },
+    { key: 'flag', desc: 'Bendera' },
+    { key: 'portOfLoading', desc: 'Port of Loading (pelabuhan muat)' },
+    { key: 'portOfDischarge', desc: 'Port of Discharge (pelabuhan bongkar)' },
+    { key: 'placeOfReceipt', desc: 'Place of Receipt bila multimoda' },
+    { key: 'placeOfDelivery', desc: 'Place of Delivery bila multimoda' },
+    { key: 'marksNumbers', desc: 'Marks & Numbers muatan (mis. N/M untuk curah)' },
+    { key: 'packages', desc: 'Jumlah & jenis kemasan, mis. "In Bulk"' },
+    { key: 'description', desc: 'Uraian barang, mis. "Steam Coal in Bulk" / "Crude Palm Oil"' },
+    { key: 'grossWeight', desc: 'Berat kotor sebagai teks faktual, mis. "5,000 MT"' },
+    { key: 'measurement', desc: 'Volume m³ bila disebut' },
+    { key: 'charterPartyDate', desc: 'Tanggal Charter-Party bila disebut' },
+    { key: 'shippedOnBoardDate', desc: 'Tanggal shipped on board' },
+    { key: 'placeOfIssue', desc: 'Tempat penerbitan BL' },
+    { key: 'dateOfIssue', desc: 'Tanggal penerbitan BL' },
+  ],
+})
