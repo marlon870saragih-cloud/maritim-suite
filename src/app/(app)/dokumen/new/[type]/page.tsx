@@ -15,6 +15,7 @@ import { LoiForm } from '@/components/dokumen/LoiForm'
 import { TimeSheetForm } from '@/components/dokumen/TimeSheetForm'
 import { BunkerReqForm } from '@/components/dokumen/BunkerReqForm'
 import { NoteProtestForm } from '@/components/dokumen/NoteProtestForm'
+import { BlForm } from '@/components/dokumen/BlForm'
 import { DamageForm } from '@/components/dokumen/DamageForm'
 import { UllageForm } from '@/components/dokumen/UllageForm'
 import { SimpleDocForm } from '@/components/dokumen/SimpleDocForm'
@@ -38,6 +39,7 @@ export default function NewDocumentPage({ params }: { params: { type: string } }
   if (params.type === 'TIME_SHEET') return <TimeSheetForm />
   if (params.type === 'BUNKER_REQUISITION') return <BunkerReqForm />
   if (params.type === 'NOTE_OF_PROTEST') return <NoteProtestForm />
+  if (params.type === 'BILL_OF_LADING') return <BlForm />
   if (params.type === 'DAMAGE_REPORT') return <DamageForm />
   if (params.type === 'ULLAGE_REPORT') return <UllageForm />
 

@@ -248,6 +248,7 @@ enum DocType {
   CREDIT_NOTE
   OFFICIAL_RECEIPT
   STATEMENT_OF_ACCOUNT
+  BILL_OF_LADING
 }
 
 enum DocStatus {

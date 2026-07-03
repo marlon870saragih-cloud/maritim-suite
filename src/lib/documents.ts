@@ -48,6 +48,7 @@ export const DOC_META: Record<string, { label: string; edit: string; api: string
   FAL_3: { label: "Ship's Stores", edit: '/dokumen/new/FAL_3', api: 'ship-stores' },
   FAL_2: { label: 'Cargo Declaration', edit: '/dokumen/new/FAL_2', api: 'cargo-decl' },
   AGENCY_APPOINTMENT: { label: 'Agency Appointment', edit: '/dokumen/new/AGENCY_APPOINTMENT', api: 'appointment' },
+  BILL_OF_LADING: { label: 'Bill of Lading', edit: '/dokumen/new/BILL_OF_LADING', api: 'bl' },
   // Dokumen generik (SimpleDocForm) — api lewat /api/documents/simple/[type].
   SIB: { label: 'Port Clearance (SIB)', edit: '/dokumen/new/SIB', api: 'simple/SIB' },
   CREW_SIGN_ON: { label: 'Crew Sign-On', edit: '/dokumen/new/CREW_SIGN_ON', api: 'simple/CREW_SIGN_ON' },

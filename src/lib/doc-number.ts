@@ -12,6 +12,7 @@ const PREFIX: Record<string, string> = {
   CREW_CHANGE_NOTICE: 'CCN', PORT_CALL_SUMMARY: 'PCS', LETTER_OF_INDEMNITY: 'LOI',
   TIME_SHEET: 'TS', BUNKER_REQUISITION: 'BRQ',
   FAL_5: 'CL', FAL_1: 'GD', FAL_3: 'SS', FAL_2: 'CD', AGENCY_APPOINTMENT: 'AA',
+  BILL_OF_LADING: 'BL',
 }
 
 /** Perlu nomor otomatis bila kosong atau placeholder (tak mengandung satu angka pun). */

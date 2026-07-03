@@ -78,6 +78,7 @@ const DOC_LINKS = [
   { path: '/dokumen/new/BUNKER_REQUISITION', label: 'Bunker Requisition' },
   { path: '/finance/bdn/baru', label: 'BDN — Bunker delivery note' },
   { path: '/dokumen/new/FAL_1', label: 'General Declaration — FAL 1' },
+  { path: '/dokumen/new/BILL_OF_LADING', label: 'Bill of Lading (CONGENBILL 2022)' },
   { path: '/dokumen/new/NOR', label: 'NOR — Notice of Readiness' },
   { path: '/dokumen/new/SOF', label: 'SOF — Statement of Facts' },
   { path: '/dokumen/new/ARRIVAL_REPORT', label: 'Arrival Report' },

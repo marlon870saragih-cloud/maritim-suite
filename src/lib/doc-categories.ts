@@ -63,6 +63,7 @@ export const DOC_CATEGORIES: DocCategory[] = [
     badge: 'bg-accent-teal/10 text-accent-teal',
     hoverBorder: 'hover:border-accent-teal/50',
     docs: [
+      D('BILL_OF_LADING', 'Bill of Lading', 'Bill of Lading', 'BL kargo curah (CONGENBILL 2022) — original & copy.', 'Bulk cargo BL (CONGENBILL 2022) — original & copy.'),
       D('NOR', 'Notice of Readiness', 'Notice of Readiness', 'Pernyataan kesiapan kapal muat/bongkar.', 'Vessel readiness to load/discharge.'),
       D('SOF', 'Statement of Facts', 'Statement of Facts', 'Kronologi kejadian selama port call.', 'Chronology of port-call events.'),
       D('TIME_SHEET', 'Time Sheet', 'Time Sheet', 'Rekap waktu operasi & laytime.', 'Operation time & laytime recap.'),
