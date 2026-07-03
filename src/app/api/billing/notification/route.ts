@@ -24,7 +24,9 @@ export async function POST(req: Request) {
   const fraudStatus = String(n.fraud_status ?? '')
 
   const payment = await prisma.payment.findUnique({ where: { orderId } })
-  if (!payment) return new Response('Order tidak ditemukan', { status: 404 })
+  // Notifikasi sah (tanda tangan valid) tapi order tak ada di DB kita — mis. tombol
+  // "Test notification URL" di dashboard Midtrans. Akui dgn 200 agar Midtrans tak retry.
+  if (!payment) return Response.json({ ok: true, ignored: true })
 
   // Idempoten: kalau sudah PAID, cukup balas 200.
   if (payment.status === 'PAID') return Response.json({ ok: true })
