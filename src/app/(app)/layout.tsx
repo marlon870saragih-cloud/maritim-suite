@@ -1,9 +1,11 @@
 import type { ReactNode } from 'react'
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { AppShell } from '@/components/layout/AppShell'
+import { tenantAccess } from '@/lib/billing/access'
 
 const ROLE_LABEL: Record<string, string> = {
   ADMIN: 'Administrator',
@@ -13,9 +15,9 @@ const ROLE_LABEL: Record<string, string> = {
 }
 const PLAN_LABEL: Record<string, string> = {
   TRIAL: 'Trial',
-  STARTER: 'Starter',
-  PRO: 'Pro',
-  FULL_SUITE: 'Full Suite',
+  STARTER: '2 Modul',
+  PRO: '3 Modul',
+  FULL_SUITE: 'Semua Modul',
 }
 
 function initialsOf(name: string) {
@@ -27,23 +29,22 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
 
-  const tenant = session.user.tenant
+  // Tenant dibaca SEGAR dari DB (sesi JWT bisa basi setelah pembayaran/perpanjangan).
+  const [tenant, vesselCount, principalCount] = await Promise.all([
+    prisma.tenant.findUnique({ where: { id: session.user.tenantId } }),
+    prisma.vessel.count({ where: { tenantId: session.user.tenantId } }),
+    prisma.principal.count({ where: { tenantId: session.user.tenantId } }),
+  ])
+
   const modules =
     tenant?.modulesEnabled && tenant.modulesEnabled.length > 0
       ? tenant.modulesEnabled
       : ['finance', 'dokumen', 'portcall']
 
-  const [vesselCount, principalCount] = await Promise.all([
-    prisma.vessel.count({ where: { tenantId: session.user.tenantId } }),
-    prisma.principal.count({ where: { tenantId: session.user.tenantId } }),
-  ])
-
   const plan = tenant?.plan ?? 'TRIAL'
-  let trialDaysLeft: number | null = null
-  if (plan === 'TRIAL' && tenant?.trialEndsAt) {
-    const end = new Date(tenant.trialEndsAt).getTime()
-    if (!Number.isNaN(end)) trialDaysLeft = Math.max(0, Math.ceil((end - Date.now()) / 86_400_000))
-  }
+  const access = tenantAccess(tenant)
+  const trialDaysLeft =
+    plan === 'TRIAL' && access.daysLeft !== null ? Math.max(0, access.daysLeft) : null
 
   const name = session.user.name ?? 'Pengguna'
   const user = {
@@ -57,12 +58,31 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     companyName: tenant?.companyName ?? 'Maritime Suite',
   }
 
+  const lockedBanner = access.locked ? (
+    <div className="bg-status-danger/12 border-b border-status-danger/30 px-margin-page py-2.5">
+      <div className="max-w-[1600px] mx-auto flex items-center justify-between flex-wrap gap-2">
+        <p className="text-sm text-status-danger">
+          {access.kind === 'trial'
+            ? 'Masa uji coba telah berakhir. Mode baca-saja: dokumen lama tetap bisa dibuka & diunduh, tapi pembuatan dokumen baru dinonaktifkan.'
+            : 'Langganan telah berakhir. Mode baca-saja: dokumen lama tetap bisa dibuka & diunduh, tapi pembuatan dokumen baru dinonaktifkan.'}
+        </p>
+        <Link
+          href="/settings"
+          className="text-sm font-medium text-white bg-status-danger/80 hover:bg-status-danger px-4 py-1.5 rounded-md transition-colors whitespace-nowrap"
+        >
+          Perpanjang sekarang
+        </Link>
+      </div>
+    </div>
+  ) : null
+
   return (
     <AppShell
       modulesEnabled={modules}
       user={user}
       vesselCount={vesselCount}
       principalCount={principalCount}
+      banner={lockedBanner}
     >
       {children}
     </AppShell>

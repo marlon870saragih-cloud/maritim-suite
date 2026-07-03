@@ -42,7 +42,7 @@ export async function POST(req: Request) {
   }
 
   const hashed = await bcrypt.hash(d.password, 10)
-  const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
+  const trialEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
 
   const tenant = await prisma.tenant.create({
     data: {
@@ -57,7 +57,7 @@ export async function POST(req: Request) {
       bankAccount: clean(d.bankAccount),
       bankHolder: clean(d.bankHolder),
       plan: 'TRIAL',
-      // Trial: semua modul aktif selama 14 hari.
+      // Trial: semua modul aktif selama 7 hari.
       modulesEnabled: ['finance', 'dokumen', 'portcall', 'tracker'],
       trialEndsAt,
       users: {

@@ -378,7 +378,7 @@ function Field({
 const STR = {
   id: {
     haveAccount: 'Sudah punya akun?', signIn: 'Masuk',
-    eyebrow: 'Uji coba gratis 14 hari',
+    eyebrow: 'Uji coba gratis 7 hari',
     h1: 'Siapkan perusahaan Anda',
     introPre: 'Data ini menjadi', introStrong: 'kop di setiap dokumen & laporan', introPost: 'yang Anda terbitkan. Isi sekali, dipakai selamanya — bisa diubah nanti di Pengaturan.',
     sect1: 'Akun Anda', sect1sub: 'Untuk masuk ke aplikasi',
@@ -400,7 +400,7 @@ const STR = {
     errEmail: 'Format email tidak valid', errPw: 'Kata sandi minimal 6 karakter',
     errCreate: 'Gagal membuat akun. Coba lagi.',
     submit: 'Buat akun & mulai uji coba', submitting: 'Membuat akun…',
-    fineprint: 'Dengan mendaftar, Anda mendapat akses penuh semua modul selama 14 hari. Tanpa kartu kredit.',
+    fineprint: 'Dengan mendaftar, Anda mendapat akses penuh semua modul selama 7 hari. Tanpa kartu kredit.',
     previewLabel: 'Pratinjau kop dokumen',
     paperAddrPh: 'Alamat perusahaan akan tampil di sini', paperPhone: 'Telp',
     paperPayK: 'Pembayaran ke rekening', paperBankPh: 'Nama Bank', paperAccPh: 'No. Rekening', paperHolder: 'a.n.',
@@ -408,7 +408,7 @@ const STR = {
   },
   en: {
     haveAccount: 'Already have an account?', signIn: 'Sign in',
-    eyebrow: 'Free 14-day trial',
+    eyebrow: 'Free 7-day trial',
     h1: 'Set up your company',
     introPre: 'This becomes the', introStrong: 'letterhead on every document & report', introPost: 'you issue. Fill it once, use it forever — editable later in Settings.',
     sect1: 'Your account', sect1sub: 'To sign in to the app',
@@ -430,7 +430,7 @@ const STR = {
     errEmail: 'Invalid email format', errPw: 'Password needs at least 6 characters',
     errCreate: 'Could not create account. Please try again.',
     submit: 'Create account & start trial', submitting: 'Creating account…',
-    fineprint: 'By registering you get full access to all modules for 14 days. No credit card required.',
+    fineprint: 'By registering you get full access to all modules for 7 days. No credit card required.',
     previewLabel: 'Letterhead preview',
     paperAddrPh: 'Your company address appears here', paperPhone: 'Tel',
     paperPayK: 'Payment to account', paperBankPh: 'Bank name', paperAccPh: 'Account no.', paperHolder: 'a/c',

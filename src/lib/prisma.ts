@@ -1,5 +1,6 @@
 import { PrismaClient, type DocType } from '@prisma/client'
 import { needsAutoNumber, monthWindow, formatDocNumber } from './doc-number'
+import { tenantAccess, SUBSCRIPTION_LOCKED } from './billing/access'
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
@@ -23,6 +24,15 @@ export const prisma = base.$extends({
         const data = args.data as
           | { docNumber?: string; tenantId?: string; docType?: string; lineItems?: unknown }
           | undefined
+        // Gating read-only: tenant dgn trial/langganan habis TIDAK boleh membuat
+        // dokumen baru (lihat/unduh dokumen lama tetap boleh — itu jalur GET/render).
+        if (data?.tenantId) {
+          const t = await base.tenant.findUnique({
+            where: { id: data.tenantId },
+            select: { plan: true, trialEndsAt: true, subscriptionEndsAt: true },
+          })
+          if (tenantAccess(t).locked) throw new Error(SUBSCRIPTION_LOCKED)
+        }
         if (data && data.tenantId && data.docType && needsAutoNumber(data.docNumber)) {
           const { year, mm, start, end } = monthWindow()
           const count = await base.maritimeDocument.count({

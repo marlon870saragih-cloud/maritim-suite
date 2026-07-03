@@ -39,6 +39,27 @@ model Tenant {
   principals Principal[]
   portCalls  PortCall[]
   documents  MaritimeDocument[]
+  payments   Payment[]
+}
+
+model Payment {
+  id        String        @id @default(cuid())
+  orderId   String        @unique
+  tenantId  String
+  tenant    Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  planId    String // 'm1' | 'm2' | 'all' (lihat lib/billing/plans.ts)
+  plan      Plan // enum hasil pemetaan planId
+  amount    Int // IDR, tanpa desimal — sama dengan gross_amount ke Midtrans
+  modules   String[] // modul yang dipilih untuk paket ini
+  status    PaymentStatus @default(PENDING)
+  snapToken String?
+  paidAt    DateTime?
+  raw       Json? // payload notifikasi terakhir dari Midtrans (audit)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([tenantId])
+  @@index([status])
 }
 
 model User {
@@ -168,6 +189,13 @@ enum Plan {
   STARTER
   PRO
   FULL_SUITE
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  EXPIRED
 }
 
 enum PortCallStatus {
