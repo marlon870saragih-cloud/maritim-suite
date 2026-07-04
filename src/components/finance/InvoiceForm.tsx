@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { createLinkQuery } from '@/lib/link-params'
+import { PortCallPicker } from './PortCallPicker'
 import Link from 'next/link'
 import { ArrowLeft, Plus, Trash2, Download, Eye, Loader2, Save, Check } from 'lucide-react'
 import { useT, type Lang } from '@/lib/i18n'
@@ -18,7 +19,8 @@ import {
 const STR: Record<Lang, Record<string, string>> = {
   id: {
     back: 'Kembali ke Finance', kicker: 'Generator Keuangan · Invoice', h1: 'Buat Invoice',
-    desc: 'Tagihan jasa keagenan dengan PPN 11%. Form terisi data contoh — ubah lalu unduh.',
+    desc: 'Tagihan jasa keagenan dengan PPN 11%. Pilih Port Call untuk mengisi penerima tagihan & kapal otomatis.',
+    warnNoBillTo: 'Penerima tagihan ("Ditagihkan Kepada") masih kosong. Invoice tanpa penerima tidak valid.\n\nLanjut buat invoice tanpa penerima?',
     fromPortCall: 'Data principal & kapal terisi otomatis dari Port Call. Tinggal isi baris tagihan di bawah.',
     fromSrcPre: 'Baris tagihan & bill-to disalin dari', fromSrcPost: '(subtotal per seksi). Periksa, isi nomor invoice, lalu unduh.',
     secDetail: 'Detail Invoice', fNo: 'No. invoice', fDate: 'Tgl invoice', fDue: 'Jatuh tempo', fCurrency: 'Mata uang',
@@ -33,7 +35,8 @@ const STR: Record<Lang, Record<string, string>> = {
   },
   en: {
     back: 'Back to Finance', kicker: 'Finance Generator · Invoice', h1: 'Create Invoice',
-    desc: 'Agency service invoice with 11% VAT. Form is pre-filled with sample data — edit then download.',
+    desc: 'Agency service invoice with 11% VAT. Pick a Port Call to auto-fill the bill-to & vessel.',
+    warnNoBillTo: 'The bill-to party ("Billed To") is empty. An invoice with no recipient is not valid.\n\nCreate the invoice anyway?',
     fromPortCall: 'Principal & vessel details auto-filled from Port Call. Just fill the charge lines below.',
     fromSrcPre: 'Charge lines & bill-to copied from', fromSrcPost: '(subtotal per section). Review, set the invoice number, then download.',
     secDetail: 'Invoice Details', fNo: 'Invoice no.', fDate: 'Invoice date', fDue: 'Due date', fCurrency: 'Currency',
@@ -123,6 +126,7 @@ export function InvoiceForm() {
   const [savedMsg, setSavedMsg] = useState('')
   const [fromPortCall, setFromPortCall] = useState(false)
   const [fromSource, setFromSource] = useState<string | null>(null)
+  const [selectedPortCall, setSelectedPortCall] = useState('')
 
   const numeric: (keyof Head)[] = ['agencyPct', 'vatPct']
   const setF = (k: keyof Head) => (v: string) =>
@@ -142,6 +146,24 @@ export function InvoiceForm() {
   const removeLine = (i: number) => setLines((p) => p.filter((_, j) => j !== i))
   const toggleTaxable = (i: number) =>
     setLines((p) => p.map((l, j) => (j === i ? { ...l, taxable: l.taxable === false } : l)))
+
+  // Prefill bill-to (nama, NPWP, alamat, attn) & vessel dari sebuah Port Call.
+  // Dipakai bersama oleh selector "Pilih Port Call" & param URL ?portcall=.
+  async function applyPortCall(id: string) {
+    setSelectedPortCall(id)
+    if (!id) return
+    try {
+      const r = await fetch(`/api/portcalls/${id}`)
+      if (!r.ok) return
+      const d = (await r.json()) as { invoice?: Partial<Head> } | null
+      if (!d?.invoice) return
+      setHead((h) => ({ ...h, ...d.invoice }))
+      setLines((p) => (p.length ? p : [{ description: '', detail: '', qty: 1, unitPrice: 0 }]))
+      setFromPortCall(true)
+    } catch {
+      /* abaikan — form tetap bisa diisi manual */
+    }
+  }
 
   const data: InvoiceData = useMemo(
     () => ({ ...SAMPLE_INVOICE, ...head, lines }),
@@ -209,14 +231,7 @@ export function InvoiceForm() {
 
     // Prefill bill-to & vessel dari Port Call (invoice baru, hanya isi baris tagihan).
     if (!id && portCallId) {
-      fetch(`/api/portcalls/${portCallId}`)
-        .then((r) => (r.ok ? r.json() : null))
-        .then((d: { invoice?: Partial<Head> } | null) => {
-          if (!d?.invoice) return
-          setHead((h) => ({ ...h, ...d.invoice }))
-          setLines([{ description: '', detail: '', qty: 1, unitPrice: 0 }])
-          setFromPortCall(true)
-        })
+      applyPortCall(portCallId)
       return
     }
 
@@ -269,6 +284,8 @@ export function InvoiceForm() {
   }
 
   async function generate(download: boolean) {
+    // Tagihan tanpa penerima (bill-to) tidak valid — minta konfirmasi dulu.
+    if (!head.billToName.trim() && !window.confirm(t.warnNoBillTo)) return
     setBusy(download ? 'download' : 'preview')
     try {
       const res = await fetch(`/api/documents/invoice${download ? '?download=1' : ''}`, {
@@ -326,6 +343,11 @@ export function InvoiceForm() {
             <div className="rounded-md border border-accent-purple/30 bg-accent-purple/5 px-4 py-2.5 text-xs text-accent-purple">
               {t.fromSrcPre} {fromSource} {t.fromSrcPost}
             </div>
+          )}
+
+          {/* Selector Port Call (jalur menu Finance — auto-fill tanpa lewat Port Call Manager) */}
+          {!savedId && !fromSource && (
+            <PortCallPicker value={selectedPortCall} onSelect={applyPortCall} />
           )}
 
           {/* Detail invoice */}

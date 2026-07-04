@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { createLinkQuery } from '@/lib/link-params'
+import { PortCallPicker } from './PortCallPicker'
 import Link from 'next/link'
 import { ArrowLeft, Plus, Trash2, Download, Eye, Loader2, Save, Check } from 'lucide-react'
 import { useT, useLang, type Lang } from '@/lib/i18n'
@@ -11,6 +12,7 @@ import {
   SAMPLE_FPDA,
   computeTotals,
   sectionSubtotal,
+  lineAmount,
   type EpdaData,
   type EpdaSection,
 } from '@/lib/pdf/epda-data'
@@ -29,6 +31,7 @@ const STR: Record<Lang, Record<string, string>> = {
     lumpMode: 'Mode Lump Sum', lumpHint: '— satu angka total, tanpa rincian seksi A/B/C/D', fLumpDesc: 'Uraian', fLumpAmt: 'Jumlah lump sum',
     lumpNotePre: 'Agency handling', lumpNotePost: 'tetap dihitung di atas jumlah ini. Bila lump sum sudah termasuk agency, set Agency % = 0.',
     thDesc: 'Deskripsi', thQtyBasis: 'Qty / Basis', thRate: 'Rate', thAmount: 'Jumlah',
+    amountAuto: 'Jumlah dihitung otomatis = Qty × Rate',
     phCost: 'Deskripsi biaya', phBasis: 'keterangan (mis. per GT per call)', phQty: 'Qty', phRate: 'Rate', phAmount: 'Jumlah',
     secSummary: 'Ringkasan Biaya', subAll: 'Subtotal (A+B+C+D)', lumpSumLabel: 'Lump Sum', sAgency: 'Agency handling',
     totalDisb: 'Total Disbursements', advanceReceived: 'Dana muka diterima',
@@ -44,6 +47,7 @@ const STR: Record<Lang, Record<string, string>> = {
     lumpMode: 'Lump Sum Mode', lumpHint: '— a single total, no A/B/C/D section breakdown', fLumpDesc: 'Description', fLumpAmt: 'Lump sum amount',
     lumpNotePre: 'Agency handling', lumpNotePost: 'is still computed on top of this amount. If the lump sum already includes agency, set Agency % = 0.',
     thDesc: 'Description', thQtyBasis: 'Qty / Basis', thRate: 'Rate', thAmount: 'Amount',
+    amountAuto: 'Amount is auto-computed = Qty × Rate',
     phCost: 'Cost description', phBasis: 'note (e.g. per GT per call)', phQty: 'Qty', phRate: 'Rate', phAmount: 'Amount',
     secSummary: 'Cost Summary', subAll: 'Subtotal (A+B+C+D)', lumpSumLabel: 'Lump Sum', sAgency: 'Agency handling',
     totalDisb: 'Total Disbursements', advanceReceived: 'Advance received',
@@ -157,6 +161,7 @@ export function DisbursementForm({ type }: { type: DocKind }) {
   const [savedMsg, setSavedMsg] = useState('')
   const [fromPortCall, setFromPortCall] = useState(false)
   const [fromSource, setFromSource] = useState<string | null>(null)
+  const [selectedPortCall, setSelectedPortCall] = useState('')
 
   const numericMeta: (keyof Meta)[] = ['agencyPct', 'usdRate', 'advanceReceived']
   const setMetaF = (k: keyof Meta) => (v: string) =>
@@ -166,16 +171,19 @@ export function DisbursementForm({ type }: { type: DocKind }) {
   function updateItem(si: number, ii: number, field: string, value: string) {
     setSections((prev) => {
       const next = clone(prev)
+      const it = next[si].items[ii]
       const num = field === 'rate' || field === 'amount'
       // @ts-expect-error index dinamis
-      next[si].items[ii][field] = num ? Number(value) || 0 : value
+      it[field] = num ? Number(value) || 0 : value
+      // Jumlah = Qty × Rate, dihitung otomatis setiap qty/rate berubah.
+      if (field === 'qty' || field === 'rate') it.amount = lineAmount(it)
       return next
     })
   }
   function addItem(si: number) {
     setSections((prev) => {
       const next = clone(prev)
-      next[si].items.push({ description: '', basis: '', qty: '', rate: 0, amount: 0 })
+      next[si].items.push({ description: '', basis: '', qty: '1', rate: 0, amount: 0 })
       return next
     })
   }
@@ -185,6 +193,30 @@ export function DisbursementForm({ type }: { type: DocKind }) {
       next[si].items.splice(ii, 1)
       return next
     })
+  }
+
+  // Prefill partikular kapal & principal dari sebuah Port Call. Dipakai bersama
+  // oleh selector "Pilih Port Call" (jalur menu Finance) & param URL ?portcall=.
+  async function applyPortCall(id: string) {
+    setSelectedPortCall(id)
+    if (!id) return
+    try {
+      const r = await fetch(`/api/portcalls/${id}`)
+      if (!r.ok) return
+      const d = (await r.json()) as { particulars?: Partial<Particulars> } | null
+      if (!d?.particulars) return
+      setPar((c) => ({ ...c, ...d.particulars }))
+      // Sediakan satu baris biaya kosong bila seksi belum berisi (klien isi sendiri).
+      setSections((prev) =>
+        prev.map((s) => ({
+          ...s,
+          items: s.items.length ? s.items : [{ description: '', basis: '', qty: '1', rate: 0, amount: 0 }],
+        })),
+      )
+      setFromPortCall(true)
+    } catch {
+      /* abaikan — form tetap bisa diisi manual */
+    }
   }
 
   const data: EpdaData = useMemo(
@@ -239,20 +271,7 @@ export function DisbursementForm({ type }: { type: DocKind }) {
 
     // Prefill partikular dari Port Call (dokumen baru, hanya isi baris biaya).
     if (!id && portCallId) {
-      fetch(`/api/portcalls/${portCallId}`)
-        .then((r) => (r.ok ? r.json() : null))
-        .then((d: { particulars?: Partial<Particulars> } | null) => {
-          if (!d?.particulars) return
-          setPar((c) => ({ ...c, ...d.particulars }))
-          // Kosongkan baris biaya — kerangka seksi A/B/C/D tetap, klien isi sendiri.
-          setSections((prev) =>
-            prev.map((s) => ({
-              ...s,
-              items: [{ description: '', basis: '', qty: '', rate: 0, amount: 0 }],
-            })),
-          )
-          setFromPortCall(true)
-        })
+      applyPortCall(portCallId)
       return
     }
 
@@ -375,6 +394,11 @@ export function DisbursementForm({ type }: { type: DocKind }) {
             </div>
           )}
 
+          {/* Selector Port Call (jalur menu Finance — auto-fill tanpa lewat Port Call Manager) */}
+          {!savedId && !fromSource && (
+            <PortCallPicker value={selectedPortCall} onSelect={applyPortCall} />
+          )}
+
           {/* Partikular */}
           <section className="bg-card-bg border border-card-border rounded-lg p-5">
             <h2 className="font-display text-base text-white mb-4">{t.secPar}</h2>
@@ -490,13 +514,12 @@ export function DisbursementForm({ type }: { type: DocKind }) {
                       placeholder={t.phRate}
                       className={`${inputCls} col-span-3 md:col-span-2 text-right`}
                     />
-                    <input
-                      type="number"
-                      value={it.amount}
-                      onChange={(e) => updateItem(si, ii, 'amount', e.target.value)}
-                      placeholder={t.phAmount}
-                      className={`${inputCls} col-span-3 md:col-span-2 text-right`}
-                    />
+                    <div
+                      title={t.amountAuto}
+                      className="col-span-3 md:col-span-2 flex items-center justify-end h-9 px-2 rounded bg-surface/40 border border-border-muted/40 font-mono text-sm text-text-primary"
+                    >
+                      {fmt(lineAmount(it))}
+                    </div>
                     <button
                       type="button"
                       onClick={() => removeItem(si, ii)}

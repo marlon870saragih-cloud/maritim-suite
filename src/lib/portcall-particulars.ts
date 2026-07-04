@@ -38,6 +38,7 @@ export type PortCallForDoc = {
   principal: {
     name: string
     address: string | null
+    npwp: string | null
     contactPerson: string | null
   } | null
 }
@@ -98,6 +99,7 @@ export function portCallToInvoiceHead(pc: PortCallForDoc) {
   return {
     billToName: pc.principal?.name ?? '',
     billToAddress: pc.principal?.address ?? '',
+    billToNpwp: pc.principal?.npwp ?? '',
     billToAttn: pc.principal?.contactPerson ?? '',
     vesselVoyage: pc.vessel?.name ?? '',
     portCall: callRef,

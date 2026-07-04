@@ -15,7 +15,7 @@ const STR: Record<Lang, Record<string, string>> = {
     emptyTitle: 'Belum ada principal', emptyDesc: 'Tambah principal sekali — dipakai otomatis sebagai bill-to di dokumen.',
     thName: 'Nama Principal', thContact: 'Kontak', thAction: 'Aksi',
     editTitle: 'Ubah Principal', dialogDesc: 'Data principal dipakai otomatis sebagai pihak tertagih (bill-to) di dokumen.',
-    fName: 'Nama Principal', fContact: 'Kontak (PIC)', fPhone: 'Telepon', fFormat: 'Format Dokumen Preferensi', fAddress: 'Alamat', phAddress: 'Alamat lengkap principal',
+    fName: 'Nama Principal', fContact: 'Kontak (PIC)', fPhone: 'Telepon', fNpwp: 'NPWP', fFormat: 'Format Dokumen Preferensi', fAddress: 'Alamat', phAddress: 'Alamat lengkap principal',
     tipEdit: 'Ubah', tipDelete: 'Hapus', cancel: 'Batal', saveChanges: 'Simpan Perubahan',
   },
   en: {
@@ -25,7 +25,7 @@ const STR: Record<Lang, Record<string, string>> = {
     emptyTitle: 'No principals yet', emptyDesc: 'Add a principal once — auto-used as the bill-to on documents.',
     thName: 'Principal Name', thContact: 'Contact', thAction: 'Action',
     editTitle: 'Edit Principal', dialogDesc: 'Principal data is auto-used as the bill-to party on documents.',
-    fName: 'Principal Name', fContact: 'Contact (PIC)', fPhone: 'Phone', fFormat: 'Preferred Document Format', fAddress: 'Address', phAddress: 'Full principal address',
+    fName: 'Principal Name', fContact: 'Contact (PIC)', fPhone: 'Phone', fNpwp: 'NPWP', fFormat: 'Preferred Document Format', fAddress: 'Address', phAddress: 'Full principal address',
     tipEdit: 'Edit', tipDelete: 'Delete', cancel: 'Cancel', saveChanges: 'Save changes',
   },
 }
@@ -44,15 +44,16 @@ export type Principal = {
   email: string | null
   phone: string | null
   address: string | null
+  npwp: string | null
   preferredFormat: string
 }
 
 type FormState = Record<string, string>
 
-const FIELD_KEYS = ['name', 'contactPerson', 'email', 'phone', 'address', 'preferredFormat'] as const
+const FIELD_KEYS = ['name', 'contactPerson', 'email', 'phone', 'address', 'npwp', 'preferredFormat'] as const
 
 const emptyForm = (): FormState => ({
-  name: '', contactPerson: '', email: '', phone: '', address: '', preferredFormat: 'FPDA',
+  name: '', contactPerson: '', email: '', phone: '', address: '', npwp: '', preferredFormat: 'FPDA',
 })
 const toForm = (p: Principal): FormState =>
   Object.fromEntries(FIELD_KEYS.map((k) => [k, p[k] == null ? '' : String(p[k])])) as FormState
@@ -275,6 +276,16 @@ export function PrincipalsManager({ principals }: { principals: Principal[] }) {
                 value={form.phone}
                 onChange={(e) => set('phone', e.target.value)}
                 placeholder="+65 6xxx xxxx"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>{t.fNpwp}</label>
+              <input
+                name="npwp"
+                value={form.npwp}
+                onChange={(e) => set('npwp', e.target.value)}
+                placeholder="00.000.000.0-000.000"
                 className={inputCls}
               />
             </div>

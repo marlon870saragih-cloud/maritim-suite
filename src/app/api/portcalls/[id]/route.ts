@@ -19,7 +19,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       vessel: {
         select: { name: true, imoNumber: true, flag: true, gt: true, nrt: true, loa: true, maxDraft: true },
       },
-      principal: { select: { name: true, address: true, contactPerson: true } },
+      principal: { select: { name: true, address: true, npwp: true, contactPerson: true } },
     },
   })
   if (!pc) return new Response('Not found', { status: 404 })

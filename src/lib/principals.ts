@@ -14,6 +14,7 @@ export type PrincipalInput = {
   email: string | null
   phone: string | null
   address: string | null
+  npwp: string | null
   preferredFormat: string
 }
 
@@ -26,6 +27,7 @@ export function principalFields(body: Record<string, unknown>): PrincipalInput {
     email: str(body.email),
     phone: str(body.phone),
     address: str(body.address),
+    npwp: str(body.npwp),
     preferredFormat: fmt && (DA_FORMATS as readonly string[]).includes(fmt) ? fmt : 'FPDA',
   }
 }

@@ -65,7 +65,20 @@ export type EpdaData = {
   approvedByRole: string
 }
 
-// Hitung subtotal per seksi.
+// Ambil nilai numerik dari qty ("8,432 GT" → 8432, "1 call" → 1, "" → 0).
+// Dipakai untuk menghitung Jumlah = Qty × Rate secara reaktif di form.
+export const parseQty = (qty?: string): number => {
+  if (!qty) return 0
+  const m = qty.replace(/,/g, '').match(/-?\d+(?:\.\d+)?/)
+  return m ? Number(m[0]) : 0
+}
+
+// Jumlah baris hasil hitung = Qty × Rate (dibulatkan).
+export const lineAmount = (it: EpdaLineItem): number =>
+  Math.round(parseQty(it.qty) * (it.rate || 0))
+
+// Hitung subtotal per seksi (menjumlahkan kolom `amount` yang sudah terisi —
+// di form, `amount` selalu diisi dari lineAmount saat qty/rate berubah).
 export const sectionSubtotal = (s: EpdaSection) =>
   s.items.reduce((sum, it) => sum + (it.amount || 0), 0)
 
