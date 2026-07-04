@@ -17,7 +17,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     where: { id: params.id, tenantId: session.user.tenantId },
     include: {
       vessel: {
-        select: { name: true, imoNumber: true, flag: true, gt: true, nrt: true, loa: true, maxDraft: true },
+        select: { name: true, imoNumber: true, flag: true, vesselType: true, callSign: true, gt: true, nrt: true, loa: true, maxDraft: true },
       },
       principal: { select: { name: true, address: true, npwp: true, contactPerson: true } },
     },

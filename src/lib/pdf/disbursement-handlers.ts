@@ -99,7 +99,7 @@ export function makeDisbursementHandlers(opts: { variant: Variant; docType: DocT
           data: fields,
         })
         if (upd.count === 0) return new Response('Not found', { status: 404 })
-        return Response.json({ ok: true, id })
+        return Response.json({ ok: true, id, docNumber: fields.docNumber })
       }
 
       const links = await resolveDocLinks({
@@ -110,7 +110,7 @@ export function makeDisbursementHandlers(opts: { variant: Variant; docType: DocT
       const doc = await prisma.maritimeDocument.create({
         data: { tenantId: session.user.tenantId, docType, status: 'DRAFT', ...fields, ...links },
       })
-      return Response.json({ ok: true, id: doc.id })
+      return Response.json({ ok: true, id: doc.id, docNumber: doc.docNumber })
     }
 
     return pdfResponse(data, download)

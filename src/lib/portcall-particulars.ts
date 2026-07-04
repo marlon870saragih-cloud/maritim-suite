@@ -30,6 +30,8 @@ export type PortCallForDoc = {
     name: string
     imoNumber: string | null
     flag: string | null
+    vesselType: string | null
+    callSign: string | null
     gt: number | null
     nrt: number | null
     loa: number | null
@@ -57,6 +59,8 @@ export function portCallToParticulars(pc: PortCallForDoc) {
     principal: pc.principal?.name ?? '',
     imo: v?.imoNumber ?? '',
     flag: v?.flag ?? '',
+    vesselType: v?.vesselType ?? '',
+    callSign: v?.callSign ?? '',
     port: pc.port ?? '',
     portCode: pc.portCode ?? '',
     gt: fmtNum(v?.gt),

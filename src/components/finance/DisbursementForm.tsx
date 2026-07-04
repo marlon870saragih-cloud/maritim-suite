@@ -234,6 +234,17 @@ export function DisbursementForm({ type }: { type: DocKind }) {
     const portCallId = params.get('portcall')
     const fromId = params.get('from')
 
+    // Prefill nomor dokumen berikutnya (preview) untuk dokumen baru — tampil
+    // langsung saat form dibuka. Nomor final tetap ditetapkan saat simpan.
+    if (!id) {
+      fetch(`/api/documents/next-number?type=${type.toUpperCase()}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j: { docNumber?: string } | null) => {
+          if (j?.docNumber) setMeta((m) => (m.docNumber ? m : { ...m, docNumber: j.docNumber! }))
+        })
+        .catch(() => {})
+    }
+
     // Rantai dokumen: FPDA disalin dari EPDA tersimpan (?from=epdaId).
     if (!id && fromId && type === 'fpda') {
       fetch(`/api/documents/epda?id=${fromId}&json=1`)
@@ -242,7 +253,7 @@ export function DisbursementForm({ type }: { type: DocKind }) {
           if (!p) return
           setMeta((m) => ({
             ...m,
-            docNumber: '', // nomor FPDA baru — diisi user
+            // nomor FPDA baru sudah di-prefill oleh peek next-number
             currency: p.currency ?? m.currency,
             agencyPct: p.agencyPct ?? m.agencyPct,
             usdRate: p.usdRate ?? m.usdRate,
@@ -321,8 +332,10 @@ export function DisbursementForm({ type }: { type: DocKind }) {
         body: JSON.stringify(data),
       })
       if (!res.ok) throw new Error('save gagal')
-      const j = (await res.json()) as { id: string }
+      const j = (await res.json()) as { id: string; docNumber?: string }
       setSavedId(j.id)
+      // Cerminkan nomor final hasil server (bila kosong/placeholder saat simpan).
+      if (j.docNumber) setMeta((m) => ({ ...m, docNumber: j.docNumber! }))
       window.history.replaceState(null, '', `${formRoute}?id=${j.id}`)
       setSavedMsg(c.saved)
       setTimeout(() => setSavedMsg(''), 3000)

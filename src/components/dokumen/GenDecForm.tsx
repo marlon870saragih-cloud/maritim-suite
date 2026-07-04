@@ -76,10 +76,20 @@ export function GenDecForm() {
     const id = params.get('id')
     const portCallId = params.get('portcall')
 
+    // Prefill nomor dokumen berikutnya (preview) untuk dokumen baru.
+    if (!id) {
+      fetch('/api/documents/next-number?type=FAL_1')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j: { docNumber?: string } | null) => {
+          if (j?.docNumber) setHead((f) => (f.docNumber ? f : { ...f, docNumber: j.docNumber! }))
+        })
+        .catch(() => {})
+    }
+
     if (!id && portCallId) {
       fetch(`/api/portcalls/${portCallId}`)
         .then((r) => (r.ok ? r.json() : null))
-        .then((d: { particulars?: { vesselName?: string; imo?: string; flag?: string; port?: string; cargo?: string; gt?: string } } | null) => {
+        .then((d: { particulars?: { vesselName?: string; imo?: string; flag?: string; vesselType?: string; callSign?: string; port?: string; cargo?: string; gt?: string } } | null) => {
           const p = d?.particulars
           if (!p) return
           setHead((f) => ({
@@ -87,6 +97,8 @@ export function GenDecForm() {
             vesselName: p.vesselName || f.vesselName,
             imo: p.imo || f.imo,
             flag: p.flag || f.flag,
+            vesselType: p.vesselType || f.vesselType,
+            callSign: p.callSign || f.callSign,
             port: p.port || f.port,
             grt: p.gt || f.grt,
             cargoBrief: p.cargo || f.cargoBrief,
@@ -117,8 +129,9 @@ export function GenDecForm() {
         body: JSON.stringify(data),
       })
       if (!res.ok) throw new Error()
-      const j = (await res.json()) as { id: string }
+      const j = (await res.json()) as { id: string; docNumber?: string }
       setSavedId(j.id)
+      if (j.docNumber) setHead((f) => ({ ...f, docNumber: j.docNumber! }))
       window.history.replaceState(null, '', `/dokumen/new/FAL_1?id=${j.id}`)
       setSavedMsg(c.saved)
       setTimeout(() => setSavedMsg(''), 3000)

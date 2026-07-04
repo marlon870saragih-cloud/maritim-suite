@@ -177,6 +177,17 @@ export function InvoiceForm() {
     const portCallId = params.get('portcall')
     const fromId = params.get('from')
 
+    // Prefill nomor invoice berikutnya (preview) untuk invoice baru — tampil
+    // langsung saat form dibuka. Nomor final tetap ditetapkan saat simpan.
+    if (!id) {
+      fetch('/api/documents/next-number?type=INVOICE')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j: { docNumber?: string } | null) => {
+          if (j?.docNumber) setHead((h) => (h.docNumber ? h : { ...h, docNumber: j.docNumber! }))
+        })
+        .catch(() => {})
+    }
+
     // Rantai dokumen: Invoice disalin dari FPDA tersimpan (?from=fpdaId).
     if (!id && fromId) {
       type SourceFpda = {
@@ -202,7 +213,7 @@ export function InvoiceForm() {
             .join(' — ')
           setHead((h) => ({
             ...h,
-            docNumber: '', // nomor invoice baru
+            // nomor invoice baru sudah di-prefill oleh peek next-number
             currency: p.currency ?? h.currency,
             agencyPct: p.agencyPct ?? h.agencyPct,
             billToName: p.principal ?? h.billToName,
@@ -271,8 +282,9 @@ export function InvoiceForm() {
         body: JSON.stringify(data),
       })
       if (!res.ok) throw new Error()
-      const j = (await res.json()) as { id: string }
+      const j = (await res.json()) as { id: string; docNumber?: string }
       setSavedId(j.id)
+      if (j.docNumber) setHead((h) => ({ ...h, docNumber: j.docNumber! }))
       window.history.replaceState(null, '', `/finance/invoice/baru?id=${j.id}`)
       setSavedMsg(c.saved)
       setTimeout(() => setSavedMsg(''), 3000)
