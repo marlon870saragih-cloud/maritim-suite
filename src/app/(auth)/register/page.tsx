@@ -105,25 +105,36 @@ export default function RegisterPage() {
     }
     setFormMsg('')
     setLoading(true)
-    const res = await fetch('/api/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...f, logoUrl: logo || undefined }),
-    })
-    if (!res.ok) {
-      const json = (await res.json().catch(() => ({}))) as { error?: string }
-      setFormMsg(json.error ?? t.errCreate)
+    // `finally` menjamin spinner selalu berhenti; `catch` menangkap kegagalan
+    // jaringan / signIn agar tak menggantung + menampilkan pesan yang jelas.
+    let created = false
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...f, logoUrl: logo || undefined }),
+      })
+      if (!res.ok) {
+        const json = (await res.json().catch(() => ({}))) as { error?: string }
+        setFormMsg(json.error ?? t.errCreate)
+        return
+      }
+      created = true
+      const login = await signIn('credentials', { email: f.email, password: f.password, redirect: false })
+      if (login?.error) {
+        router.push('/login')
+        return
+      }
+      router.push('/dokumen')
+      router.refresh()
+    } catch {
+      // Akun mungkin sudah terbuat tapi auto-login gagal → arahkan ke login.
+      // Bila belum terbuat, tampilkan pesan agar user bisa mencoba lagi.
+      if (created) router.push('/login')
+      else setFormMsg(t.errConn)
+    } finally {
       setLoading(false)
-      return
     }
-    const login = await signIn('credentials', { email: f.email, password: f.password, redirect: false })
-    setLoading(false)
-    if (login?.error) {
-      router.push('/login')
-      return
-    }
-    router.push('/dokumen')
-    router.refresh()
   }
 
   return (
@@ -398,7 +409,7 @@ const STR = {
     errFormIncomplete: 'Lengkapi dulu kolom yang ditandai.',
     errCoName: 'Nama perusahaan minimal 2 karakter', errName: 'Nama Anda minimal 2 karakter',
     errEmail: 'Format email tidak valid', errPw: 'Kata sandi minimal 6 karakter',
-    errCreate: 'Gagal membuat akun. Coba lagi.',
+    errCreate: 'Gagal membuat akun. Coba lagi.', errConn: 'Gagal terhubung ke server. Periksa koneksi lalu coba lagi.',
     submit: 'Buat akun & mulai uji coba', submitting: 'Membuat akun…',
     fineprint: 'Dengan mendaftar, Anda mendapat akses penuh semua modul selama 7 hari. Tanpa kartu kredit.',
     previewLabel: 'Pratinjau kop dokumen',
@@ -428,7 +439,7 @@ const STR = {
     errFormIncomplete: 'Please complete the highlighted fields.',
     errCoName: 'Company name needs at least 2 characters', errName: 'Your name needs at least 2 characters',
     errEmail: 'Invalid email format', errPw: 'Password needs at least 6 characters',
-    errCreate: 'Could not create account. Please try again.',
+    errCreate: 'Could not create account. Please try again.', errConn: 'Could not connect to the server. Check your connection and try again.',
     submit: 'Create account & start trial', submitting: 'Creating account…',
     fineprint: 'By registering you get full access to all modules for 7 days. No credit card required.',
     previewLabel: 'Letterhead preview',
