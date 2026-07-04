@@ -478,8 +478,11 @@ const CSS = `
 
 .onb-form{display:flex; flex-direction:column; gap:20px}
 .onb-sect{border:1px solid #16333d; border-radius:12px; padding:20px 20px 22px; background:var(--ink-2)}
-.onb-sect legend{display:flex; align-items:center; gap:10px; padding:0 8px; margin-left:-4px;
+/* legend di-float agar duduk DI DALAM kartu (bukan menempel di garis border atas
+   spt perilaku default legend). Elemen setelah legend di-clear supaya mulai di bawahnya. */
+.onb-sect legend{float:left; width:100%; display:flex; align-items:center; gap:10px; padding:0; margin:0 0 4px;
   font-family:var(--font-display),Georgia,serif; font-weight:400; font-size:1.15rem; color:#F4F0E6}
+.onb-sect legend + *{clear:both}
 .onb-sect legend small{font-family:var(--font-mono),monospace; font-weight:400; font-size:.68rem;
   color:#8fa6ab; letter-spacing:.02em; text-transform:none}
 .onb-sect-no{display:inline-grid; place-items:center; width:24px; height:24px; border-radius:7px;
