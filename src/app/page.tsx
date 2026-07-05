@@ -89,6 +89,22 @@ export default function LandingPage() {
         </main>
       </section>
 
+      {/* ============ DEMO — video alur EPDA→Kwitansi ============ */}
+      <section className="lnd-demo" id="demo">
+        <div className="lnd-demo-head">
+          <p className="lnd-eyebrow">
+            <span className="lnd-anchor" aria-hidden="true" /> {t.demoEyebrow}
+          </p>
+          <h2 className="lnd-h2 lnd-demo-h2">{t.demoH2}</h2>
+          <p className="lnd-demo-sub">{t.demoSub}</p>
+        </div>
+        <div className="lnd-demo-frame">
+          <video controls playsInline preload="metadata" poster="/demo-poster.jpg" aria-label={t.demoH2}>
+            <source src="/demo-maritime-suite.mp4" type="video/mp4" />
+          </video>
+        </div>
+      </section>
+
       {/* ============ PRICING — halaman ledger (kertas ivory) ============ */}
       <section className="lnd-pricing" id="harga">
         <div className="lnd-pricing-head">
@@ -188,6 +204,7 @@ const STR: Record<Lang, {
   eyebrow: string; h1a: string; h1b: string; lead: string
   ctaPrimary: string; ctaMasuk: string; manifestLabel: string; kwitansi: string; aiTag: string; note: string
   chrono: { t: string; d: string }[]; docBy: string
+  demoEyebrow: string; demoH2: string; demoSub: string
   priceEyebrow: string; priceH2: string; priceSub: string; perMonth: string; priceTag: string; planCta: string; priceNote: string
   annualNote: string; customPrice: string; customCta: string
   plans: { name: string; modules: string; price: string; featured?: boolean; custom?: boolean; features: string[] }[]
@@ -209,6 +226,9 @@ const STR: Record<Lang, {
       { t: '02:10', d: 'Selesai muat — dokumen on board' },
     ],
     docBy: 'Subtotal, agency fee & total dihitung otomatis — bukan diketik.',
+    demoEyebrow: 'Lihat cara kerjanya',
+    demoH2: 'Dari EPDA sampai Kwitansi dalam 70 detik',
+    demoSub: 'Isi data kapal sekali, buat port call, lalu satu klik: EPDA menjadi FPDA, Invoice, dan Kwitansi — angka tersalin & dihitung otomatis, PDF langsung jadi.',
     priceEyebrow: 'Harga berlangganan',
     priceH2: 'Bayar sesuai modul yang Anda pakai',
     priceSub: 'Pilih paket sesuai kebutuhan. Semua paket termasuk uji coba gratis 7 hari, ditagih per bulan.',
@@ -246,6 +266,9 @@ const STR: Record<Lang, {
       { t: '02:10', d: 'Loading completed — docs on board' },
     ],
     docBy: 'Subtotal, agency fee & total computed automatically — not typed.',
+    demoEyebrow: 'See how it works',
+    demoH2: 'From EPDA to Receipt in 70 seconds',
+    demoSub: 'Enter vessel data once, create a port call, then one click: EPDA becomes FPDA, Invoice, and Receipt — figures carried over & computed automatically, PDFs ready instantly.',
     priceEyebrow: 'Subscription pricing',
     priceH2: 'Pay for the modules you use',
     priceSub: 'Choose the plan that fits. Every plan includes a 7-day free trial, billed monthly.',
@@ -368,6 +391,17 @@ const CSS = `
 .lnd-doc-fk{font-family:var(--font-mono),monospace; font-size:.68rem; letter-spacing:.06em; text-transform:uppercase; color:var(--chart-mut)}
 .lnd-doc-total{font-family:var(--font-mono),monospace; font-size:1.45rem; font-weight:500; color:var(--brass-deep)}
 .lnd-doc-by{margin:9px 0 0; font-size:.72rem; color:var(--chart-mut); line-height:1.45}
+
+/* ----- DEMO (video, tinta gelap) ----- */
+.lnd-demo{position:relative; z-index:2; background:var(--ink-2); padding:76px clamp(18px,4vw,40px) 88px;
+  border-top:1px solid rgba(199,154,62,.18)}
+.lnd-demo-head{max-width:720px; margin:0 auto 38px; text-align:center}
+.lnd-demo-head .lnd-eyebrow{justify-content:center}
+.lnd-demo .lnd-demo-h2{color:#EAF1F0; margin:12px 0 12px}
+.lnd-demo-sub{color:#9FB4B9; font-size:.96rem; line-height:1.7; margin:0}
+.lnd-demo-frame{max-width:960px; margin:0 auto; border:1px solid rgba(199,154,62,.35); border-radius:14px;
+  overflow:hidden; background:#0B1B2B; box-shadow:0 26px 70px rgba(0,0,0,.5)}
+.lnd-demo-frame video{display:block; width:100%; height:auto}
 
 /* ----- PRICING (halaman ledger ivory) ----- */
 .lnd-pricing{position:relative; z-index:2; background:var(--chart); color:var(--chart-ink);
