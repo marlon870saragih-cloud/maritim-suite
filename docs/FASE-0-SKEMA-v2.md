@@ -445,7 +445,7 @@ Prinsip: app A sedang dipakai. **Tidak ada tabel/kolom yang dihapus di Fase 0.**
 1. ✅ Review dokumen ini + persetujuan 3 keputusan (§7)
 2. ✅ Tulis `prisma/schema.prisma` final — **selesai & tervalidasi**
 3. ✅ Terapkan migration aditif (M1-M2) ke database — **selesai 2026-08-10** (lihat §6a)
-4. ⬜ Skrip backfill (M3-M4) + seed (M5) — *menunggu review skema oleh user*
+4. ✅ Skrip backfill (M3-M4) + seed (M5) — **selesai 2026-08-10** (lihat §6b)
 5. ⬜ Kerangka service layer: `src/services/` + `src/features/` (PRD §163)
 6. ✅ Uji: app lama tetap jalan — `tsc --noEmit` bersih, baca dokumen lama OK
 
@@ -477,6 +477,58 @@ Prinsip: app A sedang dipakai. **Tidak ada tabel/kolom yang dihapus di Fase 0.**
 | `tsc --noEmit` seluruh app | **0 error** |
 
 **Pelajaran untuk deploy ke produksi nanti:** DB produksi (Railway/Supabase) kemungkinan besar juga dikelola `db push` dan akan kena masalah yang sama. Ulangi urutan K7 di sana — **backup dulu, baseline dulu**, baru `migrate deploy`. Jangan sekali-kali menjawab "yes" pada tawaran reset.
+
+### 6b. Backfill & seed (2026-08-10)
+
+Dua skrip baru, keduanya **idempoten** (aman diulang) dan **tidak pernah menimpa** data yang sudah ada:
+
+| Skrip | Isi | Perintah |
+|---|---|---|
+| `prisma/seed-v2.mjs` | M5 — Currency, Port, Service Catalog + tarif | `node prisma/seed-v2.mjs` |
+| `prisma/backfill-v2.mjs` | M3-M4 — PortCall→Voyage, Document→Voyage | `node prisma/backfill-v2.mjs --dry-run` lalu tanpa flag |
+
+> **Urutan berubah dari rencana:** jalankan **seed (M5) DULU**, baru backfill (M3). Master Port harus sudah ada supaya `PortCall.portRefId` bisa ditautkan. Dokumen ini semula menulis M3→M5.
+
+**Hasil seed:** 3 tenant × (3 mata uang + 3 pelabuhan + 21 jasa + 19 tarif). Pelabuhan: Samarinda `IDSRI`, Balikpapan `IDBPN`, Singapore `SGSIN`. Katalog jasa mengikuti **4 seksi EPDA yang sudah dipakai app A** (dibaca dari `lineItems` dokumen EPDA nyata di DB, bukan dikarang): A Port Authority & Government Charges, B Pilotage/Towage/Mooring, C Clearance & Documentation, D Agency & Disbursements.
+
+> ⚠️ **Tarif hasil seed = ANGKA CONTOH, bukan tarif resmi.** Ada supaya mesin hitung Fase 3 bisa diuji. Skrip hanya membuat tarif bila jasa itu **belum punya tarif sama sekali**, jadi begitu operator mengisi tarif resmi, seed ulang tidak akan menimpanya.
+
+**Seed diterapkan ke SEMUA tenant** (bukan hanya Tribuana). Disengaja: kalau nanti UI tenant A menampilkan pelabuhan milik tenant B, kebocoran isolasi langsung kelihatan saat Fase 1.
+
+#### ⚠️ Temuan yang membatalkan M4
+
+Rencana M4 berbunyi *"tautkan MaritimeDocument lama ke Voyage lewat `portCallId` yang sudah ada"*. Kenyataannya: **seluruh 48 dokumen punya `portCallId = NULL`.** Tidak ada satu pun tautan untuk diikuti, jadi M4 **nihil (0 baris)** — bukan gagal, memang tidak ada pekerjaannya.
+
+Alternatifnya adalah menebak dari kolom teks `MaritimeDocument.port`. **Sengaja tidak dilakukan.** Isi kolom itu campur aduk karena berasal dari data uji buatan AI:
+
+```
+Balikpapan (23) · Samarinda (12) · <UNKNOWN> (2) · (null) (2) · "KGTE, Balikpapan" (2)
+"Soechi Lines" (1)  ← nama perusahaan, bukan pelabuhan
+"INV/2026/06/TEST1" (1)  ← nomor dokumen, bukan pelabuhan
+"Kapal di Pelabuhan Samarinda" (1) · "Samarinda — ETA 10 Jul 2026" (1) · "Astiku" (1)
+```
+
+Menebak dari sini akan menciptakan **relasi palsu** yang tampak sah di laporan — lebih berbahaya daripada tautan kosong. Dokumen lama tetap utuh dan terbaca sebagai arsip, persis seperti yang sudah direncanakan di **M6** (tidak ada konversi paksa). Tautan `voyageId` untuk arsip lama memang cuma nilai tambah, bukan syarat.
+
+Skrip tetap mengimplementasikan M4 dengan benar, jadi kalau nanti dijalankan di DB produksi yang dokumennya memang tertaut ke PortCall, tautan itu akan terisi otomatis.
+
+#### Hasil backfill
+
+`PortCall` → `Voyage`, 1 baris (satu-satunya yang ada):
+
+| Kolom | Nilai |
+|---|---|
+| voyageNumber | `VYG-2026-000001` (pola baru, per tenant per tahun) |
+| kapal / principal | MT Soechi Asia XXIX / Soechi Lines |
+| pelabuhan | Balikpapan → tertaut ke Master Port `IDBPN` ✅ |
+| status | `DEPARTED` (PortCall) → `DEPARTED` (Voyage) |
+| kargo | dipecah ke tabel `Cargo`: B40, 6000 KL (`cargoQty` teks → `quantity` Float) |
+
+Pemetaan status: `UPCOMING→PLANNED`, `IN_PORT→ARRIVED`, `DEPARTED→DEPARTED`, `CANCELLED→CANCELLED`.
+
+Pencocokan pelabuhan **konservatif**: cocok persis dulu (nama atau UN/LOCODE), lalu cocok sebagian **hanya bila tepat satu** pelabuhan yang cocok. Kalau ragu → dikosongkan, diisi manual lewat Master Data.
+
+**Verifikasi sesudahnya:** jumlah baris tabel lama tetap identik (48/1/1/3/4/2); jalan kedua kedua skrip menghasilkan 0 perubahan (idempotensi terbukti).
 
 ### Hasil verifikasi skema (2026-08-06)
 

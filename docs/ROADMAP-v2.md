@@ -153,18 +153,29 @@ Detail lengkap: **[FASE-0-SKEMA-v2.md](./FASE-0-SKEMA-v2.md)**
 | Bukti aditif: uji SQL kering → **0 DROP / 0 ALTER COLUMN / 0 SET NOT NULL** | ✅ terbukti |
 | **Terapkan migration ke database (dev lokal)** | ✅ **selesai 2026-08-10** — tanpa reset, data utuh (lihat K7) |
 | Uji app lama tetap normal | ✅ `tsc --noEmit` 0 error, baca dokumen lama OK |
-| Skrip backfill (M3-M4) + seed (M5) | ⬜ **BERHENTI DI SINI — user mau review skema dulu** |
-| Kerangka service layer `src/services/` + `src/features/` | ⬜ |
+| Seed M5 (`prisma/seed-v2.mjs`) | ✅ 3 tenant × (3 mata uang + 3 pelabuhan + 21 jasa + 19 tarif contoh) |
+| Backfill M3 (`prisma/backfill-v2.mjs`) | ✅ 1 PortCall → `VYG-2026-000001` + Cargo, pelabuhan tertaut `IDBPN` |
+| Backfill M4 (dokumen → voyage) | ✅ **nihil** — 48 dokumen semuanya `portCallId = NULL`, tidak ada yang bisa ditautkan (lihat §6b) |
+| Kerangka service layer `src/services/` + `src/features/` | ⬜ **berikutnya** |
 
-**Keputusan user 2026-08-10:** target = **DB development lokal** (`localhost:5432/maritime_suite`), dan **review skema dulu** sebelum backfill/seed.
+**Keputusan user 2026-08-10:** target = **DB development lokal** (`localhost:5432/maritime_suite`), commit dikerjakan di branch `feat/v2-fase-0-voyage-centric`.
 
 **K7 (baru) — baseline sebelum migrate.** DB ternyata dikelola `db push`, bukan `migrate`, sehingga `migrate dev` akan menawarkan **reset** (hapus semua data). Diselesaikan dengan: backup `pg_dump` → buat migration baseline dari skema git HEAD → `migrate resolve --applied` → baru `migrate dev`. Rinciannya di [FASE-0-SKEMA-v2.md §6a](./FASE-0-SKEMA-v2.md). **Ulangi urutan ini saat deploy ke produksi.**
 
-### Berikutnya (menunggu user)
+**K8 (baru) — M4 dibatalkan, dan itu keputusan yang benar.** Semua dokumen lama tidak punya `portCallId`, dan kolom teks `port` berisi campuran nama perusahaan & nomor dokumen. Menebak tautan dari situ akan membuat relasi palsu yang tampak sah di laporan. Dokumen lama dibiarkan sebagai arsip sesuai M6. Rinciannya di [FASE-0-SKEMA-v2.md §6b](./FASE-0-SKEMA-v2.md).
 
-1. **Review skema** — user cek 18 tabel baru di DB (bisa lewat Prisma Studio: `npx prisma studio`).
-2. Sesudah disetujui: skrip backfill (PortCall lama → Voyage) + seed (Port Samarinda/Balikpapan/Singapore, Currency IDR/USD/SGD, Service Catalog awal).
-3. Lalu kerangka service layer, penutup Fase 0.
+**Urutan menjalankan skrip** (seed dulu, supaya Master Port ada saat backfill menautkan pelabuhan):
+```bash
+node prisma/seed-v2.mjs
+node prisma/backfill-v2.mjs --dry-run
+node prisma/backfill-v2.mjs
+```
+
+### Berikutnya
+
+1. **Kerangka service layer** `src/services/` + `src/features/` — penutup Fase 0.
+2. Lalu **Fase 1: Master Data + Service Catalog** (CRUD Vessel/Port/Customer/Vendor/Currency + ⭐ import ship particular PDF/Excel).
+3. Sebelum Fase 1 dimulai: user perlu **mengganti tarif contoh** dengan tarif pelabuhan resmi (atau memutuskan itu bagian dari Fase 1).
 
 ## 8. Tension yang belum diselesaikan (untuk diingat)
 
