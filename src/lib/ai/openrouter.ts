@@ -5,7 +5,10 @@
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions'
 
 // Slug model bisa di-override via env bila katalog OpenRouter berubah, tanpa edit kode.
-export const SPK_MODEL = process.env.OPENROUTER_SPK_MODEL || 'anthropic/claude-haiku-4.5'
+// Dinaikkan dari Haiku 4.5 → Sonnet 4.5 demi akurasi (mis. AI Cost Prediction v2).
+// Untuk pakai Sonnet 5, set env OPENROUTER_SPK_MODEL="anthropic/claude-sonnet-5"
+// (pastikan slug persis sesuai katalog OpenRouter).
+export const SPK_MODEL = process.env.OPENROUTER_SPK_MODEL || 'anthropic/claude-sonnet-4.5'
 
 export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string }
 
