@@ -40,6 +40,22 @@ model Tenant {
   portCalls  PortCall[]
   documents  MaritimeDocument[]
   payments   Payment[]
+
+  // --- v2 (voyage-centric). Lihat docs/FASE-0-SKEMA-v2.md ---
+  ports            Port[]
+  customers        Customer[]
+  vendors          Vendor[]
+  currencies       Currency[]
+  exchangeRates    ExchangeRate[]
+  services         ServiceCatalog[]
+  serviceRates     ServiceRate[]
+  serviceTemplates ServiceTemplate[]
+  voyages          Voyage[]
+  disbursements    Disbursement[]
+  invoices         Invoice[]
+  invoicePayments  InvoicePayment[]
+  approvals        Approval[]
+  auditLogs        AuditLog[]
 }
 
 model Payment {
@@ -94,6 +110,7 @@ model Vessel {
 
   portCalls PortCall[]
   documents MaritimeDocument[]
+  voyages   Voyage[]
 
   @@index([tenantId])
 }
@@ -114,31 +131,38 @@ model Principal {
 
   portCalls PortCall[]
   documents MaritimeDocument[]
+  voyages   Voyage[]
 
   @@index([tenantId])
 }
 
 model PortCall {
-  id          String         @id @default(cuid())
+  id          String     @id @default(cuid())
   tenantId    String
-  tenant      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant      Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   vesselId    String
-  vessel      Vessel         @relation(fields: [vesselId], references: [id])
+  vessel      Vessel     @relation(fields: [vesselId], references: [id])
   principalId String?
-  principal   Principal?     @relation(fields: [principalId], references: [id])
+  principal   Principal? @relation(fields: [principalId], references: [id])
   port        String
   portCode    String?
-  eta         DateTime?
-  etd         DateTime?
-  ata         DateTime?
-  atd         DateTime?
-  cargo       String?
-  cargoQty    String?
-  cargoUnit   String?
-  status      PortCallStatus @default(UPCOMING)
-  notes       String?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+
+  // --- v2: opsional dulu agar data lama tetap sah; diisi lewat skrip backfill (M3) ---
+  voyageId  String?
+  voyage    Voyage?        @relation(fields: [voyageId], references: [id])
+  portRefId String?
+  portRef   Port?          @relation(fields: [portRefId], references: [id])
+  eta       DateTime?
+  etd       DateTime?
+  ata       DateTime?
+  atd       DateTime?
+  cargo     String?
+  cargoQty  String?
+  cargoUnit String?
+  status    PortCallStatus @default(UPCOMING)
+  notes     String?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
 
   documents MaritimeDocument[]
 
@@ -156,6 +180,9 @@ model MaritimeDocument {
   principal    Principal? @relation(fields: [principalId], references: [id])
   portCallId   String?
   portCall     PortCall?  @relation(fields: [portCallId], references: [id])
+  // v2: tautan ke Voyage (opsional; diisi backfill M4 lewat portCallId).
+  voyageId     String?
+  voyage       Voyage?    @relation(fields: [voyageId], references: [id])
   docType      DocType
   docNumber    String
   port         String?
@@ -258,4 +285,541 @@ enum DocStatus {
   SENT
   PAID
   CANCELLED
+}
+
+// ============================================================================
+// v2 — VOYAGE-CENTRIC. Rancangan & alasan: docs/FASE-0-SKEMA-v2.md
+//
+// Tambahan bersifat ADITIF: tak ada tabel/kolom lama yang dihapus, sehingga
+// app yang sedang dipakai tetap jalan. Cut-over dilakukan per modul.
+//
+// Prinsip snapshot (K5): baris Disbursement MENYALIN tarif & cara hitung saat
+// dibuat. Kalau menunjuk tarif hidup, menaikkan tarif hari ini akan mengubah
+// nilai EPDA tahun lalu — fatal untuk audit & sengketa dengan principal.
+// ============================================================================
+
+// ---------------------------------------------------------------- MASTER DATA
+
+model Port {
+  id            String    @id @default(cuid())
+  tenantId      String
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name          String
+  unlocode      String? // IDSMR, IDBPN, SGSIN
+  country       String?
+  timezone      String?
+  latitude      Float?
+  longitude     Float?
+  portAuthority String?
+  pilotRequired Boolean   @default(false)
+  tugRequired   Boolean   @default(false)
+  maxDraft      Float?
+  maxLoa        Float?
+  workingHours  String?
+  notes         String? // cikal bakal Port Playbook (Fase 7)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime? // soft delete (PRD §40)
+
+  portCalls        PortCall[]
+  voyages          Voyage[]
+  serviceRates     ServiceRate[]
+  serviceTemplates ServiceTemplate[]
+
+  @@unique([tenantId, unlocode])
+  @@index([tenantId])
+}
+
+/// Pihak yang DITAGIH. Berbeda peran dari Principal (pemberi order / owner).
+model Customer {
+  id              String    @id @default(cuid())
+  tenantId        String
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name            String
+  customerType    String?
+  address         String?
+  npwp            String?
+  email           String?
+  phone           String?
+  contactPerson   String?
+  currency        String    @default("IDR")
+  creditLimit     Float?
+  paymentTermDays Int?
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  voyages  Voyage[]
+  invoices Invoice[]
+
+  @@index([tenantId])
+}
+
+model Vendor {
+  id              String    @id @default(cuid())
+  tenantId        String
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name            String
+  vendorType      String? // PILOT, TUG, FRESH_WATER, GARBAGE, ...
+  address         String?
+  npwp            String?
+  email           String?
+  phone           String?
+  contactPerson   String?
+  bankName        String?
+  bankAccount     String?
+  paymentTermDays Int?
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  services          ServiceCatalog[]
+  disbursementItems DisbursementItem[]
+
+  @@index([tenantId])
+}
+
+model Currency {
+  id       String  @id @default(cuid())
+  tenantId String
+  tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  code     String // IDR, USD, SGD
+  name     String?
+  symbol   String?
+  decimals Int     @default(2)
+  isActive Boolean @default(true)
+
+  @@unique([tenantId, code])
+}
+
+model ExchangeRate {
+  id            String   @id @default(cuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fromCurrency  String
+  toCurrency    String
+  rate          Float
+  effectiveDate DateTime
+  source        String? // MANUAL | BI | ECB
+  createdAt     DateTime @default(now())
+
+  @@index([tenantId, fromCurrency, toCurrency, effectiveDate])
+}
+
+// ------------------------------------------------------------ SERVICE CATALOG
+
+/// Cara sebuah biaya dihitung. Sengaja enum, bukan rumus teks yang di-eval —
+/// rumus teks = lubang keamanan. Enum menutup ~95% kasus nyata; sisanya MANUAL.
+enum CalcMethod {
+  FLAT // lump sum
+  PER_UNIT // qty × rate
+  PER_GT // GT kapal × rate
+  PER_GT_PER_CALL
+  PER_GT_PER_DAY
+  PER_DAY
+  PER_HOUR
+  PER_TON // tonase kargo × rate
+  PERCENTAGE // % dari basis (mis. agency fee)
+  TIERED // berjenjang menurut GT (lihat ServiceRate.gtMin/gtMax)
+  MANUAL // diketik operator
+}
+
+enum ServiceCategory {
+  PORT_CHARGES // light dues, port dues, wharfage, anchorage
+  MARINE_SERVICES // pilot, tug, mooring, launch boat
+  GOVERNMENT // customs, immigration, quarantine, harbour master
+  HUSBANDRY // crew change, fresh water, garbage, CTM, medical
+  AGENCY // agency fee, communication, documentation
+  OTHER // miscellaneous, contingency
+}
+
+/// Definisi jasa + CARA menghitungnya. Tarifnya sendiri ada di ServiceRate,
+/// karena tarif berbeda tiap pelabuhan dan berubah seiring waktu.
+model ServiceCatalog {
+  id              String          @id @default(cuid())
+  tenantId        String
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  serviceCode     String // PILOT, TUG, LIGHT_DUES
+  serviceName     String
+  category        ServiceCategory
+  calcMethod      CalcMethod      @default(MANUAL)
+  defaultUnit     String? // call, hour, ton, day, GT
+  defaultCurrency String          @default("IDR")
+  taxable         Boolean         @default(false)
+  taxPct          Float?
+  defaultVendorId String?
+  defaultVendor   Vendor?         @relation(fields: [defaultVendorId], references: [id])
+  glAccount       String?
+  usedInEstimate  Boolean         @default(true) // muncul di EPDA
+  usedInActual    Boolean         @default(true) // muncul di FDA
+  sectionLetter   String? // A/B/C/D — menjaga tata letak PDF app A
+  displayOrder    Int             @default(0)
+  isActive        Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  deletedAt       DateTime?
+
+  rates             ServiceRate[]
+  templateItems     ServiceTemplateItem[]
+  disbursementItems DisbursementItem[]
+
+  @@unique([tenantId, serviceCode])
+  @@index([tenantId, category])
+}
+
+/// Tarif satu jasa pada satu pelabuhan untuk satu rentang waktu.
+/// portId null = tarif umum. gtMin/gtMax dipakai bila calcMethod = TIERED.
+model ServiceRate {
+  id            String         @id @default(cuid())
+  tenantId      String
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  serviceId     String
+  service       ServiceCatalog @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  portId        String?
+  port          Port?          @relation(fields: [portId], references: [id])
+  vesselType    String?
+  gtMin         Float?
+  gtMax         Float?
+  rate          Float
+  currency      String         @default("IDR")
+  minCharge     Float?
+  effectiveFrom DateTime       @default(now())
+  effectiveTo   DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([tenantId, serviceId, portId, effectiveFrom])
+}
+
+/// Paket biaya standar per pelabuhan (PRD §92) — sekali pilih, semua item termuat.
+model ServiceTemplate {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name       String
+  portId     String?
+  port       Port?    @relation(fields: [portId], references: [id])
+  vesselType String?
+  isDefault  Boolean  @default(false)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  items ServiceTemplateItem[]
+
+  @@index([tenantId, portId])
+}
+
+model ServiceTemplateItem {
+  id           String          @id @default(cuid())
+  templateId   String
+  template     ServiceTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  serviceId    String
+  service      ServiceCatalog  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  defaultQty   Float?
+  displayOrder Int             @default(0)
+
+  @@index([templateId])
+}
+
+// ------------------------------------------------------------------- OPERATION
+
+enum VoyageStatus {
+  PLANNED
+  CONFIRMED
+  ARRIVED
+  BERTHED
+  WORKING
+  COMPLETED
+  DEPARTED
+  CLOSED
+  CANCELLED
+}
+
+/// Hub seluruh sistem: satu voyage = satu "folder digital" berisi port call,
+/// kargo, EPDA/FDA, invoice, dan dokumen terkait.
+model Voyage {
+  id           String       @id @default(cuid())
+  tenantId     String
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  voyageNumber String // VYG-2026-000001
+  vesselId     String
+  vessel       Vessel       @relation(fields: [vesselId], references: [id])
+  principalId  String? // pemberi order / owner
+  principal    Principal?   @relation(fields: [principalId], references: [id])
+  customerId   String? // pihak ditagih
+  customer     Customer?    @relation(fields: [customerId], references: [id])
+  portId       String?
+  port         Port?        @relation(fields: [portId], references: [id])
+  agencyType   String? // FULL, PROTECTIVE, HUSBANDRY
+  status       VoyageStatus @default(PLANNED)
+
+  eta DateTime?
+  etb DateTime?
+  etc DateTime?
+  etd DateTime?
+  ata DateTime?
+  atb DateTime?
+  atd DateTime?
+
+  baseCurrency String    @default("IDR")
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  portCalls     PortCall[]
+  cargoes       Cargo[]
+  disbursements Disbursement[]
+  invoices      Invoice[]
+  documents     MaritimeDocument[]
+
+  @@unique([tenantId, voyageNumber])
+  @@index([tenantId, status])
+  @@index([tenantId, eta])
+  @@index([tenantId, vesselId])
+}
+
+model Cargo {
+  id        String   @id @default(cuid())
+  voyageId  String
+  voyage    Voyage   @relation(fields: [voyageId], references: [id], onDelete: Cascade)
+  cargoName String
+  quantity  Float?
+  unit      String? // MT, m3, TEU
+  operation String? // LOAD | DISCHARGE
+  shipper   String?
+  consignee String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([voyageId])
+}
+
+// ----------------------------------------------------------------- DISBURSEMENT
+
+enum DisbursementKind {
+  EPDA
+  FPDA
+  FDA
+}
+
+enum DisbursementStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  SENT
+  REVISION_REQUESTED
+  REVISED
+  FINAL
+  CLOSED
+  CANCELLED
+}
+
+/// EPDA/FPDA/FDA disatukan (app A pun sudah menyatukan handler PDF-nya).
+/// Variance = bandingkan baris FDA dengan baris EPDA lewat sourceItemId.
+model Disbursement {
+  id        String           @id @default(cuid())
+  tenantId  String
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  voyageId  String
+  voyage    Voyage           @relation(fields: [voyageId], references: [id])
+  kind      DisbursementKind
+  docNumber String // EPDA/2026/06/0142 — pola app A dipertahankan
+
+  // --- versioning (PRD §97-98). Revisi = baris BARU dengan rootId sama. ---
+  rootId       String? // penanda rumpun revisi; V1 = id dirinya sendiri
+  version      Int     @default(1)
+  supersededBy String? // diisi saat versi penerus dibuat
+  revisionNote String?
+
+  baseCurrency    String @default("IDR")
+  subtotal        Float  @default(0)
+  agencyPct       Float  @default(2.5)
+  agencyAmount    Float  @default(0)
+  taxAmount       Float  @default(0)
+  grandTotal      Float  @default(0)
+  advanceReceived Float?
+
+  status     DisbursementStatus @default(DRAFT)
+  issuedAt   DateTime           @default(now())
+  validUntil DateTime?
+  notes      String?
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+  deletedAt  DateTime?
+
+  items    DisbursementItem[]
+  invoices Invoice[]
+
+  @@unique([tenantId, docNumber])
+  @@index([tenantId, voyageId, kind])
+  @@index([tenantId, status])
+  @@index([rootId])
+}
+
+/// Satu baris biaya. Angka di sini SUDAH BISA DIHITUNG — pengganti `qty` teks
+/// bebas ("8,432 GT") di EpdaLineItem lama yang mustahil dihitung mesin.
+model DisbursementItem {
+  id             String          @id @default(cuid())
+  disbursementId String
+  disbursement   Disbursement    @relation(fields: [disbursementId], references: [id], onDelete: Cascade)
+  serviceId      String? // null = item ad-hoc di luar katalog
+  service        ServiceCatalog? @relation(fields: [serviceId], references: [id])
+  vendorId       String?
+  vendor         Vendor?         @relation(fields: [vendorId], references: [id])
+
+  category      ServiceCategory?
+  sectionLetter String? // A/B/C/D untuk tata letak PDF
+  description   String
+  basis         String? // teks tampil, mis. "per GT per call"
+
+  quantity   Float      @default(1)
+  unit       String?
+  unitPrice  Float      @default(0)
+  calcMethod CalcMethod @default(MANUAL) // snapshot (K5)
+
+  currency     String  @default("IDR")
+  exchangeRate Float   @default(1) // snapshot (K5)
+  amount       Float   @default(0) // dalam currency item
+  amountBase   Float   @default(0) // dikonversi ke baseCurrency induk
+  taxable      Boolean @default(false)
+  taxAmount    Float?
+
+  // --- khusus FDA ---
+  sourceItemId     String? // menunjuk baris EPDA padanannya → variance
+  vendorInvoiceNo  String?
+  actualReceiptRef String?
+
+  displayOrder Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([disbursementId])
+  @@index([serviceId])
+  @@index([sourceItemId])
+}
+
+// ---------------------------------------------------------------- FINANCE (AR)
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  SENT
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+model Invoice {
+  id                   String        @id @default(cuid())
+  tenantId             String
+  tenant               Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  voyageId             String?
+  voyage               Voyage?       @relation(fields: [voyageId], references: [id])
+  sourceDisbursementId String? // dibuat dari FDA (PRD §105)
+  sourceDisbursement   Disbursement? @relation(fields: [sourceDisbursementId], references: [id])
+  invoiceNumber        String
+  customerId           String?
+  customer             Customer?     @relation(fields: [customerId], references: [id])
+
+  invoiceDate DateTime      @default(now())
+  dueDate     DateTime?
+  currency    String        @default("IDR")
+  subtotal    Float         @default(0)
+  taxAmount   Float         @default(0)
+  grandTotal  Float         @default(0)
+  amountPaid  Float         @default(0)
+  status      InvoiceStatus @default(DRAFT)
+  notes       String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  deletedAt   DateTime?
+
+  items    InvoiceItem[]
+  payments InvoicePayment[]
+
+  @@unique([tenantId, invoiceNumber])
+  @@index([tenantId, status])
+  @@index([tenantId, customerId])
+}
+
+model InvoiceItem {
+  id           String   @id @default(cuid())
+  invoiceId    String
+  invoice      Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description  String
+  quantity     Float    @default(1)
+  unit         String?
+  unitPrice    Float    @default(0)
+  amount       Float    @default(0)
+  taxable      Boolean  @default(false)
+  taxAmount    Float?
+  displayOrder Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  @@index([invoiceId])
+}
+
+/// Pembayaran tagihan PELANGGAN (AR). Sengaja bukan `Payment` — model itu
+/// sudah dipakai untuk langganan SaaS lewat Midtrans, urusan yang berbeda.
+model InvoicePayment {
+  id              String   @id @default(cuid())
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoiceId       String
+  invoice         Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  paymentDate     DateTime @default(now())
+  amount          Float
+  currency        String   @default("IDR")
+  exchangeRate    Float    @default(1)
+  bankName        String?
+  referenceNumber String?
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([tenantId, invoiceId])
+}
+
+// -------------------------------------------------------------- AUDIT & CONTROL
+
+/// Jejak persetujuan. Sekali tersimpan tidak boleh diubah (PRD §114).
+model Approval {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  entityType String // DISBURSEMENT | INVOICE | PO
+  entityId   String
+  level      Int      @default(1)
+  userId     String
+  userName   String? // disalin agar tetap terbaca bila user dihapus
+  userRole   String?
+  decision   String // APPROVED | REJECTED | REQUEST_REVISION
+  note       String?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, entityType, entityId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tableName String
+  recordId  String
+  action    String // CREATE | UPDATE | DELETE | APPROVE | EXPORT | LOGIN
+  oldValue  Json?
+  newValue  Json?
+  userId    String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, tableName, recordId])
+  @@index([tenantId, createdAt])
 }
