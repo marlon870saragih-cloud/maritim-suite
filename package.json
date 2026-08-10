@@ -8,7 +8,10 @@
     "start": "next start",
     "lint": "next lint",
     "postinstall": "prisma generate",
-    "db:push": "prisma db push"
+    "db:push": "prisma db push",
+    "db:seed-v2": "node prisma/seed-v2.mjs",
+    "db:backfill-v2": "node prisma/backfill-v2.mjs",
+    "test:tenant": "node prisma/check-tenant-guard.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

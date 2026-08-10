@@ -446,7 +446,7 @@ Prinsip: app A sedang dipakai. **Tidak ada tabel/kolom yang dihapus di Fase 0.**
 2. ✅ Tulis `prisma/schema.prisma` final — **selesai & tervalidasi**
 3. ✅ Terapkan migration aditif (M1-M2) ke database — **selesai 2026-08-10** (lihat §6a)
 4. ✅ Skrip backfill (M3-M4) + seed (M5) — **selesai 2026-08-10** (lihat §6b)
-5. ⬜ Kerangka service layer: `src/services/` + `src/features/` (PRD §163)
+5. ✅ Kerangka service layer `src/services/` — **selesai 2026-08-10**. Dokumen terpisah: **[POLA-SERVICE-LAYER.md](./POLA-SERVICE-LAYER.md)**. (`src/features/` sengaja TIDAK dibuat — K10.)
 6. ✅ Uji: app lama tetap jalan — `tsc --noEmit` bersih, baca dokumen lama OK
 
 **Definition of Done:** migration jalan, data lama utuh, app lama normal, seed terisi, kerangka service siap dipakai Fase 1.
@@ -529,6 +529,20 @@ Pemetaan status: `UPCOMING→PLANNED`, `IN_PORT→ARRIVED`, `DEPARTED→DEPARTED
 Pencocokan pelabuhan **konservatif**: cocok persis dulu (nama atau UN/LOCODE), lalu cocok sebagian **hanya bila tepat satu** pelabuhan yang cocok. Kalau ragu → dikosongkan, diisi manual lewat Master Data.
 
 **Verifikasi sesudahnya:** jumlah baris tabel lama tetap identik (48/1/1/3/4/2); jalan kedua kedua skrip menghasilkan 0 perubahan (idempotensi terbukti).
+
+### 6c. Service layer & isolasi tenant (2026-08-10) — penutup Fase 0
+
+Rinciannya di dokumen tersendiri: **[POLA-SERVICE-LAYER.md](./POLA-SERVICE-LAYER.md)**. Ringkasnya:
+
+**K9 — isolasi data diputus: tenant-guard di service layer, bukan Postgres RLS.** Ini menutup tension yang tertunda sejak awal roadmap. `forTenant(ctx)` mengembalikan klien Prisma yang menyuntikkan `tenantId` ke setiap `where` pada 20 model bertenant, dan **menimpa** nilai yang disodorkan pemanggil. Operasi yang tak bisa dipagari (`findUnique`/`update`/`delete`/`upsert` — Prisma mewajibkan selector unik) ditolak dengan pesan yang menyebut penggantinya. RLS ditolak karena bentrok dengan connection pooling mode transaksi (PgBouncer di Railway/Supabase membuat `SET LOCAL` tak andal) dan biayanya tinggi. **Wajib ditinjau ulang di Fase 8** saat portal pelanggan/vendor membuka akses ke pengguna luar organisasi.
+
+**K10 — `src/features/` tidak dibuat** (menyimpang dari PRD §163). App A sudah punya `app/` + `components/`; menambah lokasi ketiga tanpa memindahkan yang lama hanya menghasilkan tiga konvensi hidup bersamaan. Sejalan dengan K1.
+
+**Route lama tidak diubah.** 54 route lama tetap memakai pola manual — sejalan dengan M6, jangan mengubah yang sedang dipakai tanpa keperluan. Modul baru wajib memakai pola baru.
+
+**Uji pagar — `npm run test:tenant`** (`prisma/check-tenant-guard.mjs`), 17 pemeriksaan atas dua tenant nyata, semuanya lulus. Uji memakai objek extension yang persis sama dengan yang dipakai aplikasi. Yang paling penting: uji ini **gagal kalau ada model bertenant baru yang lupa didaftarkan** di `TENANT_MODELS` — kelalaian yang paling mungkin terjadi seiring skema tumbuh.
+
+Bukti lain: `src/app/api/ports/` (CRUD lengkap memakai pola baru) berjalan dan lolos `tsc --noEmit`.
 
 ### Hasil verifikasi skema (2026-08-06)
 

@@ -156,29 +156,40 @@ Detail lengkap: **[FASE-0-SKEMA-v2.md](./FASE-0-SKEMA-v2.md)**
 | Seed M5 (`prisma/seed-v2.mjs`) | ✅ 3 tenant × (3 mata uang + 3 pelabuhan + 21 jasa + 19 tarif contoh) |
 | Backfill M3 (`prisma/backfill-v2.mjs`) | ✅ 1 PortCall → `VYG-2026-000001` + Cargo, pelabuhan tertaut `IDBPN` |
 | Backfill M4 (dokumen → voyage) | ✅ **nihil** — 48 dokumen semuanya `portCallId = NULL`, tidak ada yang bisa ditautkan (lihat §6b) |
-| Kerangka service layer `src/services/` + `src/features/` | ⬜ **berikutnya** |
+| Kerangka service layer `src/services/` | ✅ **selesai** — [POLA-SERVICE-LAYER.md](./POLA-SERVICE-LAYER.md), 17 uji pagar lulus |
+
+**✅ FASE 0 SELESAI (2026-08-10).** *Definition of Done* terpenuhi seluruhnya: migration jalan, data lama utuh, app lama normal, seed terisi, kerangka service siap dipakai Fase 1.
 
 **Keputusan user 2026-08-10:** target = **DB development lokal** (`localhost:5432/maritime_suite`), commit dikerjakan di branch `feat/v2-fase-0-voyage-centric`.
 
 **K7 (baru) — baseline sebelum migrate.** DB ternyata dikelola `db push`, bukan `migrate`, sehingga `migrate dev` akan menawarkan **reset** (hapus semua data). Diselesaikan dengan: backup `pg_dump` → buat migration baseline dari skema git HEAD → `migrate resolve --applied` → baru `migrate dev`. Rinciannya di [FASE-0-SKEMA-v2.md §6a](./FASE-0-SKEMA-v2.md). **Ulangi urutan ini saat deploy ke produksi.**
 
-**K8 (baru) — M4 dibatalkan, dan itu keputusan yang benar.** Semua dokumen lama tidak punya `portCallId`, dan kolom teks `port` berisi campuran nama perusahaan & nomor dokumen. Menebak tautan dari situ akan membuat relasi palsu yang tampak sah di laporan. Dokumen lama dibiarkan sebagai arsip sesuai M6. Rinciannya di [FASE-0-SKEMA-v2.md §6b](./FASE-0-SKEMA-v2.md).
+**K9 — isolasi data akhirnya diputus: tenant-guard, bukan RLS.** Menutup tension §8 yang tertunda sejak awal. Alasan & syarat peninjauan ulang (Fase 8, saat portal eksternal dibuka) ada di [POLA-SERVICE-LAYER.md §2](./POLA-SERVICE-LAYER.md). **K10 — `src/features/` tidak dibuat** (menyimpang dari PRD §163, sejalan dengan K1).
+
+**K8 — M4 dibatalkan, dan itu keputusan yang benar.** Semua dokumen lama tidak punya `portCallId`, dan kolom teks `port` berisi campuran nama perusahaan & nomor dokumen. Menebak tautan dari situ akan membuat relasi palsu yang tampak sah di laporan. Dokumen lama dibiarkan sebagai arsip sesuai M6. Rinciannya di [FASE-0-SKEMA-v2.md §6b](./FASE-0-SKEMA-v2.md).
 
 **Urutan menjalankan skrip** (seed dulu, supaya Master Port ada saat backfill menautkan pelabuhan):
 ```bash
-node prisma/seed-v2.mjs
+npm run db:seed-v2
 node prisma/backfill-v2.mjs --dry-run
-node prisma/backfill-v2.mjs
+npm run db:backfill-v2
+npm run test:tenant        # 17 pemeriksaan pagar isolasi tenant
 ```
 
-### Berikutnya
+### Berikutnya — Fase 1: Master Data + Service Catalog
 
-1. **Kerangka service layer** `src/services/` + `src/features/` — penutup Fase 0.
-2. Lalu **Fase 1: Master Data + Service Catalog** (CRUD Vessel/Port/Customer/Vendor/Currency + ⭐ import ship particular PDF/Excel).
-3. Sebelum Fase 1 dimulai: user perlu **mengganti tarif contoh** dengan tarif pelabuhan resmi (atau memutuskan itu bagian dari Fase 1).
+Acuan wajib sebelum menulis kode: **[POLA-SERVICE-LAYER.md](./POLA-SERVICE-LAYER.md)** (§5 berisi resep menambah modul) + contoh lengkap di `src/services/master/port.service.ts` dan `src/app/api/ports/`.
+
+1. CRUD sisa master data meniru pola Port: Vessel, Customer, Vendor, Currency, ExchangeRate, ServiceCatalog + ServiceRate, ServiceTemplate.
+2. UI Master Data (halaman + form).
+3. ⭐ Import ship particular PDF/Excel (dua pintu: chat AI + tombol di Master Vessel).
+4. **Sebelum dipakai sungguhan:** ganti 19 tarif contoh hasil seed dengan tarif pelabuhan resmi.
+
+Model: Opus ~20% (Service Catalog + formula, modul Vessel pertama) / Sonnet ~80% (modul berikutnya yang meniru pola).
 
 ## 8. Tension yang belum diselesaikan (untuk diingat)
 
-- Isolasi data (RLS vs tenant-guard) — belum diputus.
-- Adopsi sebagian stack rekomendasi PRD (TanStack Query, Zod, Zustand) — putuskan per-item saat build.
+- ~~Isolasi data (RLS vs tenant-guard)~~ → **DIPUTUS 2026-08-10 (K9): tenant-guard.** Ditinjau ulang di Fase 8 saat portal eksternal dibuka. Lihat [POLA-SERVICE-LAYER.md §2](./POLA-SERVICE-LAYER.md).
+- Adopsi sebagian stack rekomendasi PRD (TanStack Query, Zod, Zustand) — putuskan per-item saat build. Catatan: `zod` **sudah** jadi dependency app A, tapi service layer v2 memakai pembaca field sendiri (`services/input.ts`) karena lebih ringkas untuk bentuk data ini; tinjau ulang bila validasi mulai rumit (mis. EPDA berjenjang di Fase 3).
 - Komentar guardrail "AI tak pernah hitung uang" di `openrouter.ts` — perlu diperbarui saat modul AI Cost Prediction dibangun.
+- **19 tarif contoh hasil seed belum diganti tarif resmi** — harus beres sebelum EPDA dikirim ke principal.
