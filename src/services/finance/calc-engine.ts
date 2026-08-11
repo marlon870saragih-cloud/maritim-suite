@@ -335,8 +335,25 @@ export function hitungBaris(baris: BarisHitung): HasilBaris {
   if (PEMBAGI_SERATUS.has(calcMethod)) f = f / 100
 
   // K16-4: minimum diterapkan sesudah f, SEBELUM pembulatan.
+  //
+  // Syarat `f > 0` TIDAK ada di teks K16-4 tapi dituntut oleh checklist §14/3b
+  // butir 5 ("kapal tanpa gt → baris tersimpan, amount 0"): tanpa syarat itu,
+  // baris yang BELUM BISA DIUKUR ikut terkerek ke tarif minimum. Tiga kasus yang
+  // ditutupnya, semuanya salah ke arah yang menguntungkan agen:
+  //   f = 0 karena GT/etmal/ton belum ada  → 0, bukan minimum penuh
+  //   f = 0 karena tarifnya belum ada      → 0, bukan minimum penuh
+  //   f < 0 (baris koreksi/refund, K16-3)  → tetap negatif, bukan berubah jadi TAGIHAN
+  // Minimum memang untuk "kapal kecil" (f kecil tapi nyata), bukan untuk baris
+  // yang datanya belum lengkap — dan baris begitu sudah diblokir submit oleh
+  // warning pemblokirnya sendiri (K16-2).
   const minCharge = baris.minCharge
-  if (minCharge !== null && minCharge !== undefined && Number.isFinite(minCharge) && f < minCharge) {
+  if (
+    minCharge !== null &&
+    minCharge !== undefined &&
+    Number.isFinite(minCharge) &&
+    f > 0 &&
+    f < minCharge
+  ) {
     warnings.push({
       kode: 'MINIMUM_MENGIKAT',
       pesan: 'Tarif minimum berlaku — jumlah baris ini bukan kuantitas × harga satuan.',

@@ -680,6 +680,7 @@ model DisbursementItem {
   quantity   Float      @default(1)
   unit       String?
   unitPrice  Float      @default(0)
+  minCharge  Float? // snapshot ServiceRate.minCharge (K15) — tanpa ini invarian K13 patah
   calcMethod CalcMethod @default(MANUAL) // snapshot (K5)
 
   currency     String  @default("IDR")
@@ -687,6 +688,11 @@ model DisbursementItem {
   amount       Float   @default(0) // dalam currency item
   amountBase   Float   @default(0) // dikonversi ke baseCurrency induk
   taxable      Boolean @default(false)
+  // Snapshot ServiceCatalog.taxPct (K22). Kolomnya tak ada di Fase 0 walau K22
+  // mewajibkan snapshot-nya; tanpa kolom ini taxAmount hanya bisa dihitung ulang
+  // dengan membaca katalog hidup — melanggar K5 (menaikkan PPN hari ini akan
+  // mengubah dokumen lama). Aditif & nullable, sebentuk dengan minCharge.
+  taxPct       Float?
   taxAmount    Float?
 
   // --- khusus FDA ---

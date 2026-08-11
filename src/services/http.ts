@@ -57,6 +57,17 @@ export function withTenant<A extends unknown[]>(
   }
 }
 
+/**
+ * Data jejak audit yang hanya lapisan HTTP bisa tahu (K42). Service menerimanya
+ * sebagai argumen eksplisit — ia tidak pernah membaca Request sendiri.
+ */
+export function jejakDari(req: Request): { ipAddress: string | null } {
+  const maju = req.headers.get('x-forwarded-for')
+  return {
+    ipAddress: maju?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || null,
+  }
+}
+
 /** Baca body JSON; body kosong / rusak → objek kosong (bukan lemparan). */
 export async function jsonBody(req: Request): Promise<Record<string, unknown>> {
   const b = await req.json().catch(() => ({}))
