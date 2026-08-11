@@ -176,16 +176,31 @@ npm run db:backfill-v2
 npm run test:tenant        # 17 pemeriksaan pagar isolasi tenant
 ```
 
-### Berikutnya — Fase 1: Master Data + Service Catalog
+### ✅ FASE 1 SELESAI (2026-08-11) — Master Data + Service Catalog
 
-Acuan wajib sebelum menulis kode: **[POLA-SERVICE-LAYER.md](./POLA-SERVICE-LAYER.md)** (§5 berisi resep menambah modul) + contoh lengkap di `src/services/master/port.service.ts` dan `src/app/api/ports/`.
+| Langkah | Status |
+|---|---|
+| CRUD Customer/Vendor/Currency/ExchangeRate/ServiceCatalog+Rate/ServiceTemplate (pola Port) | ✅ selesai — `src/services/master/*.service.ts` + `src/app/api/{customers,vendors,currencies,exchange-rates,services,service-rates,service-templates}/` |
+| UI Master Data (8 halaman Settings) | ✅ selesai — `settings/{ports,customers,vendors,currencies,exchange-rates,services}` |
+| ⭐ Import ship particular PDF/Excel (dua pintu) | ✅ selesai — `lib/ai/vessel-extract.ts` + `VesselImportDialog.tsx`, dipasang di Settings › Vessels & chat Asisten |
+| Ganti 19 tarif contoh dengan tarif resmi | ❌ **belum** — perlu tarif pelabuhan resmi dari Tribuana, bukan pekerjaan kode |
 
-1. CRUD sisa master data meniru pola Port: Vessel, Customer, Vendor, Currency, ExchangeRate, ServiceCatalog + ServiceRate, ServiceTemplate.
-2. UI Master Data (halaman + form).
-3. ⭐ Import ship particular PDF/Excel (dua pintu: chat AI + tombol di Master Vessel).
-4. **Sebelum dipakai sungguhan:** ganti 19 tarif contoh hasil seed dengan tarif pelabuhan resmi.
+Vessel **sengaja tidak** dimigrasi ke pola service-layer baru (CRUD lama dipakai aktif di Port Call/AI extract/Settings, belum punya `deletedAt`/`isActive`) — migrasi ditunda ke slice terpisah kalau memang perlu.
 
-Model: Opus ~20% (Service Catalog + formula, modul Vessel pertama) / Sonnet ~80% (modul berikutnya yang meniru pola).
+Commit: `feat(master-data): Fase 1 — Customer/Vendor/Currency/ExchangeRate/ServiceCatalog+Rate/ServiceTemplate` + `feat(ai): import partikular kapal dari PDF/Excel ke Master Vessel`, branch `feat/v2-fase-0-voyage-centric` (belum merge ke main).
+
+Terverifikasi: `tsc --noEmit` 0 error di setiap slice, `next build` sukses, `test:tenant` 17/17 lulus tiap kali, end-to-end lewat API/browser nyata (termasuk upload workbook sungguhan ke `/api/ai/vessel-import` — jalur teks vision Excel terbukti baca 11 field benar + cocok-IMO ke kapal yang sudah ada). Jalur vision PDF sendiri belum diuji dengan dokumen PDF asli (tak ada sampel saat itu) — tool-call & guardrail-nya identik dengan jalur teks yang sudah terbukti.
+
+### Berikutnya — Fase 2: Voyage Hub + Port Call + Cargo
+
+Acuan: [POLA-SERVICE-LAYER.md](./POLA-SERVICE-LAYER.md) §5 (resep modul baru) + `src/components/portcall/PortCallManager.tsx` (792 baris, pola Port Call app-A yang SUDAH ADA — Fase 2 membungkus/mengangkat ini dengan Voyage sebagai hub, bukan menulis ulang).
+
+1. Voyage CRUD + auto-number (`VYG-YYYY-NNNNNN`, pola sudah ada di `backfill-v2.mjs`) meniru pola Port.
+2. Voyage List + Voyage Workspace (kerangka) — UI baru, belum ada polanya di app A.
+3. Port Call timeline ("Add Event") menyatu ke Voyage.
+4. Cargo CRUD (anak Voyage).
+
+Model: Opus ~30% (struktur Voyage Workspace + state timeline — desain baru) / Sonnet ~70% (CRUD Voyage/Cargo meniru pola Port).
 
 ## 8. Tension yang belum diselesaikan (untuk diingat)
 
