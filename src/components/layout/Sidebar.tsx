@@ -13,6 +13,7 @@ import {
   Lock,
   Sparkles,
   BookOpen,
+  Route,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/i18n'
@@ -22,6 +23,7 @@ import { useMobileNav } from './MobileNav'
 const DOK_COUNT = new Set(DOC_CATEGORIES.flatMap((c) => c.docs.map((d) => d.type))).size
 
 const navItems = [
+  { id: 'voyages', label: 'Voyage', sublabel: 'Port call · Cargo · Dokumen', href: '/voyages', icon: Route },
   { id: 'finance', label: 'Finance Generator', sublabel: 'EPDA · FPDA · Invoice', href: '/finance', icon: DollarSign },
   { id: 'dokumen', label: 'Maritime Dokumen', sublabel: 'FAL · SOF · NOR · Clearance', href: '/dokumen', icon: FileText, count: DOK_COUNT },
   { id: 'portcall', label: 'Port Call Manager', sublabel: 'Status · Timeline · Task', href: '/portcall', icon: Ship },
