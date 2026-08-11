@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import Script from 'next/script'
 import { getServerSession } from 'next-auth'
-import { Building2, Database, Users, ChevronRight } from 'lucide-react'
+import { Building2, Database, Users, ChevronRight, Anchor, Truck, Coins, TrendingUp, ListChecks } from 'lucide-react'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -30,6 +30,12 @@ const TR: Record<Lang, {
       { href: '/settings/company', title: 'Profil Perusahaan', desc: 'Nama, alamat, NPWP, rekening bank', icon: Building2 },
       { href: '/settings/vessels', title: 'Database Kapal', desc: 'Kelola data kapal & spesifikasi', icon: Database },
       { href: '/settings/principals', title: 'Principal & Kontak', desc: 'Daftar principal dan format dokumen', icon: Users },
+      { href: '/settings/ports', title: 'Database Pelabuhan', desc: 'UN/LOCODE, otoritas, syarat pandu/tunda', icon: Anchor },
+      { href: '/settings/customers', title: 'Customer', desc: 'Pihak ditagih untuk voyage & invoice', icon: Users },
+      { href: '/settings/vendors', title: 'Vendor', desc: 'Pilot, tug, dan penyedia jasa lain', icon: Truck },
+      { href: '/settings/currencies', title: 'Mata Uang', desc: 'Kode ISO 4217 yang dipakai tenant ini', icon: Coins },
+      { href: '/settings/exchange-rates', title: 'Riwayat Kurs', desc: 'Log kurs untuk konversi mata uang', icon: TrendingUp },
+      { href: '/settings/services', title: 'Katalog Jasa & Tarif', desc: 'Jenis jasa dan tarif — dasar EPDA/FDA', icon: ListChecks },
     ],
   },
   en: {
@@ -39,6 +45,12 @@ const TR: Record<Lang, {
       { href: '/settings/company', title: 'Company Profile', desc: 'Name, address, NPWP, bank account', icon: Building2 },
       { href: '/settings/vessels', title: 'Vessel Database', desc: 'Manage vessel data & specs', icon: Database },
       { href: '/settings/principals', title: 'Principals & Contacts', desc: 'Principal list and document formats', icon: Users },
+      { href: '/settings/ports', title: 'Port Database', desc: 'UN/LOCODE, authority, pilot/tug requirements', icon: Anchor },
+      { href: '/settings/customers', title: 'Customers', desc: 'Billed parties for voyages & invoices', icon: Users },
+      { href: '/settings/vendors', title: 'Vendors', desc: 'Pilots, tugs, and other service providers', icon: Truck },
+      { href: '/settings/currencies', title: 'Currencies', desc: 'ISO 4217 codes used by this tenant', icon: Coins },
+      { href: '/settings/exchange-rates', title: 'Exchange Rate History', desc: 'Rate log for currency conversion', icon: TrendingUp },
+      { href: '/settings/services', title: 'Service Catalog & Rates', desc: 'Service types and rates — basis for EPDA/FDA', icon: ListChecks },
     ],
   },
 }
