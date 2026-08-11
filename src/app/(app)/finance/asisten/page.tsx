@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Sparkles, Loader2, ArrowUp, ArrowRight, HelpCircle, ShieldCheck, RotateCcw } from 'lucide-react'
+import { ArrowLeft, Sparkles, Loader2, ArrowUp, ArrowRight, HelpCircle, ShieldCheck, RotateCcw, Ship } from 'lucide-react'
+import { VesselImportDialog } from '@/components/settings/VesselImportDialog'
 
 const LABELS: Record<string, string> = {
   docNumber: 'No. dokumen', issuedAt: 'Tanggal', invoiceDate: 'Tanggal', noteDate: 'Tanggal',
@@ -71,6 +72,9 @@ export default function AsistenPage() {
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [opening, setOpening] = useState<number | null>(null)
+  // Pintu kedua import partikular kapal (pintu utamanya di Settings › Database kapal).
+  // Sengaja TIDAK lewat /api/ai/draft: ini aksi master data, bukan pembuatan dokumen.
+  const [importOpen, setImportOpen] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
 
@@ -233,6 +237,16 @@ export default function AsistenPage() {
       {/* Composer */}
       <div className="border-t border-border-muted pt-3">
         <div className="flex items-end gap-2 bg-surface border border-border-muted rounded-2xl px-3 py-2 focus-within:border-accent-purple/50 transition-colors">
+          <button
+            type="button"
+            onClick={() => setImportOpen(true)}
+            disabled={busy}
+            title="Import partikular kapal dari PDF/Excel"
+            aria-label="Import partikular kapal dari PDF/Excel"
+            className="w-9 h-9 rounded-full border border-border-muted text-text-secondary hover:text-white hover:border-accent-purple/50 hover:bg-surface-tertiary flex items-center justify-center transition-colors disabled:opacity-40 flex-shrink-0"
+          >
+            <Ship className="w-4 h-4" />
+          </button>
           <textarea
             ref={taRef}
             value={input}
@@ -254,6 +268,23 @@ export default function AsistenPage() {
           </button>
         </div>
       </div>
+
+      <VesselImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onSaved={({ name, updated }) =>
+          setMessages((p) => [
+            ...p,
+            mk({
+              role: 'ai',
+              kind: 'text',
+              text: updated
+                ? `Data kapal ${name} sudah diperbarui di Master Kapal — cek di Settings › Database kapal.`
+                : `Kapal ${name} sudah tersimpan di Master Kapal — cek di Settings › Database kapal.`,
+            }),
+          ])
+        }
+      />
     </div>
   )
 }

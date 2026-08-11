@@ -2,9 +2,13 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Pencil, Trash2, Loader2, Ship } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2, Ship, FileUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useT, type Lang } from '@/lib/i18n'
+import { VesselImportDialog, useVesselImportLabel } from './VesselImportDialog'
+import { emptyForm, toForm, VesselFieldsGrid, type FormState, type Vessel } from './vessel-form'
+
+export type { Vessel } from './vessel-form'
 
 const STR: Record<Lang, Record<string, string>> = {
   id: {
@@ -14,7 +18,6 @@ const STR: Record<Lang, Record<string, string>> = {
     emptyTitle: 'Belum ada kapal', emptyDesc: 'Tambah data kapal sekali — dipakai otomatis untuk port call & dokumen.',
     thName: 'Nama Kapal', thFlag: 'Bendera', thType: 'Tipe', thAction: 'Aksi',
     editTitle: 'Ubah Kapal', dialogDesc: 'Data ini dipakai untuk mengisi otomatis partikular kapal di port call & dokumen.',
-    fName: 'Nama Kapal', fImo: 'No. IMO', fFlag: 'Bendera', fType: 'Tipe Kapal', fDraft: 'Draft Maks (m)', fYear: 'Tahun Bangun',
     tipEdit: 'Ubah', tipDelete: 'Hapus', cancel: 'Batal', saveChanges: 'Simpan Perubahan',
   },
   en: {
@@ -24,7 +27,6 @@ const STR: Record<Lang, Record<string, string>> = {
     emptyTitle: 'No vessels yet', emptyDesc: 'Add a vessel once — auto-used for port calls & documents.',
     thName: 'Vessel Name', thFlag: 'Flag', thType: 'Type', thAction: 'Action',
     editTitle: 'Edit Vessel', dialogDesc: 'This data auto-fills vessel particulars in port calls & documents.',
-    fName: 'Vessel Name', fImo: 'IMO No.', fFlag: 'Flag', fType: 'Vessel Type', fDraft: 'Max Draft (m)', fYear: 'Year Built',
     tipEdit: 'Edit', tipDelete: 'Delete', cancel: 'Cancel', saveChanges: 'Save changes',
   },
 }
@@ -36,74 +38,14 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 
-export type Vessel = {
-  id: string
-  name: string
-  imoNumber: string | null
-  flag: string | null
-  callSign: string | null
-  vesselType: string | null
-  gt: number | null
-  nrt: number | null
-  loa: number | null
-  beam: number | null
-  maxDraft: number | null
-  yearBuilt: number | null
-}
-
-type FormState = Record<string, string>
-
-const FIELD_KEYS = [
-  'name', 'imoNumber', 'callSign', 'flag', 'vesselType',
-  'gt', 'nrt', 'loa', 'beam', 'maxDraft', 'yearBuilt',
-] as const
-
-const emptyForm = (): FormState => Object.fromEntries(FIELD_KEYS.map((k) => [k, '']))
-
-const toForm = (v: Vessel): FormState =>
-  Object.fromEntries(FIELD_KEYS.map((k) => [k, v[k] == null ? '' : String(v[k])]))
-
 const num = (n: number | null) => (n == null ? '—' : n.toLocaleString('en-US'))
-
-const inputCls =
-  'w-full bg-surface border border-border-muted rounded px-2.5 py-2 text-sm text-text-primary ' +
-  'placeholder:text-text-secondary/40 focus:border-accent-blue focus:outline-none ' +
-  'focus:ring-1 focus:ring-accent-blue/40 transition-colors'
-const labelCls = 'block text-[10px] font-mono uppercase tracking-wider text-text-secondary mb-1'
-
-function Field({
-  label, k, form, set, required, type = 'text', placeholder,
-}: {
-  label: string
-  k: string
-  form: FormState
-  set: (k: string, v: string) => void
-  required?: boolean
-  type?: string
-  placeholder?: string
-}) {
-  return (
-    <div>
-      <label className={labelCls}>
-        {label} {required && <span className="text-status-danger">*</span>}
-      </label>
-      <input
-        type={type}
-        name={k}
-        inputMode={type === 'number' ? 'decimal' : undefined}
-        value={form[k] ?? ''}
-        onChange={(e) => set(k, e.target.value)}
-        placeholder={placeholder}
-        className={inputCls}
-      />
-    </div>
-  )
-}
 
 export function VesselsManager({ vessels }: { vessels: Vessel[] }) {
   const t = useT(STR)
+  const importLabel = useVesselImportLabel()
   const router = useRouter()
   const [open, setOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [editing, setEditing] = useState<Vessel | null>(null)
   const [form, setForm] = useState<FormState>(emptyForm())
   const [busy, setBusy] = useState(false)
@@ -170,7 +112,14 @@ export function VesselsManager({ vessels }: { vessels: Vessel[] }) {
 
   return (
     <>
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => setImportOpen(true)}
+          className="inline-flex items-center gap-2 border border-border-muted text-text-secondary hover:text-white hover:border-accent-purple/50 hover:bg-surface-tertiary rounded px-4 py-2 text-sm font-medium transition-colors"
+        >
+          <FileUp className="w-4 h-4" /> {importLabel}
+        </button>
         <button
           type="button"
           onClick={openAdd}
@@ -190,13 +139,22 @@ export function VesselsManager({ vessels }: { vessels: Vessel[] }) {
               <p className="text-text-primary text-sm font-medium">{t.emptyTitle}</p>
               <p className="text-text-secondary text-xs mt-1">{t.emptyDesc}</p>
             </div>
-            <button
-              type="button"
-              onClick={openAdd}
-              className="inline-flex items-center gap-2 mt-1 bg-accent-blue hover:bg-primary text-[#231a06] rounded px-4 py-2 text-sm font-medium transition-colors"
-            >
-              <Plus className="w-4 h-4" /> {t.addBtn}
-            </button>
+            <div className="flex items-center gap-2 mt-1">
+              <button
+                type="button"
+                onClick={() => setImportOpen(true)}
+                className="inline-flex items-center gap-2 border border-border-muted text-text-secondary hover:text-white hover:border-accent-purple/50 hover:bg-surface-tertiary rounded px-4 py-2 text-sm font-medium transition-colors"
+              >
+                <FileUp className="w-4 h-4" /> {importLabel}
+              </button>
+              <button
+                type="button"
+                onClick={openAdd}
+                className="inline-flex items-center gap-2 bg-accent-blue hover:bg-primary text-[#231a06] rounded px-4 py-2 text-sm font-medium transition-colors"
+              >
+                <Plus className="w-4 h-4" /> {t.addBtn}
+              </button>
+            </div>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -258,6 +216,8 @@ export function VesselsManager({ vessels }: { vessels: Vessel[] }) {
         )}
       </section>
 
+      <VesselImportDialog open={importOpen} onOpenChange={setImportOpen} onSaved={() => router.refresh()} />
+
       <Dialog open={open} onOpenChange={(o) => !busy && setOpen(o)}>
         <DialogContent className="bg-surface-secondary border-card-border text-text-primary max-w-xl">
           <DialogHeader>
@@ -269,21 +229,7 @@ export function VesselsManager({ vessels }: { vessels: Vessel[] }) {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2">
-              <Field label={t.fName} k="name" form={form} set={set} required placeholder="MV Ocean Blue" />
-            </div>
-            <Field label={t.fImo} k="imoNumber" form={form} set={set} placeholder="9123456" />
-            <Field label="Call Sign" k="callSign" form={form} set={set} placeholder="YBxx" />
-            <Field label={t.fFlag} k="flag" form={form} set={set} placeholder="Indonesia" />
-            <Field label={t.fType} k="vesselType" form={form} set={set} placeholder="Bulk Carrier" />
-            <Field label="GT" k="gt" form={form} set={set} type="number" placeholder="25000" />
-            <Field label="NRT" k="nrt" form={form} set={set} type="number" placeholder="15000" />
-            <Field label="LOA (m)" k="loa" form={form} set={set} type="number" placeholder="180" />
-            <Field label="Beam (m)" k="beam" form={form} set={set} type="number" placeholder="28" />
-            <Field label={t.fDraft} k="maxDraft" form={form} set={set} type="number" placeholder="10.5" />
-            <Field label={t.fYear} k="yearBuilt" form={form} set={set} type="number" placeholder="2015" />
-          </div>
+          <VesselFieldsGrid form={form} set={set} />
 
           {error && (
             <p className="text-status-danger text-xs bg-status-danger/10 border border-status-danger/30 rounded px-3 py-2">

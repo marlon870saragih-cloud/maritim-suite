@@ -10,7 +10,32 @@ const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions'
 // (pastikan slug persis sesuai katalog OpenRouter).
 export const SPK_MODEL = process.env.OPENROUTER_SPK_MODEL || 'anthropic/claude-sonnet-4.5'
 
-export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string }
+// Isi pesan multimodal. `content` tetap boleh string biasa (semua pemanggil lama
+// mengirim string) — array hanya dipakai saat melampirkan berkas/gambar.
+export type ContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+  // Blok berkas OpenAI-compatible; `file_data` = data URI base64 untuk berkas lokal.
+  | { type: 'file'; file: { filename: string; file_data: string } }
+
+export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string | ContentPart[] }
+
+/**
+ * Plugin OpenRouter (top-level body, bukan di dalam messages). Yang kita pakai:
+ * `file-parser` dengan engine `native` → PDF diteruskan apa adanya ke Claude
+ * (vision-nya sendiri, ditagih sebagai token input). Engine ini disebut eksplisit
+ * karena dokumentasi OpenRouter menyebut default-nya bisa jatuh ke `mistral-ocr`
+ * (biaya per halaman) — kita tak mau ketagihan itu tanpa sengaja.
+ */
+export type PluginDef = {
+  id: string
+  pdf?: { engine: 'native' | 'mistral-ocr' | 'cloudflare-ai' }
+}
+
+/** Plugin siap-pakai untuk lampiran PDF ke model Claude. Bisa dioverride via env. */
+export const PDF_NATIVE_PLUGIN: PluginDef[] = [
+  { id: 'file-parser', pdf: { engine: (process.env.OPENROUTER_PDF_ENGINE as 'native') || 'native' } },
+]
 
 export type ToolDef = {
   type: 'function'
@@ -25,6 +50,7 @@ type ChatOptions = {
   tools?: ToolDef[]
   toolChoice?: ToolChoice
   temperature?: number
+  plugins?: PluginDef[]
 }
 
 type ToolCall = { function?: { name?: string; arguments?: string } }
@@ -53,6 +79,7 @@ export async function chatCompletion(opts: ChatOptions): Promise<ChatResponse> {
       tools: opts.tools,
       tool_choice: opts.toolChoice,
       temperature: opts.temperature ?? 0.2,
+      plugins: opts.plugins,
     }),
   })
 
