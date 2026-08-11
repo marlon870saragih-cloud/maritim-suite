@@ -202,6 +202,27 @@ Acuan: [POLA-SERVICE-LAYER.md](./POLA-SERVICE-LAYER.md) §5 (resep modul baru) +
 
 Model: Opus ~30% (struktur Voyage Workspace + state timeline — desain baru) / Sonnet ~70% (CRUD Voyage/Cargo meniru pola Port).
 
+### ✅ FASE 2 SELESAI (2026-08-11) — Voyage Hub + Port Call + Cargo
+
+| Langkah | Status |
+|---|---|
+| Voyage service+API+auto-number (`VYG-YYYY-NNNNNN`) | ✅ — `voyage.service.ts` + `api/voyages/**` |
+| Cargo service+API (anak Voyage, tanpa tenantId) | ✅ — `cargo.service.ts` + `api/voyages/[id]/cargoes/**` |
+| Voyage List UI | ✅ — `/voyages` |
+| **Voyage Workspace** (status lifecycle, particulars, tab Cargo/Port Call/Finansial) | ✅ — `/voyages/[id]`, dikerjakan agen Opus |
+| Port Call ↔ Voyage linkage pertama kali | ✅ — perluasan aditif `lib/portcalls.ts` + `api/portcalls/*` (`voyageId` opsional, `undefined`≠`null` supaya edit lama tak memutus tautan), form Port Call TETAP satu (tak ada UI kedua) |
+| Panel Finansial (Disbursement/Invoice/Dokumen) | ✅ sengaja **placeholder saja** — belum ada jalur kode yang membuat baris itu bertaut voyage (Fase 3/4) |
+
+Commit: `feat(voyage): Fase 2 fondasi — Voyage + Cargo` + `feat(voyage): Voyage Workspace — status lifecycle, cargo, port call linkage`, branch `feat/v2-fase-0-voyage-centric` (belum merge ke main).
+
+Terverifikasi nyata (bukan cuma tsc): voyage baru auto-nomor `VYG-2026-000002`, cargo CRUD, transisi status ditolak bila tak sah, hapus voyage DITOLAK selagi ada aktivitas lalu berhasil setelah dibersihkan; PATCH particulars tanpa field `status` terbukti mereset ke `PLANNED` di API mentah (bug nyata) — dikonfirmasi kode UI Workspace SELALU mengirim status eksplisit jadi aman; port call dibuat tertaut voyage → tetap tertaut setelah diedit tanpa `voyageId` di body; port call biasa (tanpa `?voyage=`) tak pernah tertaut; `?voyage=<id-tak-ada>` aman (tak ada dialog/crash). `tsc --noEmit` 0 error & `test:tenant` 17/17 di kedua slice.
+
+**Belum diverifikasi dengan mata manusia (Marlon):** tampilan visual Workspace di browser sungguhan (semua verifikasi sesi ini lewat `fetch()`/API langsung + baca kode, bukan klik UI — pane browser di lingkungan ini tak bisa screenshot/composit).
+
+### Berikutnya — Fase 3: EPDA Engine (flagship, Opus ~50%)
+
+Ambil item dari Service Catalog → auto-cost formula (`calcMethod` dari `docs/FASE-0-SKEMA-v2.md`) → smart autocomplete rate/currency/vendor/tax → multi-currency → revisi/versioning + compare → approval berjenjang → lifecycle 8-status → PDF + email principal. **Paling berisiko & paling penting** di seluruh migrasi v2 — sentuh uang & mesin hitung, wajib desain Opus dulu sebelum coding (tulis ke `docs/` dulu, baru Sonnet ikut pola).
+
 ## 8. Tension yang belum diselesaikan (untuk diingat)
 
 - ~~Isolasi data (RLS vs tenant-guard)~~ → **DIPUTUS 2026-08-10 (K9): tenant-guard.** Ditinjau ulang di Fase 8 saat portal eksternal dibuka. Lihat [POLA-SERVICE-LAYER.md §2](./POLA-SERVICE-LAYER.md).
