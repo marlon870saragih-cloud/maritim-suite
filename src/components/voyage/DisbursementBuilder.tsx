@@ -17,7 +17,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, Loader2, Pencil, Plus, Send, Undo2, XCircle } from 'lucide-react'
+import { AlertTriangle, Download, Loader2, Pencil, Plus, Send, Undo2, XCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useLang, useT, type Lang } from '@/lib/i18n'
 import { adaWarningPemblokir, type CalcWarning } from '@/services/finance/calc-engine'
@@ -26,7 +26,7 @@ import { ServicePickerDialog } from './ServicePickerDialog'
 
 const STR: Record<Lang, Record<string, string>> = {
   id: {
-    addCatalog: 'Tambah Jasa', addTemplate: 'Dari Template',
+    addCatalog: 'Tambah Jasa', addTemplate: 'Dari Template', downloadPdf: 'Unduh PDF',
     status: 'Status', version: 'Versi', baseCurrency: 'Mata Uang Dasar', agencyPct: 'Agency Fee (%)',
     validUntil: 'Berlaku Sampai', notes: 'Catatan', edit: 'Ubah', save: 'Simpan', cancel: 'Batal',
     subtotal: 'Subtotal', agencyAmount: 'Agency Fee', taxAmount: 'Pajak', grandTotal: 'Total',
@@ -38,7 +38,7 @@ const STR: Record<Lang, Record<string, string>> = {
     readOnlyNote: 'Dokumen ini tidak lagi bisa diubah pada status sekarang.',
   },
   en: {
-    addCatalog: 'Add Service', addTemplate: 'From Template',
+    addCatalog: 'Add Service', addTemplate: 'From Template', downloadPdf: 'Download PDF',
     status: 'Status', version: 'Version', baseCurrency: 'Base Currency', agencyPct: 'Agency Fee (%)',
     validUntil: 'Valid Until', notes: 'Notes', edit: 'Edit', save: 'Save', cancel: 'Cancel',
     subtotal: 'Subtotal', agencyAmount: 'Agency Fee', taxAmount: 'Tax', grandTotal: 'Grand Total',
@@ -266,15 +266,25 @@ export function DisbursementBuilder({ disb: initial, voyageId }: { disb: Builder
               {disb.status}
             </span>
           </div>
-          {editable && !editingHeader && (
-            <button
-              type="button"
-              onClick={openEditHeader}
+          <div className="flex items-center gap-2">
+            <a
+              href={`/api/disbursements/${disb.id}/pdf?download=1`}
+              target="_blank"
+              rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 rounded border border-border-muted px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:text-white hover:border-accent-blue/60 hover:bg-surface-tertiary transition-colors"
             >
-              <Pencil className="w-3.5 h-3.5" /> {t.edit}
-            </button>
-          )}
+              <Download className="w-3.5 h-3.5" /> {t.downloadPdf}
+            </a>
+            {editable && !editingHeader && (
+              <button
+                type="button"
+                onClick={openEditHeader}
+                className="inline-flex items-center gap-1.5 rounded border border-border-muted px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:text-white hover:border-accent-blue/60 hover:bg-surface-tertiary transition-colors"
+              >
+                <Pencil className="w-3.5 h-3.5" /> {t.edit}
+              </button>
+            )}
+          </div>
         </div>
 
         {editingHeader ? (

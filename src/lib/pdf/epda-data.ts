@@ -58,6 +58,7 @@ export type EpdaData = {
   lumpSumDesc?: string
   lumpSumAmount?: number
   agencyPct: number // mis. 2.5
+  taxAmount?: number // K22/K48: pajak atas agency fee — baris total hanya tampil bila > 0
   usdRate?: number // kurs indikatif untuk catatan USD
   advanceReceived?: number // FPDA: dana muka yang sudah diterima (untuk hitung saldo)
   notes: string[]
@@ -82,15 +83,16 @@ export const lineAmount = (it: EpdaLineItem): number =>
 export const sectionSubtotal = (s: EpdaSection) =>
   s.items.reduce((sum, it) => sum + (it.amount || 0), 0)
 
-// Hitung subtotal keseluruhan + agency handling + total.
+// Hitung subtotal keseluruhan + agency handling + pajak (bila ada) + total.
 export function computeTotals(d: EpdaData) {
   const subtotal = d.lumpSum
     ? Math.round(d.lumpSumAmount || 0)
     : d.sections.reduce((sum, s) => sum + sectionSubtotal(s), 0)
   const agencyAmount = Math.round((subtotal * d.agencyPct) / 100)
-  const total = subtotal + agencyAmount
+  const taxAmount = Math.round(d.taxAmount || 0)
+  const total = subtotal + agencyAmount + taxAmount
   const usd = d.usdRate ? Math.round(total / d.usdRate) : undefined
-  return { subtotal, agencyAmount, total, usd }
+  return { subtotal, agencyAmount, taxAmount, total, usd }
 }
 
 // ====== DATA CONTOH (replika EPDA-Tribuana.pdf) — untuk verifikasi format ======

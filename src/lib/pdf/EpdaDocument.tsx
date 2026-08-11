@@ -133,7 +133,7 @@ export function DisbursementDocument({
 }) {
   const t = data.tenant
   const V = VARIANT[variant]
-  const { subtotal, agencyAmount, total, usd } = computeTotals(data)
+  const { subtotal, agencyAmount, taxAmount, total, usd } = computeTotals(data)
   const advance = variant === 'FPDA' ? data.advanceReceived ?? 0 : 0
   const balance = total - advance
   const docFootRef = `${data.docNumber} · ${data.vesselName} · ${data.port}`
@@ -249,6 +249,14 @@ export function DisbursementDocument({
                 {data.currency} {fmt(agencyAmount)}
               </Text>
             </View>
+            {taxAmount > 0 ? (
+              <View style={s.totLine}>
+                <Text style={s.totLabel}>Tax on agency fee</Text>
+                <Text style={s.totVal}>
+                  {data.currency} {fmt(taxAmount)}
+                </Text>
+              </View>
+            ) : null}
             {variant === 'FPDA' ? (
               <>
                 <View style={s.totLine}>
