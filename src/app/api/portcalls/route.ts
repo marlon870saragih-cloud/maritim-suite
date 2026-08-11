@@ -7,14 +7,26 @@ import { portCallFields } from '@/lib/portcalls'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-// Validasi kapal & principal milik tenant. Return string error, atau null bila valid.
-async function validateRefs(tenantId: string, vesselId: string, principalId: string | null) {
+// Validasi kapal, principal & voyage milik tenant. Return string error, atau null bila valid.
+async function validateRefs(
+  tenantId: string,
+  vesselId: string,
+  principalId: string | null,
+  voyageId?: string | null,
+) {
   if (!vesselId) return 'Kapal wajib dipilih'
   const vessel = await prisma.vessel.findFirst({ where: { id: vesselId, tenantId }, select: { id: true } })
   if (!vessel) return 'Kapal tidak valid'
   if (principalId) {
     const p = await prisma.principal.findFirst({ where: { id: principalId, tenantId }, select: { id: true } })
     if (!p) return 'Principal tidak valid'
+  }
+  if (voyageId) {
+    const v = await prisma.voyage.findFirst({
+      where: { id: voyageId, tenantId, deletedAt: null },
+      select: { id: true },
+    })
+    if (!v) return 'Voyage tidak valid'
   }
   return null
 }
@@ -36,6 +48,7 @@ export async function GET() {
 }
 
 // POST /api/portcalls → tambah port call baru.
+// `voyageId` ikut tersimpan bila dikirim (pintu masuk "Add Port Call" dari Voyage Workspace).
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return new Response('Unauthorized', { status: 401 })
@@ -44,7 +57,7 @@ export async function POST(req: Request) {
   const data = portCallFields(body)
   if (!data.port) return new Response('Pelabuhan wajib diisi', { status: 400 })
 
-  const err = await validateRefs(session.user.tenantId, data.vesselId, data.principalId)
+  const err = await validateRefs(session.user.tenantId, data.vesselId, data.principalId, data.voyageId)
   if (err) return new Response(err, { status: 400 })
 
   const portCall = await prisma.portCall.create({

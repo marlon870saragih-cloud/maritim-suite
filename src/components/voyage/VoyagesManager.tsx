@@ -14,22 +14,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 
-const STATUSES = [
-  'PLANNED', 'CONFIRMED', 'ARRIVED', 'BERTHED', 'WORKING', 'COMPLETED', 'DEPARTED', 'CLOSED', 'CANCELLED',
-] as const
-type VoyageStatusStr = (typeof STATUSES)[number]
-
-const STATUS_COLOR: Record<VoyageStatusStr, string> = {
-  PLANNED: 'bg-surface-tertiary text-text-secondary border-border-muted',
-  CONFIRMED: 'bg-accent-blue/12 text-accent-blue border-accent-blue/30',
-  ARRIVED: 'bg-accent-teal/12 text-accent-teal border-accent-teal/30',
-  BERTHED: 'bg-accent-teal/12 text-accent-teal border-accent-teal/30',
-  WORKING: 'bg-accent-amber/12 text-accent-amber border-accent-amber/30',
-  COMPLETED: 'bg-status-success/12 text-status-success border-status-success/30',
-  DEPARTED: 'bg-status-success/12 text-status-success border-status-success/30',
-  CLOSED: 'bg-surface-tertiary text-text-secondary border-border-muted',
-  CANCELLED: 'bg-status-danger/12 text-status-danger border-status-danger/30',
-}
+import { VOYAGE_STATUS_COLOR, type VoyageStatusStr } from './voyage-status'
 
 const STR: Record<Lang, Record<string, string>> = {
   id: {
@@ -229,7 +214,7 @@ export function VoyagesManager({
                     <td className="px-5 py-4 text-text-secondary">{v.principal?.name ?? '—'}</td>
                     <td className="px-5 py-4 text-text-secondary">{v.port?.name ?? '—'}</td>
                     <td className="px-5 py-4">
-                      <span className={cn('text-[10px] px-2 py-0.5 rounded-full border font-mono uppercase tracking-wider', STATUS_COLOR[v.status])}>
+                      <span className={cn('text-[10px] px-2 py-0.5 rounded-full border font-mono uppercase tracking-wider', VOYAGE_STATUS_COLOR[v.status])}>
                         {v.status}
                       </span>
                     </td>

@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Plus, Pencil, Trash2, Loader2, Ship, Anchor, FileText, ChevronDown, ChevronRight, Eye, Download, Sparkles } from 'lucide-react'
@@ -31,6 +31,7 @@ const STR: Record<Lang, Record<string, string>> = {
     errVesselReq: 'Kapal wajib dipilih.', errPortReq: 'Pelabuhan wajib diisi.', errSave: 'Gagal menyimpan.', errConn: 'Gagal terhubung ke server.', errDelete: 'Gagal menghapus.',
     confirmPre: 'Hapus port call ', confirmMid: ' di ', cancel: 'Batal', saveChanges: 'Simpan Perubahan',
     st_UPCOMING: 'Akan Datang', st_IN_PORT: 'Di Pelabuhan', st_DEPARTED: 'Berangkat', st_CANCELLED: 'Dibatalkan',
+    linkPre: 'Akan ditautkan ke voyage ', linkPost: ' — kapal, principal & pelabuhan sudah terisi dari voyage itu.',
   },
   en: {
     tipNoVessel: 'Add a vessel first in Vessel Database', tipAi: 'Create a Port Call from a plain-language instruction with AI',
@@ -53,6 +54,7 @@ const STR: Record<Lang, Record<string, string>> = {
     errVesselReq: 'A vessel must be selected.', errPortReq: 'Port is required.', errSave: 'Failed to save.', errConn: 'Failed to connect to server.', errDelete: 'Failed to delete.',
     confirmPre: 'Delete port call ', confirmMid: ' at ', cancel: 'Cancel', saveChanges: 'Save changes',
     st_UPCOMING: 'Upcoming', st_IN_PORT: 'In Port', st_DEPARTED: 'Departed', st_CANCELLED: 'Cancelled',
+    linkPre: 'Will be linked to voyage ', linkPost: ' — vessel, principal & port are prefilled from that voyage.',
   },
 }
 import {
@@ -131,6 +133,22 @@ export type PortCallRow = {
 
 type FormState = Record<string, string>
 
+/**
+ * Pintu masuk "Add Port Call" dari Voyage Workspace (URL /portcall?voyage=<id>).
+ * Form & aturannya tetap yang ini — hanya prefill + tautan voyage yang baru,
+ * supaya tidak ada UI Port Call kedua dengan validasi berbeda.
+ */
+export type PortCallPreset = {
+  voyageId: string
+  voyageNumber: string
+  vesselId: string
+  principalId: string
+  port: string
+  portCode: string
+  eta: string
+  etd: string
+}
+
 const emptyForm = (): FormState => ({
   vesselId: '', principalId: '', port: '', portCode: '', eta: '', etd: '',
   cargo: '', cargoQty: '', cargoUnit: '', status: 'UPCOMING', notes: '',
@@ -162,10 +180,12 @@ export function PortCallManager({
   portCalls,
   vessels,
   principals,
+  preset = null,
 }: {
   portCalls: PortCallRow[]
   vessels: VesselOption[]
   principals: PrincipalOption[]
+  preset?: PortCallPreset | null
 }) {
   const t = useT(STR)
   const stLabel = (s: PortCallStatusStr) => t['st_' + s] ?? STATUS_LABEL[s]
@@ -188,8 +208,33 @@ export function PortCallManager({
   const [pendingVessel, setPendingVessel] = useState('')
   const [pendingPrincipal, setPendingPrincipal] = useState('')
   const [addingMaster, setAddingMaster] = useState<'vessel' | 'principal' | null>(null)
+  // Voyage yang akan ditautkan pada port call BARU (hanya saat datang dari Workspace).
+  const [linkVoyage, setLinkVoyage] = useState<PortCallPreset | null>(null)
 
   const set = (k: string, v: string) => setForm((p) => ({ ...p, [k]: v }))
+
+  // Sekali per voyage: tanpa penanda ini, setiap router.refresh() (mis. setelah
+  // hapus baris) mengirim objek preset baru dan dialog terbuka lagi sendiri.
+  const presetApplied = useRef('')
+
+  useEffect(() => {
+    if (!preset || presetApplied.current === preset.voyageId) return
+    presetApplied.current = preset.voyageId
+    setEditing(null)
+    setForm({
+      ...emptyForm(),
+      vesselId: preset.vesselId,
+      principalId: preset.principalId,
+      port: preset.port,
+      portCode: preset.portCode,
+      eta: preset.eta,
+      etd: preset.etd,
+    })
+    setLinkVoyage(preset)
+    setError('')
+    setOpen(true)
+  }, [preset])
+
   const allVessels = useMemo(() => [...vessels, ...extraVessels], [vessels, extraVessels])
   const allPrincipals = useMemo(() => [...principals, ...extraPrincipals], [principals, extraPrincipals])
   const noVessels = allVessels.length === 0
@@ -203,6 +248,7 @@ export function PortCallManager({
   function openAdd() {
     setEditing(null)
     setForm(emptyForm())
+    setLinkVoyage(null)
     setError('')
     setAiText('')
     setAiNote('')
@@ -275,6 +321,7 @@ export function PortCallManager({
   }
   function openEdit(pc: PortCallRow) {
     setEditing(pc)
+    setLinkVoyage(null)
     setForm({
       vesselId: pc.vesselId,
       principalId: pc.principalId ?? '',
@@ -298,16 +345,23 @@ export function PortCallManager({
     setBusy(true)
     setError('')
     try {
+      // voyageId hanya dikirim saat MEMBUAT dari Voyage Workspace. Pada PATCH ia
+      // sengaja tak ikut: body edit tak menyebut field itu → tautan voyage yang
+      // sudah ada tidak tersentuh (lihat lib/portcalls.ts).
       const res = await fetch(editing ? `/api/portcalls/${editing.id}` : '/api/portcalls', {
         method: editing ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(!editing && linkVoyage ? { ...form, voyageId: linkVoyage.voyageId } : form),
       })
       if (!res.ok) {
         setError((await res.text()) || t.errSave)
         return
       }
       setOpen(false)
+      if (!editing && linkVoyage) {
+        router.push(`/voyages/${linkVoyage.voyageId}`)
+        return
+      }
       router.refresh()
     } catch {
       setError(t.errConn)
@@ -553,6 +607,14 @@ export function PortCallManager({
               {t.dialogDesc}
             </DialogDescription>
           </DialogHeader>
+
+          {linkVoyage && !editing && (
+            <p className="rounded-md border border-accent-blue/30 bg-accent-blue/5 px-3 py-2 text-xs text-text-secondary">
+              {t.linkPre}
+              <span className="font-mono text-accent-blue">{linkVoyage.voyageNumber}</span>
+              {t.linkPost}
+            </p>
+          )}
 
           {!editing && (
             <section className="rounded-md border border-accent-purple/30 bg-accent-purple/5 px-3 py-3">

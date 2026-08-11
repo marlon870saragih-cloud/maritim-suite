@@ -2,7 +2,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/PageHeader'
-import { PortCallManager, type PortCallRow } from '@/components/portcall/PortCallManager'
+import { PortCallManager, type PortCallPreset, type PortCallRow } from '@/components/portcall/PortCallManager'
 import { toLinkedDoc } from '@/lib/documents'
 import { getLang, type Lang } from '@/lib/i18n-server'
 
@@ -13,10 +13,17 @@ const PH: Record<Lang, { kicker: string; title: string; desc: string }> = {
   en: { kicker: 'Port Call Management', title: 'Vessel call schedule & status', desc: 'Central call data — pick the vessel & principal once, auto-used across all documents.' },
 }
 
-export default async function PortCallPage() {
+const toDateInput = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : '')
+
+export default async function PortCallPage({
+  searchParams,
+}: {
+  searchParams: { voyage?: string }
+}) {
   const t = PH[getLang()]
   const session = await getServerSession(authOptions)
   const tenantId = session?.user?.tenantId
+  const voyageId = typeof searchParams.voyage === 'string' ? searchParams.voyage : ''
 
   const [portCalls, vessels, principals] = tenantId
     ? await Promise.all([
@@ -48,6 +55,32 @@ export default async function PortCallPage() {
       ])
     : [[], [], []]
 
+  // ?voyage=<id> → datang dari Voyage Workspace: buka form create yang sudah
+  // terisi dari voyage itu & tertaut ke sana (Fase 2, ROADMAP-v2 §6).
+  const voyage =
+    tenantId && voyageId
+      ? await prisma.voyage.findFirst({
+          where: { id: voyageId, tenantId, deletedAt: null },
+          select: {
+            id: true, voyageNumber: true, vesselId: true, principalId: true, eta: true, etd: true,
+            port: { select: { name: true, unlocode: true } },
+          },
+        })
+      : null
+
+  const preset: PortCallPreset | null = voyage
+    ? {
+        voyageId: voyage.id,
+        voyageNumber: voyage.voyageNumber,
+        vesselId: voyage.vesselId,
+        principalId: voyage.principalId ?? '',
+        port: voyage.port?.name ?? '',
+        portCode: voyage.port?.unlocode ?? '',
+        eta: toDateInput(voyage.eta),
+        etd: toDateInput(voyage.etd),
+      }
+    : null
+
   return (
     <div className="p-margin-page max-w-[1600px] mx-auto space-y-8">
       <PageHeader kicker={t.kicker} title={t.title} description={t.desc} />
@@ -58,6 +91,7 @@ export default async function PortCallPage() {
         })) as unknown as PortCallRow[]}
         vessels={vessels}
         principals={principals}
+        preset={preset}
       />
     </div>
   )

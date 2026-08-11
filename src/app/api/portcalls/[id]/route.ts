@@ -31,7 +31,12 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   })
 }
 
-async function validateRefs(tenantId: string, vesselId: string, principalId: string | null) {
+async function validateRefs(
+  tenantId: string,
+  vesselId: string,
+  principalId: string | null,
+  voyageId?: string | null,
+) {
   if (!vesselId) return 'Kapal wajib dipilih'
   const vessel = await prisma.vessel.findFirst({ where: { id: vesselId, tenantId }, select: { id: true } })
   if (!vessel) return 'Kapal tidak valid'
@@ -39,10 +44,18 @@ async function validateRefs(tenantId: string, vesselId: string, principalId: str
     const p = await prisma.principal.findFirst({ where: { id: principalId, tenantId }, select: { id: true } })
     if (!p) return 'Principal tidak valid'
   }
+  if (voyageId) {
+    const v = await prisma.voyage.findFirst({
+      where: { id: voyageId, tenantId, deletedAt: null },
+      select: { id: true },
+    })
+    if (!v) return 'Voyage tidak valid'
+  }
   return null
 }
 
 // PATCH /api/portcalls/:id → ubah port call (ter-scope tenant).
+// Body tanpa `voyageId` TIDAK mengubah tautan voyage (lihat lib/portcalls.ts).
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return new Response('Unauthorized', { status: 401 })
@@ -51,7 +64,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const data = portCallFields(body)
   if (!data.port) return new Response('Pelabuhan wajib diisi', { status: 400 })
 
-  const err = await validateRefs(session.user.tenantId, data.vesselId, data.principalId)
+  const err = await validateRefs(session.user.tenantId, data.vesselId, data.principalId, data.voyageId)
   if (err) return new Response(err, { status: 400 })
 
   const upd = await prisma.portCall.updateMany({

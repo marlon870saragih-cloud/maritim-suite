@@ -30,6 +30,8 @@ export type VoyageDetail = Voyage & {
   port: Port | null
   cargoes: Cargo[]
   portCalls: PortCall[]
+  /** Cuma jumlah: panel finansial Workspace masih placeholder sampai Fase 3/4. */
+  _count: { disbursements: number; invoices: number; documents: number }
 }
 
 export type VoyageInput = ReturnType<typeof bacaInput>
@@ -128,7 +130,8 @@ export async function getVoyage(ctx: TenantContext, id: string): Promise<VoyageD
       customer: true,
       port: true,
       cargoes: { orderBy: { createdAt: 'asc' } },
-      portCalls: { orderBy: { createdAt: 'asc' } },
+      portCalls: { orderBy: [{ eta: 'asc' }, { createdAt: 'asc' }] },
+      _count: { select: { disbursements: true, invoices: true, documents: true } },
     },
   })
   if (!voyage) throw notFound('Voyage')

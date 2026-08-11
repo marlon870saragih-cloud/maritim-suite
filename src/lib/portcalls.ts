@@ -25,6 +25,14 @@ export const STATUS_LABEL: Record<PortCallStatusStr, string> = {
 export type PortCallInput = {
   vesselId: string
   principalId: string | null
+  /**
+   * v2 (Fase 2): tautan ke Voyage, dikirim hanya oleh pintu masuk "Add Port Call"
+   * dari Voyage Workspace. `undefined` = field tak disebut di body → Prisma
+   * membiarkan kolomnya apa adanya. Ini penting: form Port Call lama mengirim
+   * SELURUH form saat PATCH, jadi kalau ketiadaan field dibaca sebagai null,
+   * sekali edit biasa akan memutus tautan voyage yang sudah ada.
+   */
+  voyageId?: string | null
   port: string
   portCode: string | null
   eta: Date | null
@@ -42,6 +50,9 @@ export function portCallFields(body: Record<string, unknown>): PortCallInput {
   return {
     vesselId: str(body.vesselId) ?? '',
     principalId: str(body.principalId),
+    // `in` dijaga typeof: route lama meng-cast body tanpa validasi, body JSON
+    // primitif (mis. angka) akan melempar TypeError di operator `in`.
+    voyageId: body && typeof body === 'object' && 'voyageId' in body ? str(body.voyageId) : undefined,
     port: str(body.port) ?? '',
     portCode: str(body.portCode),
     eta: date(body.eta),
