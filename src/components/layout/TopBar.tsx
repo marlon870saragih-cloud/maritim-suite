@@ -2,10 +2,11 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Bell, HelpCircle, Menu } from 'lucide-react'
+import { HelpCircle, Menu } from 'lucide-react'
 import type { ChromeUser } from './Sidebar'
 import { useT, useLang, LangToggle } from '@/lib/i18n'
 import { useMobileNav } from './MobileNav'
+import { NotificationBell } from './NotificationBell'
 
 const PRODUCT_TITLES: Record<string, string> = {
   '/finance': 'Finance Generator',
@@ -63,9 +64,7 @@ export function TopBar({ user }: { user: ChromeUser }) {
         <LangToggle tone="ink" />
 
         <div className="flex items-center gap-3 text-text-secondary">
-          <button type="button" aria-label={t.notif} className="hidden sm:block hover:text-accent-blue transition-colors p-1">
-            <Bell className="w-5 h-5" />
-          </button>
+          <NotificationBell />
           <Link href="/panduan" aria-label={t.help} title={t.help} className="hover:text-accent-blue transition-colors p-1">
             <HelpCircle className="w-5 h-5" />
           </Link>

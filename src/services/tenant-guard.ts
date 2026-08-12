@@ -38,6 +38,7 @@ export const TENANT_MODELS: ReadonlySet<string> = new Set([
   'InvoicePayment',
   'Approval',
   'AuditLog',
+  'Notification',
 ])
 
 /** Operasi yang aman disaring lewat `where`. */

@@ -40,6 +40,7 @@ import {
 import { KODE_AGENCY_FEE, type VoyageUntukAutofill } from './autofill.service'
 import { nextDisbursementNumber } from './disbursement-number'
 import { catatAudit, type Jejak } from './audit'
+import { notify } from '../notification.service'
 
 const KINDS: readonly DisbursementKind[] = ['EPDA', 'FPDA', 'FDA']
 
@@ -602,6 +603,16 @@ export async function setDisbursementStatus(
     },
     jejak,
   )
+
+  if (ke === 'PENDING_REVIEW') {
+    await notify(ctx, {
+      type: 'APPROVAL_PENDING',
+      title: `${disb.docNumber} diajukan untuk review`,
+      entityType: 'DISBURSEMENT',
+      entityId: id,
+      href: `/voyages/${disb.voyageId}/disbursements/${id}`,
+    })
+  }
 
   return getDisbursementDetail(ctx, id)
 }

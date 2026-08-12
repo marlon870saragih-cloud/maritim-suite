@@ -24,6 +24,7 @@ import {
   STATUS_INVOICE_AKTIF,
 } from './invoice-status'
 import { catatAudit, type Jejak } from './audit'
+import { notify } from '../notification.service'
 
 export type InvoiceWithItems = Invoice & {
   items: InvoiceItem[]
@@ -268,6 +269,16 @@ export async function setInvoiceStatus(
     { tableName: 'Invoice', recordId: id, action: 'UPDATE', oldValue: { status: inv.status }, newValue: { status: ke } },
     jejak,
   )
+
+  if (ke === 'OVERDUE') {
+    await notify(ctx, {
+      type: 'INVOICE_OVERDUE',
+      title: `${inv.invoiceNumber} terlambat bayar`,
+      entityType: 'INVOICE',
+      entityId: id,
+      href: inv.voyageId ? `/voyages/${inv.voyageId}/invoices/${id}` : undefined,
+    })
+  }
 
   return getInvoiceDetail(ctx, id)
 }

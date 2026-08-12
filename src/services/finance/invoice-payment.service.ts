@@ -12,6 +12,7 @@ import { forTenant } from '../tenant-db'
 import { getInvoice, getInvoiceDetail, type InvoiceDetail } from './invoice.service'
 import { bolehBayar, statusDariPembayaran } from './invoice-status'
 import { catatAudit, type Jejak } from './audit'
+import { notify } from '../notification.service'
 
 const bulat2 = (n: number): number => Math.round(n * 100) / 100
 
@@ -86,6 +87,16 @@ export async function recordPayment(
     },
     jejak,
   )
+
+  if (statusBaru === 'PAID') {
+    await notify(ctx, {
+      type: 'INVOICE_PAID',
+      title: `${inv.invoiceNumber} lunas`,
+      entityType: 'INVOICE',
+      entityId: invoiceId,
+      href: inv.voyageId ? `/voyages/${inv.voyageId}/invoices/${invoiceId}` : undefined,
+    })
+  }
 
   return getInvoiceDetail(ctx, invoiceId)
 }

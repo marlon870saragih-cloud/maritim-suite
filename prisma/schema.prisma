@@ -56,6 +56,7 @@ model Tenant {
   invoicePayments  InvoicePayment[]
   approvals        Approval[]
   auditLogs        AuditLog[]
+  notifications    Notification[]
 }
 
 model Payment {
@@ -832,4 +833,27 @@ model AuditLog {
 
   @@index([tenantId, tableName, recordId])
   @@index([tenantId, createdAt])
+}
+
+/// Notification Center (Fase 5d). `userId = null` = siaran ke semua pengguna
+/// tenant (skala tim kecil ship agency — bukan diperuntukkan tenant besar
+/// berpuluh pengguna). K-serupa: `readAt` SATU nilai per baris, bukan per
+/// pengguna — siapa pun yang membaca duluan menandainya terbaca untuk semua.
+/// Ini simplifikasi sadar untuk v1 (hindari tabel gabung NotificationRead);
+/// perlu ditinjau ulang bila tenant besar mulai memakai modul ini.
+model Notification {
+  id         String    @id @default(cuid())
+  tenantId   String
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId     String? // null = siaran ke semua pengguna tenant
+  type       String // APPROVAL_PENDING | INVOICE_OVERDUE | INVOICE_PAID
+  title      String
+  message    String?
+  entityType String? // DISBURSEMENT | INVOICE
+  entityId   String?
+  href       String?
+  readAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([tenantId, readAt, createdAt])
 }
