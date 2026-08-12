@@ -31,6 +31,7 @@ import {
 } from './calc-engine'
 import { hitungTotal, type BarisTotal, type HasilBarisTotal, type OpsiTotal } from './totals'
 import {
+  bolehRevisi,
   bolehTransisiUntukKind,
   bolehUbahItem,
   butuhSyaratSubmit,
@@ -72,6 +73,8 @@ export type DisbursementDetail = DisbursementWithItems & {
   pelanggaran: Pelanggaran[]
   transisiTersedia: readonly DisbursementStatus[]
   bolehUbahItem: boolean
+  /** K37 — hanya SENT. Satu sumber di disbursement-status.ts, dipakai UI utk tombol "Buat Revisi". */
+  bolehRevisi: boolean
 }
 
 const ITEM_ORDER = [{ displayOrder: 'asc' as const }, { createdAt: 'asc' as const }]
@@ -313,6 +316,7 @@ export async function getDisbursementDetail(
     pelanggaran: hasil.pelanggaran,
     transisiTersedia: transisiTersedia(disb.kind, disb.status),
     bolehUbahItem: bolehUbahItem(disb.status),
+    bolehRevisi: bolehRevisi(disb.status),
   }
 }
 
@@ -559,6 +563,22 @@ export async function setDisbursementStatus(
     if (sudahDinilai > 0) {
       throw conflict(
         'Sudah ada keputusan approval pada versi ini — tidak bisa ditarik kembali. Minta revisi saja.',
+      )
+    }
+  }
+
+  // K47 — satu-satunya hal yang berkas ini tahu soal Invoice (docs/FASE-3-EPDA-ENGINE.md
+  // §10): FDA yang sudah dipakai membuat Invoice AKTIF (belum lunas/batal) tak boleh
+  // berpindah status lagi — TANPA impor modul invoice, cukup count() langsung ke tabel
+  // Invoice supaya arah ketergantungan Fase 4 → Fase 3 tetap satu arah. Begitu Invoice-nya
+  // PAID atau CANCELLED, FDA ini boleh ditutup lagi (mis. FINAL → CLOSED).
+  if (disb.status === 'FINAL') {
+    const invoiceAktif = await forTenant(ctx).invoice.count({
+      where: { sourceDisbursementId: id, deletedAt: null, status: { notIn: ['PAID', 'CANCELLED'] } },
+    })
+    if (invoiceAktif > 0) {
+      throw conflict(
+        'FDA ini sudah dipakai membuat Invoice yang belum lunas/batal — selesaikan atau batalkan Invoice-nya dulu sebelum mengubah status dokumen ini.',
       )
     }
   }
