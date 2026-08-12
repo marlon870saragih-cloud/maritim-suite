@@ -7,6 +7,7 @@ import type { ChromeUser } from './Sidebar'
 import { useT, useLang, LangToggle } from '@/lib/i18n'
 import { useMobileNav } from './MobileNav'
 import { NotificationBell } from './NotificationBell'
+import { GlobalSearchModal } from './GlobalSearchModal'
 
 const PRODUCT_TITLES: Record<string, string> = {
   '/finance': 'Finance Generator',
@@ -60,6 +61,8 @@ export function TopBar({ user }: { user: ChromeUser }) {
             {user.planLabel}
           </div>
         )}
+
+        <GlobalSearchModal />
 
         <LangToggle tone="ink" />
 
