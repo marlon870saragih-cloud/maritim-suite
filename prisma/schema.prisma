@@ -85,6 +85,9 @@ model User {
   password  String
   name      String
   role      Role     @default(OPERATOR)
+  /// Fase 5g — nonaktif via UI Tim, BUKAN dihapus keras: AuditLog.userId (string
+  /// polos, tanpa relasi FK) akan kehilangan makna kalau baris User-nya lenyap.
+  isActive  Boolean  @default(true)
   tenantId  String
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())

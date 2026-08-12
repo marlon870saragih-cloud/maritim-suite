@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import Script from 'next/script'
 import { getServerSession } from 'next-auth'
-import { Building2, Database, Users, ChevronRight, Anchor, Truck, Coins, TrendingUp, ListChecks, ShieldAlert } from 'lucide-react'
+import { Building2, Database, Users, ChevronRight, Anchor, Truck, Coins, TrendingUp, ListChecks, ShieldAlert, UsersRound } from 'lucide-react'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -36,6 +36,7 @@ const TR: Record<Lang, {
       { href: '/settings/currencies', title: 'Mata Uang', desc: 'Kode ISO 4217 yang dipakai tenant ini', icon: Coins },
       { href: '/settings/exchange-rates', title: 'Riwayat Kurs', desc: 'Log kurs untuk konversi mata uang', icon: TrendingUp },
       { href: '/settings/services', title: 'Katalog Jasa & Tarif', desc: 'Jenis jasa dan tarif — dasar EPDA/FDA', icon: ListChecks },
+      { href: '/settings/team', title: 'Tim', desc: 'Anggota tim, peran, dan akses (ADMIN)', icon: UsersRound },
       { href: '/settings/audit', title: 'Jejak Audit', desc: 'Riwayat perubahan dokumen — siapa mengubah apa (ADMIN)', icon: ShieldAlert },
     ],
   },
@@ -52,6 +53,7 @@ const TR: Record<Lang, {
       { href: '/settings/currencies', title: 'Currencies', desc: 'ISO 4217 codes used by this tenant', icon: Coins },
       { href: '/settings/exchange-rates', title: 'Exchange Rate History', desc: 'Rate log for currency conversion', icon: TrendingUp },
       { href: '/settings/services', title: 'Service Catalog & Rates', desc: 'Service types and rates — basis for EPDA/FDA', icon: ListChecks },
+      { href: '/settings/team', title: 'Team', desc: 'Team members, roles, and access (ADMIN)', icon: UsersRound },
       { href: '/settings/audit', title: 'Audit Log', desc: 'Document change history — who changed what (ADMIN)', icon: ShieldAlert },
     ],
   },

@@ -19,6 +19,7 @@ export const authOptions: NextAuthOptions = {
           include: { tenant: true },
         })
         if (!user) return null
+        if (!user.isActive) return null // Fase 5g — dinonaktifkan lewat UI Tim
 
         const valid = await bcrypt.compare(credentials.password, user.password)
         if (!valid) return null
