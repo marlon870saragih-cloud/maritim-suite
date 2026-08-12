@@ -5,6 +5,8 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { ReceivablesTracker, type InvoiceRow, type PrincipalSummary, type AgingSummary } from '@/components/tracker/ReceivablesTracker'
 import { AGING, parseDocDate, overdueDays, bucketFor } from '@/lib/receivables'
 import { getLang, type Lang } from '@/lib/i18n-server'
+import { requireTenant } from '@/services/context'
+import { listAllInvoices } from '@/services/finance/invoice.service'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,18 +22,26 @@ type InvStored = {
   dueDate?: string
 }
 
+const fmtDate = (d: Date) =>
+  new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(d)
+
 export default async function TrackerPage() {
   const session = await getServerSession(authOptions)
-  const invoices = session?.user
-    ? await prisma.maritimeDocument.findMany({
-        where: { tenantId: session.user.tenantId, docType: 'INVOICE' },
-        orderBy: { createdAt: 'desc' },
-        take: 200,
-      })
-    : []
+  const [legacyDocs, v2Invoices] = session?.user
+    ? await Promise.all([
+        prisma.maritimeDocument.findMany({
+          where: { tenantId: session.user.tenantId, docType: 'INVOICE' },
+          orderBy: { createdAt: 'desc' },
+          take: 200,
+        }),
+        listAllInvoices(await requireTenant()),
+      ])
+    : [[], []]
 
   const now = new Date()
-  const rows: InvoiceRow[] = invoices.map((d) => {
+
+  // Jalur lama (MaritimeDocument, "Finance Generator") — status PATCH langsung di UI.
+  const legacyRows: InvoiceRow[] = legacyDocs.map((d) => {
     const li = (d.lineItems ?? {}) as InvStored
     const amount = d.grandTotal ?? 0
     const paid = d.status === 'PAID'
@@ -51,8 +61,32 @@ export default async function TrackerPage() {
       overdueDays: outstanding ? od : 0,
       bucket: outstanding ? bucketFor(od) : 'current',
       outstanding,
+      source: 'legacy' as const,
     }
   })
+
+  // Jalur baru (model Invoice v2, Fase 4 — dari FDA FINAL) — pembayaran lewat halaman Invoice sungguhan.
+  const v2Rows: InvoiceRow[] = v2Invoices.map((inv) => {
+    const outstanding = inv.status === 'PAID' || inv.status === 'CANCELLED' ? 0 : inv.grandTotal - inv.amountPaid
+    const od = inv.dueDate ? overdueDays(inv.dueDate, now) : 0
+    return {
+      id: inv.id,
+      docNumber: inv.invoiceNumber,
+      principal: inv.customer?.name || '—',
+      vessel: inv.voyage ? `${inv.voyage.vessel.name} · ${inv.voyage.voyageNumber}` : '—',
+      currency: inv.currency,
+      amount: inv.grandTotal,
+      status: inv.status,
+      dueLabel: inv.dueDate ? fmtDate(inv.dueDate) : '—',
+      overdueDays: outstanding > 0 ? od : 0,
+      bucket: outstanding > 0 ? bucketFor(od) : 'current',
+      outstanding,
+      source: 'v2' as const,
+      voyageId: inv.voyageId,
+    }
+  })
+
+  const rows: InvoiceRow[] = [...v2Rows, ...legacyRows]
 
   // ringkasan
   const totalOutstanding = rows.reduce((s, r) => s + r.outstanding, 0)

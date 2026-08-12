@@ -80,6 +80,19 @@ export async function listInvoicesByVoyage(ctx: TenantContext, voyageId: string)
   })
 }
 
+/** Semua Invoice tenant lintas-voyage (Tracker/Dashboard, K44 tak berlaku — tak ada induk selain tenant). */
+export async function listAllInvoices(ctx: TenantContext, take = 300) {
+  return forTenant(ctx).invoice.findMany({
+    where: { deletedAt: null },
+    orderBy: [{ createdAt: 'desc' }],
+    take,
+    include: {
+      customer: { select: { name: true } },
+      voyage: { select: { voyageNumber: true, vessel: { select: { name: true } } } },
+    },
+  })
+}
+
 // -------------------------------------------------------------------- tulis
 
 /**

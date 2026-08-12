@@ -18,6 +18,7 @@ const STR: Record<Lang, Record<string, string>> = {
     secAging: 'Aging Piutang', allPaid: 'Tidak ada piutang berjalan — semua invoice lunas. 🎉',
     secList: 'Daftar Invoice', thNo: 'No. Invoice', thDue: 'Jatuh Tempo', thValue: 'Nilai', thAction: 'Aksi',
     latePre: 'telat', latePost: 'hari', markPaid: 'Tandai Lunas', errStatus: 'Gagal memperbarui status.', dlPdf: 'Unduh PDF',
+    viewInvoice: 'Buka Invoice',
   },
   en: {
     emptyTitle: 'No invoices yet', emptyDesc: 'Create & save an Invoice in the Finance Generator — it will appear here to track automatically.', createInvoice: 'Create Invoice',
@@ -28,9 +29,20 @@ const STR: Record<Lang, Record<string, string>> = {
     secAging: 'Receivables Aging', allPaid: 'No outstanding receivables — all invoices paid. 🎉',
     secList: 'Invoice List', thNo: 'Invoice No.', thDue: 'Due', thValue: 'Value', thAction: 'Action',
     latePre: 'late', latePost: 'days', markPaid: 'Mark Paid', errStatus: 'Failed to update status.', dlPdf: 'Download PDF',
+    viewInvoice: 'Open Invoice',
   },
 }
 
+/**
+ * `source` membedakan dua sistem invoice yang hidup berdampingan (belum
+ * disatukan): `legacy` = MaritimeDocument (docType INVOICE, jalur "Finance
+ * Generator" lama, status DRAFT/SENT/PAID/CANCELLED, PATCH langsung ubah
+ * status). `v2` = model Invoice voyage-centric Fase 4 (dari FDA FINAL, status
+ * lebih rinci termasuk PARTIALLY_PAID/OVERDUE, pembayaran wajib lewat
+ * recordPayment — TIDAK bisa di-PATCH status langsung). Baris v2 karena itu
+ * dapat aksi berbeda: tautan ke halaman Invoice sungguhan, bukan tombol ubah
+ * status di tempat.
+ */
 export type InvoiceRow = {
   id: string
   docNumber: string
@@ -43,6 +55,8 @@ export type InvoiceRow = {
   overdueDays: number
   bucket: AgingKey
   outstanding: number
+  source: 'legacy' | 'v2'
+  voyageId?: string | null
 }
 export type PrincipalSummary = { principal: string; count: number; outstanding: number }
 export type AgingSummary = { key: AgingKey; label: string; count: number; value: number }
@@ -53,8 +67,11 @@ const STATUS_OPTS = ['DRAFT', 'SENT', 'PAID', 'CANCELLED'] as const
 const STATUS_STYLE: Record<string, string> = {
   DRAFT: 'bg-surface-tertiary text-text-secondary border-border-muted',
   FINAL: 'bg-accent-blue/10 text-accent-blue border-accent-blue/30',
+  ISSUED: 'bg-accent-teal/10 text-accent-teal border-accent-teal/30',
   SENT: 'bg-accent-blue/10 text-accent-blue border-accent-blue/30',
+  PARTIALLY_PAID: 'bg-accent-amber/10 text-accent-amber border-accent-amber/30',
   PAID: 'bg-status-success/10 text-status-success border-status-success/30',
+  OVERDUE: 'bg-status-danger/10 text-status-danger border-status-danger/30',
   CANCELLED: 'bg-status-danger/10 text-status-danger border-status-danger/30',
 }
 
@@ -282,34 +299,58 @@ export function ReceivablesTracker({
                     </td>
                     <td className="px-5 py-3.5">
                       <div className="flex items-center justify-end gap-2">
-                        {r.status !== 'PAID' && r.status !== 'CANCELLED' && (
-                          <button
-                            type="button"
-                            onClick={() => setStatus(r.id, 'PAID')}
-                            disabled={busyId === r.id}
-                            className="inline-flex items-center gap-1.5 rounded border border-status-success/40 text-status-success text-xs px-2.5 py-1.5 hover:bg-status-success/10 transition-colors disabled:opacity-50"
-                          >
-                            {busyId === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                            {t.markPaid}
-                          </button>
+                        {r.source === 'v2' ? (
+                          <>
+                            {r.voyageId && (
+                              <Link
+                                href={`/voyages/${r.voyageId}/invoices/${r.id}`}
+                                title={t.viewInvoice}
+                                className="inline-flex items-center gap-1.5 rounded border border-border-muted text-text-secondary text-xs px-2.5 py-1.5 hover:text-white hover:border-accent-blue/60 hover:bg-surface-tertiary transition-colors"
+                              >
+                                <FileText className="w-3.5 h-3.5" />
+                                {t.viewInvoice}
+                              </Link>
+                            )}
+                            <a
+                              href={`/api/invoices/${r.id}/pdf?download=1`}
+                              title={t.dlPdf}
+                              className="p-1.5 rounded text-text-secondary hover:text-accent-teal hover:bg-surface-tertiary transition-colors"
+                            >
+                              <Download className="w-4 h-4" />
+                            </a>
+                          </>
+                        ) : (
+                          <>
+                            {r.status !== 'PAID' && r.status !== 'CANCELLED' && (
+                              <button
+                                type="button"
+                                onClick={() => setStatus(r.id, 'PAID')}
+                                disabled={busyId === r.id}
+                                className="inline-flex items-center gap-1.5 rounded border border-status-success/40 text-status-success text-xs px-2.5 py-1.5 hover:bg-status-success/10 transition-colors disabled:opacity-50"
+                              >
+                                {busyId === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                                {t.markPaid}
+                              </button>
+                            )}
+                            <select
+                              value={STATUS_OPTS.includes(r.status as (typeof STATUS_OPTS)[number]) ? r.status : 'DRAFT'}
+                              onChange={(e) => setStatus(r.id, e.target.value)}
+                              disabled={busyId === r.id}
+                              className="bg-surface border border-border-muted rounded px-2 py-1.5 text-xs text-text-primary focus:border-accent-blue focus:outline-none"
+                            >
+                              {STATUS_OPTS.map((s) => (
+                                <option key={s} value={s} className="bg-surface">{s}</option>
+                              ))}
+                            </select>
+                            <a
+                              href={`/api/documents/invoice?id=${r.id}&download=1`}
+                              title={t.dlPdf}
+                              className="p-1.5 rounded text-text-secondary hover:text-accent-teal hover:bg-surface-tertiary transition-colors"
+                            >
+                              <Download className="w-4 h-4" />
+                            </a>
+                          </>
                         )}
-                        <select
-                          value={STATUS_OPTS.includes(r.status as (typeof STATUS_OPTS)[number]) ? r.status : 'DRAFT'}
-                          onChange={(e) => setStatus(r.id, e.target.value)}
-                          disabled={busyId === r.id}
-                          className="bg-surface border border-border-muted rounded px-2 py-1.5 text-xs text-text-primary focus:border-accent-blue focus:outline-none"
-                        >
-                          {STATUS_OPTS.map((s) => (
-                            <option key={s} value={s} className="bg-surface">{s}</option>
-                          ))}
-                        </select>
-                        <a
-                          href={`/api/documents/invoice?id=${r.id}&download=1`}
-                          title={t.dlPdf}
-                          className="p-1.5 rounded text-text-secondary hover:text-accent-teal hover:bg-surface-tertiary transition-colors"
-                        >
-                          <Download className="w-4 h-4" />
-                        </a>
                       </div>
                     </td>
                   </tr>
