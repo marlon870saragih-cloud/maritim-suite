@@ -604,13 +604,14 @@ cek('PENDING_REVIEW → APPROVED bukan syarat submit', !butuhSyaratSubmit('PENDI
 // ============================================================================
 // 14. Kebijakan approval interim (K43/K44 — P1/P2)
 // ============================================================================
-console.log('\n14. Kebijakan approval interim: 1 level, peran ADMIN')
+console.log('\n14. Kebijakan approval interim: 1 level, peran ADMIN+MANAJER_OPERASI (Fase 5e)')
 
 const kK = { kind: 'EPDA', grandTotal: 71_116_222, baseCurrency: 'IDR' }
 sama('satu level', kebijakanApproval(kK).length, 1)
-sama('level 1 = ADMIN', kebijakanApproval(kK)[0].peran.join(','), 'ADMIN')
+sama('level 1 = ADMIN,MANAJER_OPERASI', kebijakanApproval(kK)[0].peran.join(','), 'ADMIN,MANAJER_OPERASI')
 cek('ADMIN boleh memutuskan level 1', bolehMemutuskan('ADMIN', 1, kK))
-for (const peran of ['OPERATOR', 'FINANCE', 'VIEWER']) {
+cek('MANAJER_OPERASI boleh memutuskan level 1', bolehMemutuskan('MANAJER_OPERASI', 1, kK))
+for (const peran of ['OPERATOR', 'FINANCE', 'VIEWER', 'PENYUSUN_BIAYA', 'DIREKTUR']) {
   cek(`${peran} tidak boleh memutuskan (→ 403)`, !bolehMemutuskan(peran, 1, kK))
 }
 cek('level di luar kebijakan ditolak', !bolehMemutuskan('ADMIN', 2, kK))

@@ -12,6 +12,9 @@ const ROLE_LABEL: Record<string, string> = {
   OPERATOR: 'Operator',
   FINANCE: 'Finance',
   VIEWER: 'Viewer',
+  MANAJER_OPERASI: 'Manajer Operasi',
+  PENYUSUN_BIAYA: 'Penyusun Biaya',
+  DIREKTUR: 'Direktur',
 }
 const PLAN_LABEL: Record<string, string> = {
   TRIAL: 'Trial',

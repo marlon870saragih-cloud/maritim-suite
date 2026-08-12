@@ -206,11 +206,19 @@ model MaritimeDocument {
   @@index([status])
 }
 
+/// Fase 5e (12 Ags 2026) — 4→7, dirumuskan dari §7.2 Blueprint 2.0 Vol 1
+/// (docs/blueprint-src/content.js) + keputusan user hari ini:
+/// - MANAJER_OPERASI: bisa approve EPDA/FDA (approval-policy.ts), TIDAK bisa ubah Master Data/Settings.
+/// - PENYUSUN_BIAYA: hanya EPDA/FDA (susun/ubah/ajukan review), TIDAK boleh Voyage/Port Call/Master Data.
+/// - DIREKTUR: lihat-saja semua (Dashboard/Reports/Audit), tak pernah muncul di requireRole() manapun.
 enum Role {
   ADMIN
   OPERATOR
   FINANCE
   VIEWER
+  MANAJER_OPERASI
+  PENYUSUN_BIAYA
+  DIREKTUR
 }
 
 enum Plan {

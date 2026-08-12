@@ -345,7 +345,7 @@ export async function createDisbursement(
   body: Record<string, unknown>,
   jejak: Jejak = {},
 ): Promise<DisbursementDetail> {
-  requireRole(ctx, 'ADMIN', 'OPERATOR')
+  requireRole(ctx, 'ADMIN', 'OPERATOR', 'PENYUSUN_BIAYA')
   // K33 — extension lama hanya menjaga maritimeDocument.create; tanpa baris ini
   // tenant yang langganannya habis tetap bisa menerbitkan EPDA.
   await pastikanLanggananAktif(ctx)
@@ -414,7 +414,7 @@ export async function updateDisbursement(
   body: Record<string, unknown>,
   jejak: Jejak = {},
 ): Promise<DisbursementDetail> {
-  requireRole(ctx, 'ADMIN', 'OPERATOR')
+  requireRole(ctx, 'ADMIN', 'OPERATOR', 'PENYUSUN_BIAYA')
   const disb = await getDisbursement(ctx, id)
   pastikanBolehUbah(disb)
 
@@ -523,9 +523,20 @@ export async function setDisbursementStatus(
   tujuan: unknown,
   jejak: Jejak = {},
 ): Promise<DisbursementDetail> {
-  requireRole(ctx, 'ADMIN', 'OPERATOR')
+  requireRole(ctx, 'ADMIN', 'OPERATOR', 'PENYUSUN_BIAYA')
   const ke = pilihan(tujuan, STATUSES, 'Status tujuan')
   const disb = await getDisbursement(ctx, id)
+
+  // Fase 5e — celah ditemukan saat merumuskan role: graf K34 (disbursement-status.ts)
+  // TEKNIS mengizinkan PENDING_REVIEW → APPROVED lewat endpoint status generik
+  // ini, padahal UI sengaja menyembunyikannya (DisbursementBuilder.tsx
+  // GENERIC_TARGETS) — APPROVED cuma boleh lewat proses approval berjenjang
+  // (putuskanApproval() di approval.service.ts, digerbangi bolehMemutuskan()).
+  // Tanpa baris ini, siapa pun ber-requireRole di sini (kini termasuk
+  // PENYUSUN_BIAYA) bisa menyetujui dokumennya sendiri tanpa jejak Approval.
+  if (ke === 'APPROVED') {
+    throw conflict('Transisi ke APPROVED hanya lewat proses approval, bukan endpoint status ini.')
+  }
 
   if (!bolehTransisiUntukKind(disb.kind, disb.status, ke)) {
     throw conflict(

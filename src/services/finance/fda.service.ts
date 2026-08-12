@@ -74,7 +74,7 @@ export async function buatFdaDariEpda(
   sourceId: string,
   jejak: Jejak = {},
 ): Promise<DisbursementDetail> {
-  requireRole(ctx, 'ADMIN', 'OPERATOR')
+  requireRole(ctx, 'ADMIN', 'OPERATOR', 'PENYUSUN_BIAYA')
   await pastikanLanggananAktif(ctx)
 
   const sumber = await getDisbursement(ctx, sourceId) // K44 aturan 1

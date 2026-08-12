@@ -240,7 +240,7 @@ export async function addItem(
   body: Record<string, unknown>,
   jejak: Jejak = {},
 ): Promise<HasilTulisItem> {
-  requireRole(ctx, 'ADMIN', 'OPERATOR')
+  requireRole(ctx, 'ADMIN', 'OPERATOR', 'PENYUSUN_BIAYA')
   const disb = await getDisbursement(ctx, disbursementId) // K44 aturan 1
   pastikanBolehUbah(disb)
 
@@ -312,7 +312,7 @@ export async function addItemsFromTemplate(
   templateId: string,
   jejak: Jejak = {},
 ): Promise<HasilTulisItem> {
-  requireRole(ctx, 'ADMIN', 'OPERATOR')
+  requireRole(ctx, 'ADMIN', 'OPERATOR', 'PENYUSUN_BIAYA')
   const disb = await getDisbursement(ctx, disbursementId) // K44 aturan 1
   pastikanBolehUbah(disb)
 
@@ -391,7 +391,7 @@ export async function updateItem(
   body: Record<string, unknown>,
   jejak: Jejak = {},
 ): Promise<HasilTulisItem> {
-  requireRole(ctx, 'ADMIN', 'OPERATOR')
+  requireRole(ctx, 'ADMIN', 'OPERATOR', 'PENYUSUN_BIAYA')
   const disb = await getDisbursement(ctx, disbursementId) // K44 aturan 1
   pastikanBolehUbah(disb) // dokumen PENDING_REVIEW/APPROVED → CONFLICT 409 (K36)
 
@@ -505,7 +505,7 @@ export async function removeItem(
   itemId: string,
   jejak: Jejak = {},
 ): Promise<DisbursementDetail> {
-  requireRole(ctx, 'ADMIN', 'OPERATOR')
+  requireRole(ctx, 'ADMIN', 'OPERATOR', 'PENYUSUN_BIAYA')
   const disb = await getDisbursement(ctx, disbursementId) // K44 aturan 1
   pastikanBolehUbah(disb)
 

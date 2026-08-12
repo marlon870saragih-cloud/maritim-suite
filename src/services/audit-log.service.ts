@@ -1,7 +1,8 @@
 // Audit Log (Fase 5) — baca saja. Penulisannya sudah ada sejak Fase 3
 // (finance/audit.ts, catatAudit()); berkas ini yang PERTAMA membacanya untuk
-// ditampilkan ke pengguna. ADMIN-only: jejak audit termasuk isi dokumen
-// (oldValue/newValue), bukan konsumsi operator biasa.
+// ditampilkan ke pengguna. ADMIN + DIREKTUR saja (Fase 5e — Direktur "lihat-saja
+// semua"): jejak audit termasuk isi dokumen (oldValue/newValue), bukan konsumsi
+// operator biasa.
 
 import type { TenantContext } from './context'
 import { requireRole } from './context'
@@ -26,7 +27,7 @@ export async function listAuditLog(
   ctx: TenantContext,
   opts: { tableName?: string; action?: string; take?: number } = {},
 ): Promise<AuditLogRow[]> {
-  requireRole(ctx, 'ADMIN')
+  requireRole(ctx, 'ADMIN', 'DIREKTUR')
   const db = forTenant(ctx)
 
   const rows = await db.auditLog.findMany({
@@ -60,7 +61,7 @@ export async function listAuditLog(
 
 /** Nilai `tableName`/`action` unik yang pernah tercatat — untuk dropdown filter. */
 export async function listAuditLogFacets(ctx: TenantContext): Promise<{ tables: string[]; actions: string[] }> {
-  requireRole(ctx, 'ADMIN')
+  requireRole(ctx, 'ADMIN', 'DIREKTUR')
   const db = forTenant(ctx)
   const [tables, actions] = await Promise.all([
     db.auditLog.findMany({ distinct: ['tableName'], select: { tableName: true }, orderBy: { tableName: 'asc' } }),

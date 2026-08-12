@@ -1,10 +1,11 @@
 // Kebijakan approval — MURNI, tanpa impor nilai (K43/K44, §8).
 //
-// ⚠️ ISI SEMENTARA. Kebijakan approval Tribuana yang sebenarnya BELUM DIKETAHUI
-// (P1 & P2 di docs/FASE-3-EPDA-ENGINE.md §15). Tak ada apa pun di schema.prisma,
-// docs/, seed, maupun kode app A yang menyebut berapa level approval yang dipakai
-// atau siapa yang menyetujui apa; dua kotak tanda tangan di PDF ("Operations
-// Department" / "Branch Manager") BUKAN kebijakan approval.
+// ⚠️ SEBAGIAN MASIH SEMENTARA (P1 & P2 di docs/FASE-3-EPDA-ENGINE.md §15).
+// Dimensi PERAN sudah dijawab (12 Ags 2026, Fase 5e): ADMIN + MANAJER_OPERASI.
+// Yang MASIH belum diketahui: jumlah LEVEL (tetap satu untuk semua kind) dan
+// AMBANG NILAI per level. Tak ada apa pun di schema.prisma, docs/, seed, maupun
+// kode app A yang menyebut itu; dua kotak tanda tangan di PDF ("Operations
+// Department" / "Branch Manager") BUKAN kebijakan approval berjenjang.
 //
 // TITIK SENTUH SATU-SATUNYA untuk P1. Menjawab P1 = mengubah HANYA berkas ini,
 // selama bentuk jawabannya masih (a) level berbeda per `kind` atau (b) ambang nilai:
@@ -48,11 +49,15 @@ export const STATUS_DARI_KEPUTUSAN: Readonly<Record<KeputusanApproval, Disbursem
 }
 
 /**
- * ⚠️ Interim: SATU level, peran `ADMIN` (K43). Dipilih karena paling sedikit
+ * P1 sebagian terjawab (12 Ags 2026, Fase 5e): peran yang boleh memutuskan
+ * level 1 = ADMIN + MANAJER_OPERASI (role baru — lihat §7.2 Blueprint 2.0 Vol 1,
+ * "Manajer operasi: menyetujui dokumen, memantau kunjungan berjalan"). Yang
+ * MASIH interim: jumlah level (tetap SATU) dan ambang nilai per level — itu
+ * bagian P1 yang belum dijawab, dipilih tetap satu level karena paling sedikit
  * mengasumsikan dan tidak mungkin membuat dokumen lolos tanpa siapa pun melihat.
  */
 export function kebijakanApproval(_k: KonteksKebijakan): readonly LevelApproval[] {
-  return [{ level: 1, peran: ['ADMIN'] }]
+  return [{ level: 1, peran: ['ADMIN', 'MANAJER_OPERASI'] }]
 }
 
 /**

@@ -162,7 +162,7 @@ export async function revise(
   body: Record<string, unknown>,
   jejak: Jejak = {},
 ): Promise<DisbursementDetail> {
-  requireRole(ctx, 'ADMIN', 'OPERATOR')
+  requireRole(ctx, 'ADMIN', 'OPERATOR', 'PENYUSUN_BIAYA')
   const sumber = await getDisbursement(ctx, id) // K44 aturan 1
 
   if (!STATUS_BOLEH_REVISI.has(sumber.status)) {

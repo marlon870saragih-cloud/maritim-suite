@@ -11,11 +11,11 @@ export const dynamic = 'force-dynamic'
 const PH: Record<Lang, { kicker: string; title: string; desc: string; denied: string }> = {
   id: {
     kicker: 'Pengaturan', title: 'Jejak Audit', desc: 'Riwayat perubahan dokumen — siapa mengubah apa, kapan.',
-    denied: 'Halaman ini hanya untuk ADMIN.',
+    denied: 'Halaman ini hanya untuk ADMIN dan Direktur.',
   },
   en: {
     kicker: 'Settings', title: 'Audit Log', desc: 'Document change history — who changed what, when.',
-    denied: 'This page is ADMIN-only.',
+    denied: 'This page is for ADMIN and Direktur only.',
   },
 }
 
