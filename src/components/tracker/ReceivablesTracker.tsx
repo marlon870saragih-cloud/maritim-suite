@@ -157,7 +157,7 @@ export function ReceivablesTracker({
         <div className="flex items-center gap-2 mb-2">
           <Sparkles className="w-4 h-4 text-accent-purple" />
           <h2 className="font-display text-base text-white">{t.aiTitle}</h2>
-          <span className="text-[9px] font-mono uppercase tracking-wider text-accent-purple/70 ml-auto">Haiku · OpenRouter</span>
+          <span className="text-[9px] font-mono uppercase tracking-wider text-accent-purple/70 ml-auto">Sonnet 5 · OpenRouter</span>
         </div>
         <p className="text-text-secondary text-xs mb-3">{t.aiDesc}</p>
         <div className="flex flex-wrap gap-2 mb-3">

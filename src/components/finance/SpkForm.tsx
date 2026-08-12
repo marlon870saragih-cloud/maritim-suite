@@ -270,7 +270,7 @@ export function SpkForm() {
               <Sparkles className="w-4 h-4 text-accent-purple" />
               <h2 className="font-display text-base text-white">{t.aiTitle}</h2>
               <span className="text-[10px] font-mono uppercase tracking-wider text-accent-purple/70 ml-auto">
-                Haiku · OpenRouter
+                Sonnet 5 · OpenRouter
               </span>
             </div>
             <p className="text-text-secondary text-xs mb-3">{t.aiDesc}</p>

@@ -622,7 +622,7 @@ export function PortCallManager({
                 <Sparkles className="w-4 h-4 text-accent-purple" />
                 <span className="text-sm font-medium text-white">{t.aiTitle}</span>
                 <span className="text-[9px] font-mono uppercase tracking-wider text-accent-purple/70 ml-auto">
-                  Haiku · OpenRouter
+                  Sonnet 5 · OpenRouter
                 </span>
               </div>
               <textarea
