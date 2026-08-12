@@ -66,3 +66,17 @@ export async function nextDisbursementNumber(
 
   return formatDocNumber(kind, year, mm, (terakhir ? urutanDari(terakhir.docNumber) : 0) + 1)
 }
+
+/**
+ * Nomor revisi (K38): nomor induk dipertahankan, sufiks `-R{n}` ditambahkan.
+ * `EPDA/2026/06/0142` (v1) → `…/0142-R1` (v2) → `…/0142-R2` (v3).
+ *
+ * Dasar nomor diambil dengan membuang sufiks revisi APA PUN yang sudah ada di
+ * `docNumberSumber` — merevisi v2 (yang docNumber-nya sudah `-R1`) tidak boleh
+ * menumpuk jadi `-R1-R2`. Aman dipanggil dengan docNumber versi mana pun dalam
+ * rumpun yang sama, bukan cuma v1.
+ */
+export function nomorRevisi(docNumberSumber: string, versionBaru: number): string {
+  const dasar = docNumberSumber.replace(/-R\d+$/, '')
+  return `${dasar}-R${versionBaru - 1}`
+}

@@ -696,7 +696,11 @@ model DisbursementItem {
   taxAmount    Float?
 
   // --- khusus FDA ---
-  sourceItemId     String? // menunjuk baris EPDA padanannya → variance
+  // K40 (Fase 3): diperluas resmi jadi "baris asal tempat baris ini disalin" —
+  // dipakai DUA hal: item versi baru → item versi lama (diff revisi, K39) DAN
+  // item FDA → item EPDA (variance, K46). Keduanya tak pernah bertabrakan pada
+  // satu baris (satu baris punya paling banyak satu pendahulu langsung).
+  sourceItemId     String? // baris asal tempat baris ini disalin → diff revisi / variance
   vendorInvoiceNo  String?
   actualReceiptRef String?
 

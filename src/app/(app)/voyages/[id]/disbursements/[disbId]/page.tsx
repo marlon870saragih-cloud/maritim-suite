@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { getLang, type Lang } from '@/lib/i18n-server'
 import { requireTenant } from '@/services/context'
 import { getDisbursementDetail } from '@/services/finance/disbursement.service'
+import { statusApprovalUntukUi } from '@/services/finance/approval.service'
 import { listVendors } from '@/services/master/vendor.service'
 import { ServiceError } from '@/services/errors'
 import { DisbursementBuilder, type BuilderDisbursement } from '@/components/voyage/DisbursementBuilder'
@@ -35,6 +36,7 @@ export default async function DisbursementBuilderPage({
 
   const vendors = await listVendors(ctx, { termasukNonAktif: true })
   const vendorName = new Map(vendors.map((v) => [v.id, v.name]))
+  const approvalUi = await statusApprovalUntukUi(ctx, disb)
 
   const builderDisb: BuilderDisbursement = {
     id: disb.id,
@@ -50,6 +52,18 @@ export default async function DisbursementBuilderPage({
     warnings: disb.warnings,
     transisiTersedia: disb.transisiTersedia,
     bolehUbahItem: disb.bolehUbahItem,
+    bolehRevisi: disb.bolehRevisi,
+    approvals: approvalUi.approvals.map((a) => ({
+      id: a.id,
+      level: a.level,
+      userName: a.userName,
+      userRole: a.userRole,
+      decision: a.decision,
+      note: a.note,
+      createdAt: a.createdAt.toISOString(),
+    })),
+    levelTarget: approvalUi.levelTarget,
+    bolehMemutuskanSekarang: approvalUi.bolehMemutuskanSekarang,
     items: disb.items.map((it) => ({
       id: it.id,
       serviceId: it.serviceId,

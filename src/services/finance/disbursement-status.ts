@@ -48,6 +48,19 @@ export const BOLEH_UBAH_ITEM: ReadonlySet<DisbursementStatus> = new Set<Disburse
   'REVISION_REQUESTED',
 ])
 
+/**
+ * K37: hanya dokumen yang sudah keluar ke principal (`SENT`) yang boleh
+ * direvisi — lahir versi baru. Koreksi SEBELUM terkirim jalan lewat lingkaran
+ * `PENDING_REVIEW ↔ REVISION_REQUESTED` pada versi yang sama (K34), bukan lewat
+ * `revise()`. Satu sumber dipakai baik oleh `revision.service.ts` (menolak)
+ * maupun UI (menampilkan tombol "Buat Revisi").
+ */
+export const STATUS_BOLEH_REVISI: ReadonlySet<DisbursementStatus> = new Set<DisbursementStatus>([
+  'SENT',
+])
+
+export const bolehRevisi = (status: DisbursementStatus): boolean => STATUS_BOLEH_REVISI.has(status)
+
 /** K35: sebuah estimasi tak pernah menjadi "final"; ia digantikan oleh FDA. */
 const STATUS_KHUSUS_FDA: ReadonlySet<DisbursementStatus> = new Set<DisbursementStatus>(['FINAL'])
 

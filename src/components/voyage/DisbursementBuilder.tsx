@@ -17,12 +17,27 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, Download, Loader2, Pencil, Plus, Send, Undo2, XCircle } from 'lucide-react'
+import Link from 'next/link'
+import {
+  AlertTriangle,
+  Copy,
+  Download,
+  GitCompare,
+  Loader2,
+  Pencil,
+  Plus,
+  Scale,
+  Send,
+  Undo2,
+  XCircle,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useLang, useT, type Lang } from '@/lib/i18n'
 import { adaWarningPemblokir, type CalcWarning } from '@/services/finance/calc-engine'
 import { DisbursementLineTable, type LineItem } from './DisbursementLineTable'
 import { ServicePickerDialog } from './ServicePickerDialog'
+import { RevisionDialog } from './RevisionDialog'
+import { ApprovalPanel, type ApprovalRow } from './ApprovalPanel'
 
 const STR: Record<Lang, Record<string, string>> = {
   id: {
@@ -36,6 +51,7 @@ const STR: Record<Lang, Record<string, string>> = {
     blockedSubmit: 'Beresi peringatan di atas dulu sebelum mengajukan review.',
     errSave: 'Gagal menyimpan.', errConn: 'Gagal terhubung ke server.',
     readOnlyNote: 'Dokumen ini tidak lagi bisa diubah pada status sekarang.',
+    createRevision: 'Buat Revisi', compareV1: 'Bandingkan dengan v1', viewVariance: 'Lihat Variance',
   },
   en: {
     addCatalog: 'Add Service', addTemplate: 'From Template', downloadPdf: 'Download PDF',
@@ -48,6 +64,7 @@ const STR: Record<Lang, Record<string, string>> = {
     blockedSubmit: 'Resolve the warnings above before submitting for review.',
     errSave: 'Failed to save.', errConn: 'Failed to connect to server.',
     readOnlyNote: 'This document can no longer be edited at its current status.',
+    createRevision: 'Create Revision', compareV1: 'Compare with v1', viewVariance: 'View Variance',
   },
 }
 
@@ -85,6 +102,10 @@ export type BuilderDisbursement = {
   warnings: CalcWarning[]
   transisiTersedia: readonly string[]
   bolehUbahItem: boolean
+  bolehRevisi: boolean
+  approvals: ApprovalRow[]
+  levelTarget: number | null
+  bolehMemutuskanSekarang: boolean
   items: LineItem[]
 }
 
@@ -113,6 +134,19 @@ export function DisbursementBuilder({ disb: initial, voyageId }: { disb: Builder
   const [editingHeader, setEditingHeader] = useState(false)
   const [headerForm, setHeaderForm] = useState({ agencyPct: '', validUntil: '', notes: '' })
   const [headerBusy, setHeaderBusy] = useState(false)
+  const [revisionOpen, setRevisionOpen] = useState(false)
+  // Terpisah dari `disb`: respons mutasi item/status/header (`body.disbursement`)
+  // tidak membawa field ini (bukan bagian DisbursementDetail — cuma dihitung di
+  // page.tsx via statusApprovalUntukUi). Menyimpannya di `disb` akan membuatnya
+  // hilang diam-diam setelah mutasi APA PUN yang tak terkait approval. Disegarkan
+  // eksplisit tiap kali status berubah (lihat refreshApprovalInfo).
+  const [approvalInfo, setApprovalInfo] = useState({
+    approvals: initial.approvals,
+    levelTarget: initial.levelTarget,
+    bolehMemutuskanSekarang: initial.bolehMemutuskanSekarang,
+  })
+  const [approvalBusy, setApprovalBusy] = useState<string | null>(null)
+  const [approvalError, setApprovalError] = useState('')
   const [error, setError] = useState('')
   const rowRefs: Record<string, HTMLElement | null> = {}
 
@@ -232,7 +266,39 @@ export function DisbursementBuilder({ disb: initial, voyageId }: { disb: Builder
           body: JSON.stringify({ status: target }),
         }),
       setStatusBusy,
-    )
+    ).then((ok) => {
+      if (ok) refreshApprovalInfo()
+    })
+  }
+
+  async function refreshApprovalInfo() {
+    const res = await fetch(`/api/disbursements/${disb.id}/approvals`)
+    if (res.ok) setApprovalInfo(await res.json())
+  }
+
+  async function decideApproval(decision: 'APPROVED' | 'REJECTED' | 'REQUEST_REVISION', note: string) {
+    setApprovalBusy(decision)
+    setApprovalError('')
+    try {
+      const res = await fetch(`/api/disbursements/${disb.id}/approvals`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision, note: note || undefined }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        setApprovalError(body?.error?.message ?? t.errSave)
+        return
+      }
+      const body = await res.json()
+      if (body.disbursement) setDisb(body.disbursement)
+      await refreshApprovalInfo()
+      router.refresh()
+    } catch {
+      setApprovalError(t.errConn)
+    } finally {
+      setApprovalBusy(null)
+    }
   }
 
   function jumpToWarning(itemId?: string | null) {
@@ -267,6 +333,31 @@ export function DisbursementBuilder({ disb: initial, voyageId }: { disb: Builder
             </span>
           </div>
           <div className="flex items-center gap-2">
+            {disb.version > 1 && (
+              <Link
+                href={`/voyages/${voyageId}/disbursements/${disb.id}/compare`}
+                className="inline-flex items-center gap-1.5 rounded border border-border-muted px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:text-white hover:border-accent-blue/60 hover:bg-surface-tertiary transition-colors"
+              >
+                <GitCompare className="w-3.5 h-3.5" /> {t.compareV1}
+              </Link>
+            )}
+            {disb.kind === 'FDA' && (
+              <Link
+                href={`/voyages/${voyageId}/disbursements/${disb.id}/variance`}
+                className="inline-flex items-center gap-1.5 rounded border border-border-muted px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:text-white hover:border-accent-blue/60 hover:bg-surface-tertiary transition-colors"
+              >
+                <Scale className="w-3.5 h-3.5" /> {t.viewVariance}
+              </Link>
+            )}
+            {disb.bolehRevisi && (
+              <button
+                type="button"
+                onClick={() => setRevisionOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded border border-border-muted px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:text-white hover:border-accent-blue/60 hover:bg-surface-tertiary transition-colors"
+              >
+                <Copy className="w-3.5 h-3.5" /> {t.createRevision}
+              </button>
+            )}
             <a
               href={`/api/disbursements/${disb.id}/pdf?download=1`}
               target="_blank"
@@ -494,6 +585,15 @@ export function DisbursementBuilder({ disb: initial, voyageId }: { disb: Builder
         </div>
       )}
 
+      <ApprovalPanel
+        approvals={approvalInfo.approvals}
+        levelTarget={approvalInfo.levelTarget}
+        bolehMemutuskanSekarang={disb.status === 'PENDING_REVIEW' && approvalInfo.bolehMemutuskanSekarang}
+        busy={approvalBusy}
+        error={approvalError}
+        onDecide={decideApproval}
+      />
+
       <ServicePickerDialog
         open={pickerOpen}
         onOpenChange={setPickerOpen}
@@ -501,6 +601,13 @@ export function DisbursementBuilder({ disb: initial, voyageId }: { disb: Builder
         onPickService={pickService}
         onPickTemplate={pickTemplate}
         busy={addBusy}
+      />
+
+      <RevisionDialog
+        open={revisionOpen}
+        onOpenChange={setRevisionOpen}
+        disbursementId={disb.id}
+        onCreated={(newId) => router.push(`/voyages/${voyageId}/disbursements/${newId}`)}
       />
     </div>
   )
