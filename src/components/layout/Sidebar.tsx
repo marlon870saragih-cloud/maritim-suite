@@ -15,6 +15,7 @@ import {
   BookOpen,
   Route,
   LayoutDashboard,
+  ClipboardList,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/i18n'
@@ -30,6 +31,7 @@ const navItems = [
   { id: 'dokumen', label: 'Maritime Dokumen', sublabel: 'FAL · SOF · NOR · Clearance', href: '/dokumen', icon: FileText, count: DOK_COUNT },
   { id: 'portcall', label: 'Port Call Manager', sublabel: 'Status · Timeline · Task', href: '/portcall', icon: Ship },
   { id: 'tracker', label: 'DA & Invoice Tracker', sublabel: 'Outstanding · Aging', href: '/tracker', icon: BarChart3, locked: true },
+  { id: 'reports', label: 'Reports', sublabel: 'Voyage Register · Analisa', href: '/reports', icon: ClipboardList },
 ] as const
 
 export type ChromeUser = {
