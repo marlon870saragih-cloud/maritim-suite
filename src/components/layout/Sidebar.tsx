@@ -14,6 +14,7 @@ import {
   Sparkles,
   BookOpen,
   Route,
+  LayoutDashboard,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/i18n'
@@ -23,6 +24,7 @@ import { useMobileNav } from './MobileNav'
 const DOK_COUNT = new Set(DOC_CATEGORIES.flatMap((c) => c.docs.map((d) => d.type))).size
 
 const navItems = [
+  { id: 'dashboard', label: 'Dashboard', sublabel: 'Voyage · Approval · Piutang', href: '/dashboard', icon: LayoutDashboard },
   { id: 'voyages', label: 'Voyage', sublabel: 'Port call · Cargo · Dokumen', href: '/voyages', icon: Route },
   { id: 'finance', label: 'Finance Generator', sublabel: 'EPDA · FPDA · Invoice', href: '/finance', icon: DollarSign },
   { id: 'dokumen', label: 'Maritime Dokumen', sublabel: 'FAL · SOF · NOR · Clearance', href: '/dokumen', icon: FileText, count: DOK_COUNT },
