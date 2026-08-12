@@ -30,6 +30,18 @@ export type InvoiceData = {
   vatPct: number
   paymentTerms: string
   signRole: string
+  /**
+   * Fase 4b (K47-serupa) — override angka yang SUDAH di-snapshot dari sumber
+   * DB v2 (lihat invoice-v2-data.ts). Bila diisi, dipakai APA ADANYA alih-alih
+   * dihitung ulang dari `lines`+`agencyPct`/`vatPct` — mencegah PDF menampilkan
+   * angka berbeda dari Invoice.grandTotal yang sudah dikirim ke pelanggan
+   * (persis alasan K48 untuk EpdaData.taxAmount). `agencyPct`/`vatPct` di atas
+   * TETAP diisi (dipakai hanya sebagai label %, tidak dihitung ulang saat
+   * override ada). Caller lama (InvoiceForm, dsb) tak pernah mengisi ini —
+   * perilakunya sama persis seperti sebelum field ini ada.
+   */
+  agencyAmountOverride?: number
+  vatAmountOverride?: number
 }
 
 export const lineAmount = (l: InvoiceLine) => (l.qty || 0) * (l.unitPrice || 0)
@@ -42,9 +54,9 @@ export const isTaxable = (l: InvoiceLine) => l.taxable !== false
 export function computeInvoiceTotals(d: InvoiceData) {
   const subtotal = d.lines.reduce((s, l) => s + lineAmount(l), 0)
   const taxableLines = d.lines.reduce((s, l) => s + (isTaxable(l) ? lineAmount(l) : 0), 0)
-  const agency = Math.round((subtotal * d.agencyPct) / 100)
+  const agency = d.agencyAmountOverride ?? Math.round((subtotal * d.agencyPct) / 100)
   const dpp = taxableLines + agency // dasar pengenaan pajak
-  const vat = Math.round((dpp * d.vatPct) / 100)
+  const vat = d.vatAmountOverride ?? Math.round((dpp * d.vatPct) / 100)
   const exemptTotal = subtotal - taxableLines
   const totalDue = subtotal + agency + vat
   const hasExempt = d.lines.some((l) => !isTaxable(l))

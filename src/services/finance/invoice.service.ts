@@ -16,13 +16,19 @@ import { forTenant } from '../tenant-db'
 import { pastikanLanggananAktif } from '../subscription'
 import { getDisbursement } from './disbursement.service'
 import { nextInvoiceNumber } from './invoice-number'
-import { bolehBayar, bolehTransisiManual, transisiManualTersedia, STATUS_INVOICE_AKTIF } from './invoice-status'
+import {
+  bolehBayar,
+  bolehTransisiManual,
+  transisiManualTersedia,
+  STATUS_BOLEH_OVERDUE,
+  STATUS_INVOICE_AKTIF,
+} from './invoice-status'
 import { catatAudit, type Jejak } from './audit'
 
 export type InvoiceWithItems = Invoice & {
   items: InvoiceItem[]
   payments: InvoicePayment[]
-  customer: { name: string } | null
+  customer: { name: string; address: string | null; npwp: string | null; contactPerson: string | null } | null
 }
 
 const ITEM_ORDER = [{ displayOrder: 'asc' as const }, { createdAt: 'asc' as const }]
@@ -43,7 +49,7 @@ export async function getInvoice(ctx: TenantContext, id: string): Promise<Invoic
     include: {
       items: { orderBy: ITEM_ORDER },
       payments: { orderBy: PAYMENT_ORDER },
-      customer: { select: { name: true } },
+      customer: { select: { name: true, address: true, npwp: true, contactPerson: true } },
     },
   })
   if (!inv) throw notFound('Invoice')
@@ -221,6 +227,19 @@ export async function setInvoiceStatus(
       `Transisi ${inv.status} → ${ke} tidak diizinkan. Yang tersedia: ` +
         `${transisiManualTersedia(inv.status).join(', ') || '(tidak ada — status terminal)'}.`,
     )
+  }
+
+  // 4b — OVERDUE tak punya cron (belum ada infrastruktur job terjadwal di repo
+  // ini): ditandai manual, tapi tetap dijaga tak asal klik — harus benar-benar
+  // sudah lewat jatuh tempo.
+  if (ke === 'OVERDUE') {
+    if (!STATUS_BOLEH_OVERDUE.has(inv.status)) {
+      throw conflict(`Invoice ber-status ${inv.status} tidak relevan ditandai terlambat.`)
+    }
+    if (!inv.dueDate) throw validation('Invoice ini belum punya tanggal jatuh tempo — isi dulu sebelum ditandai terlambat.')
+    if (inv.dueDate.getTime() > Date.now()) {
+      throw validation('Tanggal jatuh tempo invoice ini belum lewat.')
+    }
   }
 
   if (ke !== 'CANCELLED') await pastikanLanggananAktif(ctx)

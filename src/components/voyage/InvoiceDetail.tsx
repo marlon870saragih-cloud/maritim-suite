@@ -6,7 +6,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Banknote, CheckCircle2, Loader2, Receipt, Send, XCircle } from 'lucide-react'
+import { AlertTriangle, Banknote, CheckCircle2, Download, Loader2, Receipt, Send, XCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useLang, useT, type Lang } from '@/lib/i18n'
 
@@ -21,6 +21,8 @@ const STR: Record<Lang, Record<string, string>> = {
     dueDate: 'Jatuh Tempo', customer: 'Ditagih Kepada', noCustomer: 'Belum ada pelanggan di voyage ini',
     issue: 'Terbitkan', markSent: 'Tandai Terkirim', cancelInvoice: 'Batalkan',
     confirmCancel: 'Batalkan Invoice ini?',
+    downloadPdf: 'Unduh PDF', downloadReceipt: 'Unduh Kwitansi', markOverdue: 'Tandai Terlambat',
+    confirmOverdue: 'Tandai Invoice ini terlambat bayar (OVERDUE)?',
   },
   en: {
     thDesc: 'Description', thQty: 'Quantity', thUnitPrice: 'Unit Price', thAmount: 'Amount',
@@ -32,14 +34,16 @@ const STR: Record<Lang, Record<string, string>> = {
     dueDate: 'Due Date', customer: 'Billed To', noCustomer: 'No customer set on this voyage',
     issue: 'Issue', markSent: 'Mark Sent', cancelInvoice: 'Cancel',
     confirmCancel: 'Cancel this invoice?',
+    downloadPdf: 'Download PDF', downloadReceipt: 'Download Receipt', markOverdue: 'Mark Overdue',
+    confirmOverdue: 'Mark this invoice as overdue (OVERDUE)?',
   },
 }
 
 const TARGET_LABEL: Record<Lang, Record<string, string>> = {
-  id: { ISSUED: 'Terbitkan', SENT: 'Tandai Terkirim', CANCELLED: 'Batalkan' },
-  en: { ISSUED: 'Issue', SENT: 'Mark Sent', CANCELLED: 'Cancel' },
+  id: { ISSUED: 'Terbitkan', SENT: 'Tandai Terkirim', OVERDUE: 'Tandai Terlambat', CANCELLED: 'Batalkan' },
+  en: { ISSUED: 'Issue', SENT: 'Mark Sent', OVERDUE: 'Mark Overdue', CANCELLED: 'Cancel' },
 }
-const TARGET_ICON: Record<string, typeof Send> = { ISSUED: CheckCircle2, SENT: Send, CANCELLED: XCircle }
+const TARGET_ICON: Record<string, typeof Send> = { ISSUED: CheckCircle2, SENT: Send, OVERDUE: AlertTriangle, CANCELLED: XCircle }
 
 const STATUS_COLOR: Record<string, string> = {
   DRAFT: 'bg-surface-tertiary text-text-secondary border-border-muted',
@@ -138,6 +142,7 @@ export function InvoiceDetail({ invoice: initial }: { invoice: BuilderInvoice })
 
   function changeStatus(target: string) {
     if (target === 'CANCELLED' && !confirm(t.confirmCancel)) return
+    if (target === 'OVERDUE' && !confirm(t.confirmOverdue)) return
     handleMutation(
       () =>
         fetch(`/api/invoices/${inv.id}/status`, {
@@ -208,9 +213,9 @@ export function InvoiceDetail({ invoice: initial }: { invoice: BuilderInvoice })
                 disabled={statusBusy}
                 className={cn(
                   'inline-flex items-center gap-1.5 rounded px-3.5 py-2 text-sm font-medium transition-colors disabled:opacity-50',
-                  target === 'CANCELLED'
-                    ? 'border border-status-danger/40 text-status-danger hover:bg-status-danger/10'
-                    : 'bg-accent-blue hover:bg-primary text-[#231a06]',
+                  target === 'CANCELLED' && 'border border-status-danger/40 text-status-danger hover:bg-status-danger/10',
+                  target === 'OVERDUE' && 'border border-accent-amber/40 text-accent-amber hover:bg-accent-amber/10',
+                  target !== 'CANCELLED' && target !== 'OVERDUE' && 'bg-accent-blue hover:bg-primary text-[#231a06]',
                 )}
               >
                 {statusBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Icon className="w-4 h-4" />}
@@ -227,6 +232,12 @@ export function InvoiceDetail({ invoice: initial }: { invoice: BuilderInvoice })
               <Banknote className="w-4 h-4" /> {t.recordPayment}
             </button>
           )}
+          <a
+            href={`/api/invoices/${inv.id}/pdf?download=1`}
+            className="inline-flex items-center gap-1.5 rounded px-3.5 py-2 text-sm font-medium border border-border-muted text-text-secondary hover:text-white hover:border-accent-blue/60 hover:bg-surface-tertiary transition-colors"
+          >
+            <Download className="w-4 h-4" /> {t.downloadPdf}
+          </a>
         </div>
       </section>
 
@@ -320,7 +331,15 @@ export function InvoiceDetail({ invoice: initial }: { invoice: BuilderInvoice })
                   )}
                   {p.notes && <p className="text-text-secondary text-xs mt-0.5">{p.notes}</p>}
                 </div>
-                <p className="text-text-secondary text-[10px] font-mono whitespace-nowrap">{fmtDate(p.paymentDate)}</p>
+                <div className="text-right shrink-0">
+                  <p className="text-text-secondary text-[10px] font-mono whitespace-nowrap">{fmtDate(p.paymentDate)}</p>
+                  <a
+                    href={`/api/invoices/${inv.id}/payments/${p.id}/pdf?download=1`}
+                    className="inline-flex items-center gap-1 text-[10px] text-text-secondary hover:text-accent-blue transition-colors mt-1"
+                  >
+                    <Download className="w-3 h-3" /> {t.downloadReceipt}
+                  </a>
+                </div>
               </li>
             ))}
           </ul>
