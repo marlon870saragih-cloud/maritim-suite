@@ -17,16 +17,16 @@ import {
 import { emptyForm, toForm, VesselFieldsGrid, type FormState, type Vessel } from './vessel-form'
 
 const MAX_BYTES = 10 * 1024 * 1024
-const ACCEPT = '.pdf,.xlsx,.xlsm,.csv,application/pdf'
+const ACCEPT = '.pdf,.xlsx,.xlsm,.csv,.jpg,.jpeg,.png,.webp,application/pdf,image/*'
 
 const STR: Record<Lang, Record<string, string>> = {
   id: {
-    trigger: 'Import dari PDF/Excel',
+    trigger: 'Import dari PDF/Excel/Gambar',
     title: 'Import Partikular Kapal',
-    descPick: 'Unggah ship particular (PDF atau Excel). AI membacanya, Anda cek dulu sebelum disimpan.',
+    descPick: 'Unggah ship particular (PDF, Excel, atau foto/screenshot). AI membacanya, Anda cek dulu sebelum disimpan.',
     descPreview: 'Periksa hasil bacaan AI, perbaiki bila perlu, lalu simpan.',
     drop: 'Tarik berkas ke sini atau klik untuk memilih',
-    formats: 'PDF, XLSX, XLSM, CSV — maksimal 10 MB',
+    formats: 'PDF, XLSX, XLSM, CSV, JPG, PNG, WEBP — maksimal 10 MB',
     reading: 'AI sedang membaca berkas…',
     extract: 'Baca dengan AI',
     exists: 'Kapal ini sudah ada di master data',
@@ -43,19 +43,19 @@ const STR: Record<Lang, Record<string, string>> = {
     saveUpd: 'Simpan Perubahan',
     errNameReq: 'Nama kapal wajib diisi.',
     errTooBig: 'Berkas terlalu besar (maksimal 10 MB).',
-    errType: 'Hanya berkas PDF, Excel (.xlsx/.xlsm), atau CSV.',
+    errType: 'Hanya berkas PDF, Excel (.xlsx/.xlsm), CSV, atau gambar (JPG/PNG/WEBP).',
     errRead: 'Gagal membaca berkas.',
     errSave: 'Gagal menyimpan.',
     errConn: 'Gagal terhubung ke server.',
     errEmpty: 'AI tidak menemukan data kapal di berkas ini. Coba berkas lain atau isi manual.',
   },
   en: {
-    trigger: 'Import from PDF/Excel',
+    trigger: 'Import from PDF/Excel/Image',
     title: 'Import Vessel Particulars',
-    descPick: 'Upload a ship particular (PDF or Excel). AI reads it, you review before saving.',
+    descPick: 'Upload a ship particular (PDF, Excel, or a photo/screenshot). AI reads it, you review before saving.',
     descPreview: 'Check what the AI read, fix if needed, then save.',
     drop: 'Drag a file here or click to choose',
-    formats: 'PDF, XLSX, XLSM, CSV — max 10 MB',
+    formats: 'PDF, XLSX, XLSM, CSV, JPG, PNG, WEBP — max 10 MB',
     reading: 'AI is reading the file…',
     extract: 'Read with AI',
     exists: 'This vessel already exists in master data',
@@ -72,7 +72,7 @@ const STR: Record<Lang, Record<string, string>> = {
     saveUpd: 'Save Changes',
     errNameReq: 'Vessel name is required.',
     errTooBig: 'File is too large (max 10 MB).',
-    errType: 'Only PDF, Excel (.xlsx/.xlsm), or CSV files.',
+    errType: 'Only PDF, Excel (.xlsx/.xlsm), CSV, or image (JPG/PNG/WEBP) files.',
     errRead: 'Failed to read the file.',
     errSave: 'Failed to save.',
     errConn: 'Failed to connect to server.',
@@ -82,7 +82,7 @@ const STR: Record<Lang, Record<string, string>> = {
 
 type ImportResult = { draft: Record<string, string>; existingVessel: Vessel | null }
 
-const okType = (name: string) => /\.(pdf|xlsx|xlsm|csv)$/i.test(name)
+const okType = (name: string) => /\.(pdf|xlsx|xlsm|csv|jpe?g|png|webp)$/i.test(name)
 
 export function VesselImportDialog({
   open,

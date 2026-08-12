@@ -12,6 +12,11 @@
 //
 // PDF dikirim mentah ke model (blok `file` OpenRouter + engine `native` → vision
 // Claude), jadi PDF hasil scan pun terbaca tanpa OCR/rendering library terpisah.
+//
+// Gambar (JPG/PNG/WEBP — mis. foto/screenshot ship particular yang diteruskan
+// dari WhatsApp) lewat blok `image_url` (data URI base64), vision Claude yang
+// sama seperti PDF. Tak butuh plugin `file-parser`: itu murni urusan PDF
+// (ekstraksi teks/halaman); gambar sudah format native yang dipahami model.
 
 import ExcelJS from 'exceljs'
 import { z } from 'zod'
@@ -92,6 +97,11 @@ ATURAN KERAS:
 const PDF_INSTRUCTION =
   'Berkas terlampir adalah dokumen partikular kapal. Baca seluruh halaman dan isi field ' +
   'via tool "isi_kapal". Kosongkan field yang tidak tertulis di dokumen.'
+
+const IMAGE_INSTRUCTION =
+  'Gambar terlampir adalah foto/tangkapan layar dokumen partikular kapal (mis. diteruskan lewat ' +
+  'WhatsApp). Baca teks di dalamnya dan isi field via tool "isi_kapal". Kosongkan field yang ' +
+  'tidak terbaca jelas — jangan menebak dari gambar yang buram/terpotong.'
 
 const SHEET_INSTRUCTION =
   'Di bawah ini isi lembar kerja (Excel/CSV) partikular kapal yang sudah diratakan menjadi teks. ' +
@@ -231,4 +241,13 @@ export async function extractVesselDraftFromPdf(bytes: Buffer, filename: string)
     if (!/plugin|engine|native|file/.test(msg)) throw e
     return runExtraction(content)
   }
+}
+
+/** Ekstrak draft kapal dari gambar (JPG/PNG/WEBP) — dikirim mentah lewat blok `image_url`. */
+export async function extractVesselDraftFromImage(bytes: Buffer, mimeType: string): Promise<VesselDraft> {
+  const content: ChatMessage['content'] = [
+    { type: 'text', text: IMAGE_INSTRUCTION },
+    { type: 'image_url', image_url: { url: `data:${mimeType};base64,${bytes.toString('base64')}` } },
+  ]
+  return runExtraction(content)
 }

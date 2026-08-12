@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import {
+  extractVesselDraftFromImage,
   extractVesselDraftFromPdf,
   extractVesselDraftFromText,
   extractVesselDraftFromWorkbook,
@@ -13,7 +14,14 @@ export const dynamic = 'force-dynamic'
 
 const MAX_BYTES = 10 * 1024 * 1024
 
-type Kind = 'pdf' | 'workbook' | 'csv'
+type Kind = 'pdf' | 'workbook' | 'csv' | 'image'
+
+const IMAGE_MIME: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+}
 
 // Ekstensi dipakai sebagai penentu utama: mime dari browser tak konsisten untuk
 // berkas Office (kadang application/octet-stream, kadang mime Excel lama).
@@ -25,7 +33,15 @@ function classify(name: string, mime: string): Kind | 'xls-lama' | null {
   if (ext === 'xls') return 'xls-lama'
   if (mime.includes('spreadsheetml')) return 'workbook'
   if (mime === 'text/csv') return 'csv'
+  if (ext in IMAGE_MIME || mime.startsWith('image/')) return 'image'
   return null
+}
+
+/** Mime data URI untuk gambar — dari `mime` browser bila valid, jatuh ke ekstensi (kadang browser kirim octet-stream untuk foto yang diteruskan WhatsApp Web/desktop). */
+function imageMime(name: string, mime: string): string {
+  if (mime.startsWith('image/')) return mime
+  const ext = name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] ?? ''
+  return IMAGE_MIME[ext] ?? 'image/jpeg'
 }
 
 const digits = (v: string | null) => (v ?? '').replace(/\D/g, '')
@@ -53,7 +69,7 @@ export async function POST(req: Request) {
   if (kind === 'xls-lama') {
     return new Response('Format .xls lama belum didukung — simpan ulang sebagai .xlsx', { status: 415 })
   }
-  if (!kind) return new Response('Hanya berkas PDF, Excel (.xlsx/.xlsm), atau CSV', { status: 415 })
+  if (!kind) return new Response('Hanya berkas PDF, Excel (.xlsx/.xlsm), CSV, atau gambar (JPG/PNG/WEBP)', { status: 415 })
 
   const ab = await file.arrayBuffer()
 
@@ -64,7 +80,9 @@ export async function POST(req: Request) {
         ? await extractVesselDraftFromPdf(Buffer.from(ab), file.name)
         : kind === 'workbook'
           ? await extractVesselDraftFromWorkbook(ab)
-          : await extractVesselDraftFromText(Buffer.from(ab).toString('utf8'))
+          : kind === 'image'
+            ? await extractVesselDraftFromImage(Buffer.from(ab), imageMime(file.name, file.type))
+            : await extractVesselDraftFromText(Buffer.from(ab).toString('utf8'))
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Gagal membaca berkas'
     return new Response(msg, { status: 422 })
