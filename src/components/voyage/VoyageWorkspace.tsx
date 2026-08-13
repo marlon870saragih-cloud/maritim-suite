@@ -387,7 +387,7 @@ export function VoyageWorkspace({
         <div className="p-5">
           {tab === 'cargo' && <VoyageCargoPanel voyageId={voyage.id} cargoes={voyage.cargoes} />}
           {tab === 'portcall' && <VoyagePortCallPanel voyageId={voyage.id} portCalls={voyage.portCalls} />}
-          {tab === 'finance' && <VoyageFinancePanel voyageId={voyage.id} counts={counts} />}
+          {tab === 'finance' && <VoyageFinancePanel voyageId={voyage.id} counts={counts} portId={voyage.portId} />}
         </div>
       </section>
 

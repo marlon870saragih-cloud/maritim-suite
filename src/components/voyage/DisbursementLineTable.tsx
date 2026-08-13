@@ -10,17 +10,18 @@ import { AlertTriangle, Loader2, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useT, type Lang } from '@/lib/i18n'
 import type { CalcWarning } from '@/services/finance/calc-engine'
+import { PredictionColumn, type PrediksiBarisUI } from '@/components/ai/PredictionColumn'
 
 const STR: Record<Lang, Record<string, string>> = {
   id: {
     section: 'Seksi', noSection: '— Tanpa Seksi —', desc: 'Deskripsi', qty: 'Kuantitas', unitPrice: 'Harga Satuan',
-    amount: 'Jumlah', vendor: 'Vendor', action: 'Aksi', subtotalSection: 'Subtotal',
+    amount: 'Jumlah', vendor: 'Vendor', action: 'Aksi', subtotalSection: 'Subtotal', prediction: 'Prediksi',
     empty: 'Belum ada baris. Tambah dari katalog atau template di atas.',
     tipDelete: 'Hapus baris',
   },
   en: {
     section: 'Section', noSection: '— No Section —', desc: 'Description', qty: 'Quantity', unitPrice: 'Unit Price',
-    amount: 'Amount', vendor: 'Vendor', action: 'Action', subtotalSection: 'Subtotal',
+    amount: 'Amount', vendor: 'Vendor', action: 'Action', subtotalSection: 'Subtotal', prediction: 'Prediction',
     empty: 'No lines yet. Add from catalog or template above.',
     tipDelete: 'Delete line',
   },
@@ -51,6 +52,7 @@ function warningsFor(warnings: readonly CalcWarning[], itemId: string): CalcWarn
 
 export function DisbursementLineTable({
   items, warnings, baseCurrency, editable, busyId, onQuantityChange, onUnitPriceChange, onRemove, onJumpTarget,
+  voyageId, predictions, predictionBusyId, onApplyPrediction,
 }: {
   items: LineItem[]
   warnings: readonly CalcWarning[]
@@ -61,8 +63,20 @@ export function DisbursementLineTable({
   onUnitPriceChange: (itemId: string, unitPrice: string) => void
   onRemove: (itemId: string) => void
   onJumpTarget?: (itemId: string, el: HTMLElement | null) => void
+  /**
+   * Fase 6d — kolom prediksi biaya, PER SERVICE (K60: satu prediksi per jasa,
+   * bukan per baris — dua baris jasa sama berbagi prediksi yang sama). Tak
+   * diisi ATAU `null` (predict gagal/tenant trial habis/dsb) = kolom
+   * disembunyikan seluruhnya, bukan ditampilkan kosong — builder tetap
+   * berfungsi penuh tanpa prediksi (fitur suplemen, K54).
+   */
+  voyageId?: string
+  predictions?: Map<string, PrediksiBarisUI> | null
+  predictionBusyId?: string | null
+  onApplyPrediction?: (itemId: string, unitPrice: number) => void
 }) {
   const t = useT(STR)
+  const showPredictions = editable && !!voyageId && !!predictions && !!onApplyPrediction
 
   const bySection = new Map<string, LineItem[]>()
   items.forEach((item) => {
@@ -95,6 +109,7 @@ export function DisbursementLineTable({
                   <th className="px-3.5 py-2 font-medium">{t.desc}</th>
                   <th className="px-3.5 py-2 font-medium w-28">{t.qty}</th>
                   <th className="px-3.5 py-2 font-medium w-32">{t.unitPrice}</th>
+                  {showPredictions && <th className="px-3.5 py-2 font-medium w-44">{t.prediction}</th>}
                   <th className="px-3.5 py-2 font-medium text-right w-36">{t.amount}</th>
                   {editable && <th className="px-3.5 py-2 font-medium w-10" />}
                 </tr>
@@ -136,6 +151,18 @@ export function DisbursementLineTable({
                       </td>
                       <td className="px-3.5 py-2.5 align-top">
                         <input
+                          // Kunci ikut `unitPrice`: input ini TAK TERKENDALI
+                          // (`defaultValue`, bukan `value`) supaya blur-per-blur
+                          // tak mengganggu ketikan operator (pola lama). Tapi
+                          // itu berarti perubahan `unitPrice` dari LUAR field
+                          // ini sendiri — mis. tombol "Pakai angka ini" (6d)
+                          // yang men-PATCH lalu menyegarkan `disb` dari server —
+                          // tak pernah terlihat, karena `defaultValue` hanya
+                          // dibaca React sekali saat mount. Kunci yang berubah
+                          // memaksa remount, sehingga nilai server yang baru
+                          // memang tampil (K11: nilai server yang menang, di
+                          // sini juga soal apa yang TERLIHAT, bukan cuma tersimpan).
+                          key={`unitPrice-${item.id}-${item.unitPrice}`}
                           type="number"
                           disabled={!editable || isBusy}
                           defaultValue={item.unitPrice}
@@ -144,6 +171,20 @@ export function DisbursementLineTable({
                         />
                         <p className="text-[10px] text-text-secondary mt-0.5 font-mono">{item.currency}</p>
                       </td>
+                      {showPredictions && (
+                        <td className="px-3.5 py-2.5 align-top">
+                          {item.serviceId && predictions?.get(item.serviceId) ? (
+                            <PredictionColumn
+                              prediksi={predictions.get(item.serviceId)!}
+                              voyageId={voyageId!}
+                              disabled={isBusy || predictionBusyId === item.id}
+                              onApply={(unitPrice) => onApplyPrediction?.(item.id, unitPrice)}
+                            />
+                          ) : (
+                            <span className="text-[10px] text-text-secondary/50">—</span>
+                          )}
+                        </td>
+                      )}
                       <td className="px-3.5 py-2.5 align-top text-right font-mono text-text-primary">
                         {fmt(item.amountBase)}
                         {item.currency !== baseCurrency && (

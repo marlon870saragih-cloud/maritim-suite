@@ -15,7 +15,7 @@
 // tanpa jejak approval (P1/P2 belum terjawab) — salah arah, bukan sekadar
 // belum selesai.
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -38,6 +38,7 @@ import { DisbursementLineTable, type LineItem } from './DisbursementLineTable'
 import { ServicePickerDialog } from './ServicePickerDialog'
 import { RevisionDialog } from './RevisionDialog'
 import { ApprovalPanel, type ApprovalRow } from './ApprovalPanel'
+import type { PrediksiBarisUI } from '@/components/ai/PredictionColumn'
 
 const STR: Record<Lang, Record<string, string>> = {
   id: {
@@ -149,6 +150,49 @@ export function DisbursementBuilder({ disb: initial, voyageId }: { disb: Builder
   const [approvalError, setApprovalError] = useState('')
   const [error, setError] = useState('')
   const rowRefs: Record<string, HTMLElement | null> = {}
+
+  // Fase 6d — prediksi biaya per jasa (K60/K64), keyed by serviceId. Fitur
+  // SUPLEMEN (K54): gagal ambil (tenant trial habis, dokumen belum punya
+  // baris, dsb.) diam-diam menyembunyikan kolom, bukan menghalangi builder.
+  const [predictions, setPredictions] = useState<Map<string, PrediksiBarisUI> | null>(null)
+  // Kunci fetch = daftar serviceId unik pada dokumen, bukan `disb` utuh —
+  // ganti quantity/unitPrice/status tak perlu memanggil ulang predict; hanya
+  // baris jasa BARU/HILANG yang perlu.
+  const serviceIdsKey = Array.from(new Set(disb.items.map((it) => it.serviceId).filter(Boolean))).sort().join(',')
+
+  useEffect(() => {
+    if (serviceIdsKey === '') {
+      setPredictions(null)
+      return
+    }
+    let batal = false
+    fetch('/api/ai/predict', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ disbursementId: disb.id }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body: { prediksi?: PrediksiBarisUI[] } | null) => {
+        if (batal) return
+        if (!body?.prediksi) {
+          setPredictions(null)
+          return
+        }
+        setPredictions(new Map(body.prediksi.map((p) => [p.serviceId, p])))
+      })
+      .catch(() => !batal && setPredictions(null))
+    return () => {
+      batal = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [disb.id, serviceIdsKey])
+
+  function applyPrediction(itemId: string, unitPrice: number) {
+    // K64/3: sama persis dengan jalur PATCH unitPrice manual (patchItem di
+    // bawah) — prediksi tak pernah punya jalur simpan kedua, lihat catatan
+    // kepala PredictionColumn.tsx.
+    patchItem(itemId, { unitPrice })
+  }
 
   const editable = disb.bolehUbahItem
 
@@ -517,6 +561,10 @@ export function DisbursementBuilder({ disb: initial, voyageId }: { disb: Builder
         onJumpTarget={(id, el) => {
           rowRefs[id] = el
         }}
+        voyageId={voyageId}
+        predictions={predictions}
+        predictionBusyId={itemBusyId}
+        onApplyPrediction={applyPrediction}
       />
 
       {/* Totals */}

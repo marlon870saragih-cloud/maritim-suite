@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation'
 import { FileText, GitBranch, Loader2, Plus, Receipt, Wallet } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useT, type Lang } from '@/lib/i18n'
+import { VoyageCostEstimateCard } from '@/components/ai/VoyageCostEstimateCard'
 
 const STR: Record<Lang, Record<string, string>> = {
   id: {
@@ -86,7 +87,15 @@ const fmtAmount = (n: number) => n.toLocaleString('id-ID', { maximumFractionDigi
 
 export type VoyageFinanceCounts = { disbursements: number; invoices: number; documents: number }
 
-export function VoyageFinancePanel({ voyageId, counts }: { voyageId: string; counts: VoyageFinanceCounts }) {
+export function VoyageFinancePanel({
+  voyageId,
+  counts,
+  portId,
+}: {
+  voyageId: string
+  counts: VoyageFinanceCounts
+  portId?: string | null
+}) {
   const t = useT(STR)
   const router = useRouter()
   const [rows, setRows] = useState<DisbRow[] | null>(null)
@@ -192,6 +201,8 @@ export function VoyageFinancePanel({ voyageId, counts }: { voyageId: string; cou
           {error}
         </p>
       )}
+
+      {portId && <VoyageCostEstimateCard voyageId={voyageId} portId={portId} />}
 
       {rows === null ? (
         <div className="flex justify-center py-8">
