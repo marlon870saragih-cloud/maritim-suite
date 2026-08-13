@@ -12,7 +12,8 @@
     "db:seed-v2": "node prisma/seed-v2.mjs",
     "db:backfill-v2": "node prisma/backfill-v2.mjs",
     "test:tenant": "node prisma/check-tenant-guard.mjs",
-    "test:calc": "node prisma/check-epda-calc.mjs"
+    "test:calc": "node prisma/check-epda-calc.mjs",
+    "test:ai": "node prisma/check-ai-prediction.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
