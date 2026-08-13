@@ -13,7 +13,8 @@
     "db:backfill-v2": "node prisma/backfill-v2.mjs",
     "test:tenant": "node prisma/check-tenant-guard.mjs",
     "test:calc": "node prisma/check-epda-calc.mjs",
-    "test:ai": "node prisma/check-ai-prediction.mjs"
+    "test:ai": "node prisma/check-ai-prediction.mjs",
+    "test:ai-api": "node prisma/check-ai-predict-api.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
