@@ -11,6 +11,7 @@ import { requireRole } from '../context'
 import { forTenant } from '../tenant-db'
 import { conflict, notFound } from '../errors'
 import { pilihan, str, tanggal, wajib } from '../input'
+import { stempelAsal } from '../ai/origin.service'
 
 const STATUSES: readonly VoyageStatus[] = [
   'PLANNED', 'CONFIRMED', 'ARRIVED', 'BERTHED', 'WORKING', 'COMPLETED', 'DEPARTED', 'CLOSED', 'CANCELLED',
@@ -146,7 +147,11 @@ export async function createVoyage(ctx: TenantContext, body: Record<string, unkn
   await pastikanRelasiMilikTenant(ctx, data)
   const voyageNumber = await nextVoyageNumber(ctx)
 
-  return db.voyage.create({ data: { ...data, voyageNumber, tenantId: ctx.tenantId } })
+  // Fase 6a / K56 — cap asal ditempel SAAT baris dibuat (snapshot), bukan
+  // disimpulkan saat query. Satu baris; artinya seluruhnya di ai/provenance.ts.
+  const dataOrigin = await stempelAsal(ctx)
+
+  return db.voyage.create({ data: { ...data, dataOrigin, voyageNumber, tenantId: ctx.tenantId } })
 }
 
 export async function updateVoyage(

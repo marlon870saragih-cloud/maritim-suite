@@ -41,6 +41,7 @@ import { KODE_AGENCY_FEE, type VoyageUntukAutofill } from './autofill.service'
 import { nextDisbursementNumber } from './disbursement-number'
 import { catatAudit, type Jejak } from './audit'
 import { notify } from '../notification.service'
+import { stempelAsal } from '../ai/origin.service'
 
 const KINDS: readonly DisbursementKind[] = ['EPDA', 'FPDA', 'FDA']
 
@@ -364,12 +365,18 @@ export async function createDisbursement(
 
   const docNumber = await nextDisbursementNumber(ctx, kind)
 
+  // Fase 6a / K56 — cap asal ditempel SAAT baris dibuat (snapshot). Asal
+  // EFEKTIF dokumen ini tetap dibatasi asal voyage induknya (K58) saat dibaca;
+  // yang disimpan di sini adalah asal dokumennya sendiri.
+  const dataOrigin = await stempelAsal(ctx)
+
   const dibuat = await db.disbursement.create({
     data: {
       tenantId: ctx.tenantId,
       voyageId,
       kind,
       docNumber,
+      dataOrigin,
       // K31 — diwarisi Voyage, lalu dibekukan begitu ada item.
       baseCurrency: voyage.baseCurrency,
       agencyPct,

@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import Script from 'next/script'
 import { getServerSession } from 'next-auth'
-import { Building2, Database, Users, ChevronRight, Anchor, Truck, Coins, TrendingUp, ListChecks, ShieldAlert, UsersRound } from 'lucide-react'
+import { Building2, Database, Users, ChevronRight, Anchor, Truck, Coins, TrendingUp, ListChecks, ShieldAlert, UsersRound, Sparkles } from 'lucide-react'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -38,6 +38,7 @@ const TR: Record<Lang, {
       { href: '/settings/services', title: 'Katalog Jasa & Tarif', desc: 'Jenis jasa dan tarif — dasar EPDA/FDA', icon: ListChecks },
       { href: '/settings/team', title: 'Tim', desc: 'Anggota tim, peran, dan akses (ADMIN)', icon: UsersRound },
       { href: '/settings/audit', title: 'Jejak Audit', desc: 'Riwayat perubahan dokumen — siapa mengubah apa (ADMIN)', icon: ShieldAlert },
+      { href: '/settings/data-ai', title: 'Data & AI', desc: 'Asal data (nyata/uji/contoh) — dasar keyakinan prediksi', icon: Sparkles },
     ],
   },
   en: {
@@ -55,6 +56,7 @@ const TR: Record<Lang, {
       { href: '/settings/services', title: 'Service Catalog & Rates', desc: 'Service types and rates — basis for EPDA/FDA', icon: ListChecks },
       { href: '/settings/team', title: 'Team', desc: 'Team members, roles, and access (ADMIN)', icon: UsersRound },
       { href: '/settings/audit', title: 'Audit Log', desc: 'Document change history — who changed what (ADMIN)', icon: ShieldAlert },
+      { href: '/settings/data-ai', title: 'Data & AI', desc: 'Data origin (real/test/sample) — basis of prediction confidence', icon: Sparkles },
     ],
   },
 }

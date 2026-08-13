@@ -31,6 +31,13 @@ model Tenant {
   defaultCurrency    String    @default("IDR")
   docLanguage        String    @default("EN")
   defaultDAFormat    String    @default("FPDA")
+
+  /// Fase 6a / K55 — kapan tenant ini mulai memakai aplikasi untuk pekerjaan
+  /// SUNGGUHAN. `null` = belum go-live, sehingga setiap baris baru dicap 'UJI'
+  /// (K56). Ditekan ADMIN lewat Settings › Data & AI. Mengubahnya TIDAK pernah
+  /// mengubah asal baris yang SUDAH ada — asal adalah snapshot, bukan turunan.
+  goLiveAt DateTime?
+
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -579,6 +586,14 @@ model Voyage {
 
   baseCurrency String    @default("IDR")
   notes        String?
+
+  /// Fase 6a / K55 — 'SEED' | 'UJI' | 'NYATA'. Dicap SAAT BARIS DIBUAT (K56),
+  /// bukan disimpulkan saat query. Sengaja `String?` dan bukan enum Prisma:
+  /// nilai keempat ('MIGRASI') tidak akan butuh migration lagi, dan modul murni
+  /// Fase 6 cukup memakai konstanta `ASAL_DATA` di services/ai/provenance.ts.
+  /// `null` ditafsirkan 'UJI' — BUKAN NYATA (K57).
+  dataOrigin String?
+
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   deletedAt    DateTime?
@@ -660,6 +675,12 @@ model Disbursement {
   issuedAt   DateTime           @default(now())
   validUntil DateTime?
   notes      String?
+
+  /// Fase 6a / K55 — 'SEED' | 'UJI' | 'NYATA'. Unit grounding prediksi Fase 6:
+  /// item FDA dibaca lewat induk ini, jadi asalnya melekat di sini. Asal EFEKTIF
+  /// = yang paling pesimis antara voyage & dokumen ini (K58, asalEfektif()).
+  dataOrigin String?
+
   createdAt  DateTime           @default(now())
   updatedAt  DateTime           @updatedAt
   deletedAt  DateTime?
