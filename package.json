@@ -14,7 +14,9 @@
     "test:tenant": "node prisma/check-tenant-guard.mjs",
     "test:calc": "node prisma/check-epda-calc.mjs",
     "test:ai": "node prisma/check-ai-prediction.mjs",
-    "test:ai-api": "node prisma/check-ai-predict-api.mjs"
+    "test:ai-api": "node prisma/check-ai-predict-api.mjs",
+    "test:ai-guard": "node prisma/check-ai-guardrail.mjs",
+    "test:ai-context": "node prisma/check-ai-context-api.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
