@@ -39,6 +39,7 @@ import { ServicePickerDialog } from './ServicePickerDialog'
 import { RevisionDialog } from './RevisionDialog'
 import { ApprovalPanel, type ApprovalRow } from './ApprovalPanel'
 import type { PrediksiBarisUI } from '@/components/ai/PredictionColumn'
+import { AnomalyPanel } from '@/components/ai/AnomalyPanel'
 
 const STR: Record<Lang, Record<string, string>> = {
   id: {
@@ -159,6 +160,10 @@ export function DisbursementBuilder({ disb: initial, voyageId }: { disb: Builder
   // ganti quantity/unitPrice/status tak perlu memanggil ulang predict; hanya
   // baris jasa BARU/HILANG yang perlu.
   const serviceIdsKey = Array.from(new Set(disb.items.map((it) => it.serviceId).filter(Boolean))).sort().join(',')
+  // Kunci fetch anomali LEBIH LUAS dari predict: MANUAL_BESAR/DI_LUAR_KATALOG/
+  // BARIS_GANDA bergantung pada unitPrice & amountBase tiap baris, bukan cuma
+  // daftar serviceId-nya.
+  const anomalyItemsKey = disb.items.map((it) => `${it.id}:${it.unitPrice}:${it.amountBase}`).join('|')
 
   useEffect(() => {
     if (serviceIdsKey === '') {
@@ -521,6 +526,11 @@ export function DisbursementBuilder({ disb: initial, voyageId }: { disb: Builder
           </ul>
         </section>
       )}
+
+      {/* Perlu diperiksa (Fase 6e) — TERPISAH visual dari Warnings di atas:
+          warning memblokir Submit for Review (K16-2/K34), anomali TIDAK
+          PERNAH (K72). Lihat AnomalyPanel.tsx. */}
+      <AnomalyPanel disbursementId={disb.id} itemsKey={anomalyItemsKey} onJump={jumpToWarning} />
 
       {/* Add doors */}
       {editable && (
