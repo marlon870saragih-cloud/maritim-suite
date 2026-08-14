@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Pencil, Trash2, Loader2, Anchor } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2, Anchor, FileUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useT, type Lang } from '@/lib/i18n'
 import {
@@ -12,6 +12,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
+import { MasterImportDialog, useMasterImportLabel } from '@/components/ai/MasterImportDialog'
 
 const STR: Record<Lang, Record<string, string>> = {
   id: {
@@ -133,7 +134,9 @@ function CheckField({
 export function PortsManager({ ports }: { ports: Port[] }) {
   const t = useT(STR)
   const router = useRouter()
+  const importLabel = useMasterImportLabel('port')
   const [open, setOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [editing, setEditing] = useState<Port | null>(null)
   const [form, setForm] = useState<FormState>(emptyForm())
   const [busy, setBusy] = useState(false)
@@ -202,7 +205,14 @@ export function PortsManager({ ports }: { ports: Port[] }) {
 
   return (
     <>
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => setImportOpen(true)}
+          className="inline-flex items-center gap-2 border border-border-muted text-text-secondary hover:text-white hover:border-accent-purple/50 hover:bg-surface-tertiary rounded px-4 py-2 text-sm font-medium transition-colors"
+        >
+          <FileUp className="w-4 h-4" /> {importLabel}
+        </button>
         <button
           type="button"
           onClick={openAdd}
@@ -350,6 +360,13 @@ export function PortsManager({ ports }: { ports: Port[] }) {
           </div>
         </DialogContent>
       </Dialog>
+
+      <MasterImportDialog
+        target="port"
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onSaved={() => router.refresh()}
+      />
     </>
   )
 }
