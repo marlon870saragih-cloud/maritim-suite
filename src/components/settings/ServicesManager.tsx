@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Pencil, Trash2, Loader2, ListChecks, DollarSign, X } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2, ListChecks, DollarSign, X, FileUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useT, type Lang } from '@/lib/i18n'
 import {
@@ -12,6 +12,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
+import { RateImportDialog, useRateImportLabel } from '@/components/ai/RateImportDialog'
 
 const CATEGORIES = ['PORT_CHARGES', 'MARINE_SERVICES', 'GOVERNMENT', 'HUSBANDRY', 'AGENCY', 'OTHER'] as const
 const CALC_METHODS = [
@@ -207,6 +208,8 @@ export function ServicesManager({ services, ports }: { services: ServiceCatalogR
   const [error, setError] = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [ratesFor, setRatesFor] = useState<ServiceCatalogRow | null>(null)
+  const [rateImportOpen, setRateImportOpen] = useState(false)
+  const rateImportLabel = useRateImportLabel()
 
   const set = (k: string, v: string) => setForm((p) => ({ ...p, [k]: v }))
 
@@ -270,7 +273,14 @@ export function ServicesManager({ services, ports }: { services: ServiceCatalogR
 
   return (
     <>
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => setRateImportOpen(true)}
+          className="inline-flex items-center gap-2 border border-accent-amber/40 text-accent-amber hover:bg-accent-amber/10 rounded px-4 py-2 text-sm font-medium transition-colors"
+        >
+          <FileUp className="w-4 h-4" /> {rateImportLabel}
+        </button>
         <button
           type="button"
           onClick={openAdd}
@@ -433,6 +443,12 @@ export function ServicesManager({ services, ports }: { services: ServiceCatalogR
       {ratesFor && (
         <RatesDialog service={ratesFor} ports={ports} onClose={() => setRatesFor(null)} t={t} />
       )}
+
+      <RateImportDialog
+        open={rateImportOpen}
+        onOpenChange={setRateImportOpen}
+        onSaved={() => router.refresh()}
+      />
     </>
   )
 }
