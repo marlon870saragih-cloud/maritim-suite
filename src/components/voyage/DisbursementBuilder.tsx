@@ -22,12 +22,15 @@ import {
   AlertTriangle,
   Copy,
   Download,
+  FileText,
   GitCompare,
   Loader2,
+  Mail,
   Pencil,
   Plus,
   Scale,
   Send,
+  Sparkles,
   Undo2,
   XCircle,
 } from 'lucide-react'
@@ -40,6 +43,9 @@ import { RevisionDialog } from './RevisionDialog'
 import { ApprovalPanel, type ApprovalRow } from './ApprovalPanel'
 import type { PrediksiBarisUI } from '@/components/ai/PredictionColumn'
 import { AnomalyPanel } from '@/components/ai/AnomalyPanel'
+import { AssistantPanel } from '@/components/ai/AssistantPanel'
+import { EmailDraftDialog, templatTersedia, type EmailDraftContext } from '@/components/ai/EmailDraftDialog'
+import { SummaryDialog } from '@/components/ai/SummaryDialog'
 
 const STR: Record<Lang, Record<string, string>> = {
   id: {
@@ -54,6 +60,7 @@ const STR: Record<Lang, Record<string, string>> = {
     errSave: 'Gagal menyimpan.', errConn: 'Gagal terhubung ke server.',
     readOnlyNote: 'Dokumen ini tidak lagi bisa diubah pada status sekarang.',
     createRevision: 'Buat Revisi', compareV1: 'Bandingkan dengan v1', viewVariance: 'Lihat Variance',
+    assistant: 'Asisten', draftEmail: 'Draft Email', summarize: 'Ringkas',
   },
   en: {
     addCatalog: 'Add Service', addTemplate: 'From Template', downloadPdf: 'Download PDF',
@@ -67,6 +74,7 @@ const STR: Record<Lang, Record<string, string>> = {
     errSave: 'Failed to save.', errConn: 'Failed to connect to server.',
     readOnlyNote: 'This document can no longer be edited at its current status.',
     createRevision: 'Create Revision', compareV1: 'Compare with v1', viewVariance: 'View Variance',
+    assistant: 'Assistant', draftEmail: 'Draft Email', summarize: 'Summarize',
   },
 }
 
@@ -137,6 +145,9 @@ export function DisbursementBuilder({ disb: initial, voyageId }: { disb: Builder
   const [headerForm, setHeaderForm] = useState({ agencyPct: '', validUntil: '', notes: '' })
   const [headerBusy, setHeaderBusy] = useState(false)
   const [revisionOpen, setRevisionOpen] = useState(false)
+  const [assistantOpen, setAssistantOpen] = useState(false)
+  const [emailOpen, setEmailOpen] = useState(false)
+  const [summaryOpen, setSummaryOpen] = useState(false)
   // Terpisah dari `disb`: respons mutasi item/status/header (`body.disbursement`)
   // tidak membawa field ini (bukan bagian DisbursementDetail — cuma dihitung di
   // page.tsx via statusApprovalUntukUi). Menyimpannya di `disb` akan membuatnya
@@ -358,6 +369,19 @@ export function DisbursementBuilder({ disb: initial, voyageId }: { disb: Builder
   const blocked = adaWarningPemblokir(disb.warnings)
   const availableTargets = disb.transisiTersedia.filter((s) => GENERIC_TARGETS.includes(s))
 
+  // Fase 6g / K79 — §12/1: tombol "Draft email" hanya tampil bila setidaknya
+  // satu templat masuk akal untuk kind+status dokumen ini (lihat
+  // `templatTersedia()` di EmailDraftDialog.tsx — cermin, bukan sumber
+  // kebenaran; server tetap memvalidasi ulang saat draf benar-benar dibuat).
+  const emailDraftContext: EmailDraftContext = {
+    kind: 'DISBURSEMENT',
+    disbursementId: disb.id,
+    disbKind: disb.kind,
+    status: disb.status,
+    items: disb.items.map((it) => ({ id: it.id, description: it.description, vendorId: it.vendorId, vendorName: it.vendorName })),
+  }
+  const hasEmailTemplate = templatTersedia(emailDraftContext).length > 0
+
   return (
     <div className="space-y-6">
       {/* Header strip */}
@@ -415,6 +439,29 @@ export function DisbursementBuilder({ disb: initial, voyageId }: { disb: Builder
             >
               <Download className="w-3.5 h-3.5" /> {t.downloadPdf}
             </a>
+            <button
+              type="button"
+              onClick={() => setSummaryOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded border border-border-muted px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:text-white hover:border-accent-blue/60 hover:bg-surface-tertiary transition-colors"
+            >
+              <FileText className="w-3.5 h-3.5" /> {t.summarize}
+            </button>
+            {hasEmailTemplate && (
+              <button
+                type="button"
+                onClick={() => setEmailOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded border border-border-muted px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:text-white hover:border-accent-blue/60 hover:bg-surface-tertiary transition-colors"
+              >
+                <Mail className="w-3.5 h-3.5" /> {t.draftEmail}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setAssistantOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded border border-border-muted px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:text-white hover:border-accent-blue/60 hover:bg-surface-tertiary transition-colors"
+            >
+              <Sparkles className="w-3.5 h-3.5" /> {t.assistant}
+            </button>
             {editable && !editingHeader && (
               <button
                 type="button"
@@ -667,6 +714,10 @@ export function DisbursementBuilder({ disb: initial, voyageId }: { disb: Builder
         disbursementId={disb.id}
         onCreated={(newId) => router.push(`/voyages/${voyageId}/disbursements/${newId}`)}
       />
+
+      <AssistantPanel jenis="DISBURSEMENT" entityId={disb.id} open={assistantOpen} onOpenChange={setAssistantOpen} />
+      <EmailDraftDialog open={emailOpen} onOpenChange={setEmailOpen} context={emailDraftContext} />
+      <SummaryDialog open={summaryOpen} onOpenChange={setSummaryOpen} systemContext={{ jenis: 'DISBURSEMENT', id: disb.id }} />
     </div>
   )
 }

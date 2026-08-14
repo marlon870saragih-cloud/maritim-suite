@@ -6,9 +6,10 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Boxes, Anchor, Loader2, Pencil, Wallet } from 'lucide-react'
+import { Boxes, Anchor, Loader2, Pencil, Sparkles, Wallet } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useT, type Lang } from '@/lib/i18n'
+import { AssistantPanel } from '@/components/ai/AssistantPanel'
 import {
   Dialog,
   DialogContent,
@@ -44,6 +45,7 @@ const STR: Record<Lang, Record<string, string>> = {
     dialogDesc: 'Nomor voyage tidak bisa diubah — sudah dipakai sebagai rujukan di dokumen.',
     selVessel: '— pilih kapal —', selNone: '— tanpa —', cancel: 'Batal', save: 'Simpan Perubahan',
     tabCargo: 'Cargo', tabPortCall: 'Port Call', tabFinance: 'Finansial',
+    assistant: 'Asisten',
   },
   en: {
     lifecycle: 'Stages', statusNow: 'Current status', advance: 'Advance to', jump: 'Change status',
@@ -61,6 +63,7 @@ const STR: Record<Lang, Record<string, string>> = {
     dialogDesc: 'The voyage number cannot be changed — it is already referenced by documents.',
     selVessel: '— select vessel —', selNone: '— none —', cancel: 'Cancel', save: 'Save changes',
     tabCargo: 'Cargo', tabPortCall: 'Port Calls', tabFinance: 'Financial',
+    assistant: 'Assistant',
   },
 }
 
@@ -141,6 +144,7 @@ export function VoyageWorkspace({
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [assistantOpen, setAssistantOpen] = useState(false)
 
   const [form, setForm] = useState(() => particularsForm(voyage))
   const set = (k: keyof ReturnType<typeof particularsForm>, v: string) => setForm((p) => ({ ...p, [k]: v }))
@@ -233,6 +237,13 @@ export function VoyageWorkspace({
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setAssistantOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded border border-border-muted px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:text-white hover:border-accent-blue/60 hover:bg-surface-tertiary transition-colors"
+            >
+              <Sparkles className="w-3.5 h-3.5" /> {t.assistant}
+            </button>
             {next && (
               <button
                 type="button"
@@ -520,6 +531,8 @@ export function VoyageWorkspace({
           </div>
         </DialogContent>
       </Dialog>
+
+      <AssistantPanel jenis="VOYAGE" entityId={voyage.id} open={assistantOpen} onOpenChange={setAssistantOpen} />
     </>
   )
 }

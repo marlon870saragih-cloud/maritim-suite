@@ -6,10 +6,11 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { FileText, GitBranch, Loader2, Plus, Receipt, Wallet } from 'lucide-react'
+import { FileText, GitBranch, Loader2, Mail, Plus, Receipt, Wallet } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useT, type Lang } from '@/lib/i18n'
 import { VoyageCostEstimateCard } from '@/components/ai/VoyageCostEstimateCard'
+import { EmailDraftDialog, type EmailDraftContext } from '@/components/ai/EmailDraftDialog'
 
 const STR: Record<Lang, Record<string, string>> = {
   id: {
@@ -19,6 +20,7 @@ const STR: Record<Lang, Record<string, string>> = {
     createFda: 'Buat FDA', errCreateFda: 'Gagal membuat FDA.',
     createInvoice: 'Buat Invoice', errCreateInvoice: 'Gagal membuat Invoice.',
     invoicesTitle: 'Invoice', thInvoice: 'No. Invoice', thPaid: 'Terbayar', noInvoices: 'Belum ada Invoice.',
+    draftEmail: 'Draft Email',
   },
   en: {
     create: 'Create EPDA', loading: 'Loading…', errCreate: 'Failed to create document.', errConn: 'Failed to connect to server.',
@@ -27,8 +29,12 @@ const STR: Record<Lang, Record<string, string>> = {
     createFda: 'Create FDA', errCreateFda: 'Failed to create FDA.',
     createInvoice: 'Create Invoice', errCreateInvoice: 'Failed to create invoice.',
     invoicesTitle: 'Invoices', thInvoice: 'Invoice No.', thPaid: 'Paid', noInvoices: 'No invoices yet.',
+    draftEmail: 'Draft Email',
   },
 }
+
+/** Status Invoice yang layak diingatkan — cermin STATUS_INVOICE_REMINDER di email-draft.service.ts. */
+const STATUS_INVOICE_REMINDER = new Set(['ISSUED', 'SENT', 'PARTIALLY_PAID', 'OVERDUE'])
 
 /** K45: sumber boleh EPDA/FPDA, belum disalip versi lain, sudah disetujui — cermin `KIND_SUMBER`/`STATUS_SUMBER` di fda.service.ts. */
 const KIND_SUMBER_FDA = new Set(['EPDA', 'FPDA'])
@@ -104,6 +110,7 @@ export function VoyageFinancePanel({
   const [fdaBusyId, setFdaBusyId] = useState<string | null>(null)
   const [invoiceBusyId, setInvoiceBusyId] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [emailContext, setEmailContext] = useState<EmailDraftContext | null>(null)
 
   function refreshInvoices() {
     fetch(`/api/voyages/${voyageId}/invoices`)
@@ -304,6 +311,7 @@ export function VoyageFinancePanel({
                   <th className="px-4 py-2.5 font-medium text-right">{t.thTotal}</th>
                   <th className="px-4 py-2.5 font-medium text-right">{t.thPaid}</th>
                   <th className="px-4 py-2.5 font-medium">{t.thDate}</th>
+                  <th className="px-4 py-2.5 font-medium" />
                 </tr>
               </thead>
               <tbody className="text-sm">
@@ -326,6 +334,18 @@ export function VoyageFinancePanel({
                     <td className="px-4 py-3 text-right font-mono text-text-primary">{r.currency} {fmtAmount(r.grandTotal)}</td>
                     <td className="px-4 py-3 text-right font-mono text-text-secondary">{r.currency} {fmtAmount(r.amountPaid)}</td>
                     <td className="px-4 py-3 text-text-secondary">{fmtDate(r.invoiceDate)}</td>
+                    <td className="px-4 py-3 text-right">
+                      {STATUS_INVOICE_REMINDER.has(r.status) && (
+                        <button
+                          type="button"
+                          onClick={() => setEmailContext({ kind: 'INVOICE', invoiceId: r.id })}
+                          title={t.draftEmail}
+                          className="inline-flex items-center gap-1.5 rounded border border-border-muted px-2.5 py-1 text-xs font-medium text-text-secondary hover:text-white hover:border-accent-blue/60 hover:bg-surface-tertiary transition-colors"
+                        >
+                          <Mail className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -336,6 +356,14 @@ export function VoyageFinancePanel({
 
       {counts.documents > 0 && (
         <p className="text-text-secondary text-xs">{counts.documents} dokumen lama terkait</p>
+      )}
+
+      {emailContext && (
+        <EmailDraftDialog
+          open={emailContext !== null}
+          onOpenChange={(o) => !o && setEmailContext(null)}
+          context={emailContext}
+        />
       )}
     </div>
   )
