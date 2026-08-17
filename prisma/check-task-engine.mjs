@@ -67,8 +67,8 @@ import {
 import {
   AMBANG_MENDEKATI_JAM,
   BATAS_NOTIFIKASI_PER_JALAN,
-  ESKALASI,
   JAM_KERJA,
+  PERAN_ESKALASI_SLA,
   SLA_BAWAAN_PER_KATEGORI,
   slaBawaanKategori,
 } from '../src/services/ops/sla-policy.ts'
@@ -663,7 +663,14 @@ console.log('\n9. K100: nilaiSla — lima keadaan, jam kalender (K104)')
 sama('AMBANG_MENDEKATI_JAM = 12 (P32)', AMBANG_MENDEKATI_JAM, 12)
 sama('BATAS_NOTIFIKASI_PER_JALAN = 500 (K102)', BATAS_NOTIFIKASI_PER_JALAN, 500)
 cek('JAM_KERJA = null → jam kalender 24/7 (K104/P33)', JAM_KERJA === null)
-cek('ESKALASI satu tingkat, siaran (K103/P34)', ESKALASI.aktif === true && ESKALASI.tingkat === 1 && ESKALASI.keSiaran === true)
+cek(
+  'PERAN_ESKALASI_SLA = ADMIN+MANAJER_OPERASI, bertarget bukan siaran (K103/P34 final)',
+  Array.isArray(PERAN_ESKALASI_SLA) &&
+    PERAN_ESKALASI_SLA.length === 2 &&
+    PERAN_ESKALASI_SLA.includes('ADMIN') &&
+    PERAN_ESKALASI_SLA.includes('MANAJER_OPERASI'),
+  JSON.stringify(PERAN_ESKALASI_SLA),
+)
 cek(
   'SEMUA SLA bawaan per kategori masih null — kebijakan menunggu, bukan ditebak (P32)',
   Object.values(SLA_BAWAAN_PER_KATEGORI).every((v) => v === null),

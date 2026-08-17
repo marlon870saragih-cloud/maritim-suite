@@ -11,6 +11,8 @@
 // ditulis di berkas lain, jawaban atas P32-P34 nanti harus dicari di dua tempat —
 // dan tempat kedua pasti terlewat.
 
+import type { Role } from '@prisma/client'
+
 /**
  * P32 — berapa lama sebelum tenggat sebuah tugas dianggap "mendekati".
  * Interim 12 jam: cukup lama untuk sempat dikerjakan pada shift yang sama,
@@ -61,16 +63,25 @@ export const BATAS_NOTIFIKASI_PER_JALAN = 500
 export const JAM_KERJA: null = null
 
 /**
- * K103/P34 — eskalasi satu tingkat, siaran, hanya untuk pelanggaran SLA.
- * Eskalasi berjenjang sengaja tidak dibangun: ia butuh pemetaan peran→penerima
- * yang belum ada jawabannya, dan berjenjang yang salah kalibrasi menghasilkan
- * kebisingan yang persis melatih orang mengabaikan lonceng.
+ * K103/P34 FINAL (17 Ags 2026) — penerima eskalasi pelanggaran SLA (`SLA_BREACH`).
+ *
+ * BUKAN siaran (`userId = null`). Satu notifikasi bertarget PER pengguna aktif
+ * ber-peran salah satu di bawah ini — reminder-job.ts membaca daftar ini untuk
+ * menentukan siapa saja yang menerima, lalu menerbitkan satu baris per orang
+ * (pola sama `terbitkanNotifikasiSebutan()` di comment.service.ts, K128).
+ *
+ * `DIREKTUR` sengaja TIDAK termasuk: ia peran lihat-saja, bukan penindak
+ * (konsisten K98/Fase 5e). `VIEWER`/`OPERATOR`/`PENYUSUN_BIAYA`/`FINANCE` juga
+ * tidak — mereka bukan yang berwenang menindaklanjuti pelanggaran SLA.
+ *
+ * Tetap SATU tingkat (bukan berjenjang, P34 final menegaskan ulang ini):
+ * eskalasi berjenjang butuh pemetaan peran→penerima PER TINGKAT dan mekanisme
+ * berjenjang yang salah kalibrasi menghasilkan kebisingan yang persis melatih
+ * orang mengabaikan lonceng.
+ *
+ * `Role` diimpor `import type` saja (K11/K51) — berkas ini tetap murni.
  */
-export const ESKALASI: Readonly<{ aktif: boolean; tingkat: number; keSiaran: boolean }> = {
-  aktif: true,
-  tingkat: 1,
-  keSiaran: true,
-}
+export const PERAN_ESKALASI_SLA: readonly Role[] = ['ADMIN', 'MANAJER_OPERASI']
 
 export type KategoriTugas = keyof typeof SLA_BAWAAN_PER_KATEGORI
 
