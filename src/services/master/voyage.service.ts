@@ -12,6 +12,11 @@ import { forTenant } from '../tenant-db'
 import { conflict, notFound } from '../errors'
 import { pilihan, str, tanggal, wajib } from '../input'
 import { stempelAsal } from '../ai/origin.service'
+// Fase 7c — dua kait tugas. Keduanya ADITIF: bentuk kembalian, pagar peran, dan
+// perilaku createVoyage/updateVoyage untuk pemanggil yang tak menyentuh tanggal
+// tidak berubah sedikit pun.
+import { instansiasiOtomatisChecklist } from '../ops/task-template.service'
+import { sinkronkanJadwalTugas, tanggalJangkarBerubah } from '../ops/task-schedule.service'
 
 const STATUSES: readonly VoyageStatus[] = [
   'PLANNED', 'CONFIRMED', 'ARRIVED', 'BERTHED', 'WORKING', 'COMPLETED', 'DEPARTED', 'CLOSED', 'CANCELLED',
@@ -151,7 +156,18 @@ export async function createVoyage(ctx: TenantContext, body: Record<string, unkn
   // disimpulkan saat query. Satu baris; artinya seluruhnya di ai/provenance.ts.
   const dataOrigin = await stempelAsal(ctx)
 
-  return db.voyage.create({ data: { ...data, dataOrigin, voyageNumber, tenantId: ctx.tenantId } })
+  const voyage = await db.voyage.create({
+    data: { ...data, dataOrigin, voyageNumber, tenantId: ctx.tenantId },
+  })
+
+  // K95 pintu 1 — checklist otomatis, SEKALI, saat voyage lahir dan hanya bila
+  // pelabuhannya sudah diketahui. Tidak ada template yang cocok → tidak terjadi
+  // apa-apa, tanpa galat. Kegagalan apa pun di dalamnya ditelan di sana (lihat
+  // instansiasiOtomatisChecklist): voyage yang sudah lahir tidak boleh dibatalkan
+  // gara-gara checklist, dan pemanggil lama tetap menerima baris Voyage yang sama.
+  await instansiasiOtomatisChecklist(ctx, voyage)
+
+  return voyage
 }
 
 export async function updateVoyage(
@@ -165,10 +181,34 @@ export async function updateVoyage(
 
   await pastikanRelasiMilikTenant(ctx, data)
 
+  // K94 — tanggal SEBELUM disunting, dibaca lebih dulu supaya bisa dibandingkan
+  // sesudahnya. Satu query tambahan, dan ia membeli hal yang tak bisa dibeli
+  // dengan cara lain: kepastian bahwa pergeseran jadwal hanya berjalan saat
+  // tanggal MEMANG berubah. Tanpa perbandingan ini, mengganti catatan atau
+  // customer akan menerbitkan baris audit "jadwal tugas digeser" yang bohong.
+  const sebelum = await db.voyage.findFirst({
+    where: { id, deletedAt: null },
+    select: { eta: true, etb: true, etc: true, etd: true, ata: true },
+  })
+  if (!sebelum) throw notFound('Voyage')
+
   // voyageNumber TIDAK ikut diubah — nomor sekali terbit dipertahankan (dipakai
   // di PDF/rujukan lain), sejalan prinsip snapshot K5.
   const hasil = await db.voyage.updateMany({ where: { id, deletedAt: null }, data })
   if (hasil.count === 0) throw notFound('Voyage')
+
+  // K94 — SATU tempat yang menggerakkan tenggat tugas: di sini, sesudah
+  // perubahan tanggal tersimpan. Bukan trigger database, bukan job terjadwal.
+  // Kegagalannya sengaja TIDAK menggagalkan penyuntingan voyage: voyage adalah
+  // tulang punggung aplikasi dan urusan tugas tidak boleh menghentikannya (K96).
+  if (tanggalJangkarBerubah(sebelum, data)) {
+    try {
+      await sinkronkanJadwalTugas(ctx, id)
+    } catch (e) {
+      console.error('[voyage] sinkronisasi jadwal tugas gagal:', e)
+    }
+  }
+
   return getVoyage(ctx, id)
 }
 
@@ -177,17 +217,30 @@ export async function removeVoyage(ctx: TenantContext, id: string): Promise<void
   requireRole(ctx, 'ADMIN')
   const db = forTenant(ctx)
 
-  const [portCallCount, cargoCount, disbCount, invoiceCount, docCount] = await Promise.all([
+  const [portCallCount, cargoCount, disbCount, invoiceCount, docCount, taskCount] = await Promise.all([
     db.portCall.count({ where: { voyageId: id } }),
     db.cargo.count({ where: { voyageId: id } }),
     db.disbursement.count({ where: { voyageId: id } }),
     db.invoice.count({ where: { voyageId: id } }),
     db.maritimeDocument.count({ where: { voyageId: id } }),
+    // Fase 7c — Task ikut dihitung sebagai aktivitas (§18/7c butir 12: "tetapkan
+    // satu"). Yang DIPILIH: menolak, persis pola yang sudah berlaku di sini,
+    // bukan ikut men-soft-delete tugasnya.
+    //
+    // Alasannya: satu voyage ber-checklist memuat pekerjaan yang mungkin sudah
+    // dikerjakan orang (`completedAt` terisi, dan itulah bahan SLA K100). Menghapus
+    // voyage-nya diam-diam akan menguburkan penilaian pekerjaan itu tanpa ada
+    // yang menyadarinya; menolak dengan pesan jelas membuat operator memilih
+    // sadar antara CANCELLED (yang mempertahankan semuanya) atau menghapus
+    // tugasnya lebih dulu. Ini BUKAN pelanggaran K96 — K96 melarang tugas
+    // memblokir TRANSISI STATUS Voyage/Disbursement/Invoice, dan penghapusan
+    // bukan transisi status; setVoyageStatus() sengaja tidak disentuh sama sekali.
+    db.task.count({ where: { voyageId: id, deletedAt: null } }),
   ])
-  const dipakai = portCallCount + cargoCount + disbCount + invoiceCount + docCount
+  const dipakai = portCallCount + cargoCount + disbCount + invoiceCount + docCount + taskCount
   if (dipakai > 0) {
     throw conflict(
-      `Voyage ini sudah punya ${dipakai} aktivitas (port call/cargo/disbursement/invoice/dokumen). Ubah status ke CANCELLED, jangan dihapus.`,
+      `Voyage ini sudah punya ${dipakai} aktivitas (port call/cargo/disbursement/invoice/dokumen/tugas). Ubah status ke CANCELLED, jangan dihapus.`,
     )
   }
 
