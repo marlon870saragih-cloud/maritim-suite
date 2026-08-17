@@ -13,6 +13,7 @@
     "db:backfill-v2": "node prisma/backfill-v2.mjs",
     "test:tenant": "node prisma/check-tenant-guard.mjs",
     "test:owner": "node prisma/check-owner-guard.mjs",
+    "test:ops": "node prisma/check-task-engine.mjs",
     "test:calc": "node prisma/check-epda-calc.mjs",
     "test:ai": "node prisma/check-ai-prediction.mjs",
     "test:ai-api": "node prisma/check-ai-predict-api.mjs",
