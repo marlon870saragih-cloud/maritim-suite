@@ -45,6 +45,24 @@ export async function POST(req: Request) {
     next = 'FAILED'
   }
 
+  // Nominal WAJIB cocok dengan pesanan kita sebelum ditandai lunas — tanda
+  // tangan sah membuktikan notifikasi datang dari Midtrans, bukan bahwa
+  // nominalnya benar (ditemukan saat tinjauan desain Fase 8 / K161).
+  if (next === 'PAID') {
+    const grossAmount = Math.round(Number(n.gross_amount))
+    if (!Number.isFinite(grossAmount) || grossAmount !== payment.amount) {
+      console.error(
+        '[billing/notification] nominal tidak cocok untuk order',
+        orderId,
+        'diharapkan',
+        payment.amount,
+        'diterima',
+        n.gross_amount,
+      )
+      return new Response('Amount mismatch', { status: 400 })
+    }
+  }
+
   await prisma.payment.update({
     where: { orderId },
     data: {
