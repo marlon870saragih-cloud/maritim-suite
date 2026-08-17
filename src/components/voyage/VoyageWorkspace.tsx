@@ -6,10 +6,12 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Boxes, Anchor, Loader2, Pencil, Sparkles, Wallet } from 'lucide-react'
+import type { Role } from '@prisma/client'
+import { Boxes, Anchor, ClipboardList, Loader2, Pencil, Sparkles, Wallet } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useT, type Lang } from '@/lib/i18n'
 import { AssistantPanel } from '@/components/ai/AssistantPanel'
+import type { TanggalJangkar } from '@/services/ops/task-schedule'
 import {
   Dialog,
   DialogContent,
@@ -27,6 +29,8 @@ import {
 import { VoyageCargoPanel, type CargoRow } from './VoyageCargoPanel'
 import { VoyagePortCallPanel, type VoyagePortCallRow } from './VoyagePortCallPanel'
 import { VoyageFinancePanel, type VoyageFinanceCounts } from './VoyageFinancePanel'
+import { VoyageTaskPanel } from '@/components/ops/VoyageTaskPanel'
+import type { TaskRow, UserOption } from '@/components/ops/task-shared'
 
 const STR: Record<Lang, Record<string, string>> = {
   id: {
@@ -44,7 +48,7 @@ const STR: Record<Lang, Record<string, string>> = {
     dialogTitle: 'Ubah Particulars Voyage',
     dialogDesc: 'Nomor voyage tidak bisa diubah — sudah dipakai sebagai rujukan di dokumen.',
     selVessel: '— pilih kapal —', selNone: '— tanpa —', cancel: 'Batal', save: 'Simpan Perubahan',
-    tabCargo: 'Cargo', tabPortCall: 'Port Call', tabFinance: 'Finansial',
+    tabCargo: 'Cargo', tabPortCall: 'Port Call', tabFinance: 'Finansial', tabTasks: 'Tugas',
     assistant: 'Asisten',
   },
   en: {
@@ -62,7 +66,7 @@ const STR: Record<Lang, Record<string, string>> = {
     dialogTitle: 'Edit Voyage Particulars',
     dialogDesc: 'The voyage number cannot be changed — it is already referenced by documents.',
     selVessel: '— select vessel —', selNone: '— none —', cancel: 'Cancel', save: 'Save changes',
-    tabCargo: 'Cargo', tabPortCall: 'Port Calls', tabFinance: 'Financial',
+    tabCargo: 'Cargo', tabPortCall: 'Port Calls', tabFinance: 'Financial', tabTasks: 'Tasks',
     assistant: 'Assistant',
   },
 }
@@ -114,7 +118,7 @@ const fmtDate = (d: string | Date | null) => {
     : v.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })
 }
 
-const TABS = ['cargo', 'portcall', 'finance'] as const
+const TABS = ['cargo', 'portcall', 'finance', 'tasks'] as const
 type TabKey = (typeof TABS)[number]
 
 function Field({ label, value }: { label: string; value: string }) {
@@ -128,6 +132,7 @@ function Field({ label, value }: { label: string; value: string }) {
 
 export function VoyageWorkspace({
   voyage, counts, vessels, principals, customers, ports,
+  users, tasks, role, currentUserId, voyageAnchors,
 }: {
   voyage: WorkspaceVoyage
   counts: VoyageFinanceCounts
@@ -135,6 +140,13 @@ export function VoyageWorkspace({
   principals: Option[]
   customers: Option[]
   ports: Option[]
+  /** Fase 7d — pengguna aktif tenant (dropdown penanggung jawab tugas). */
+  users: UserOption[]
+  /** Fase 7d — tugas voyage ini, kelima kolom K91, dari listTasks() di server. */
+  tasks: TaskRow[]
+  role: Role
+  currentUserId: string
+  voyageAnchors: TanggalJangkar
 }) {
   const t = useT(STR)
   const router = useRouter()
@@ -212,12 +224,15 @@ export function VoyageWorkspace({
     }
   }
 
-  const tabLabel: Record<TabKey, string> = { cargo: t.tabCargo, portcall: t.tabPortCall, finance: t.tabFinance }
-  const tabIcon = { cargo: Boxes, portcall: Anchor, finance: Wallet }
+  const tabLabel: Record<TabKey, string> = {
+    cargo: t.tabCargo, portcall: t.tabPortCall, finance: t.tabFinance, tasks: t.tabTasks,
+  }
+  const tabIcon = { cargo: Boxes, portcall: Anchor, finance: Wallet, tasks: ClipboardList }
   const tabCount: Record<TabKey, number | null> = {
     cargo: voyage.cargoes.length,
     portcall: voyage.portCalls.length,
     finance: null,
+    tasks: tasks.filter((tk) => tk.status !== 'CANCELLED' && tk.status !== 'DONE').length,
   }
 
   return (
@@ -399,6 +414,16 @@ export function VoyageWorkspace({
           {tab === 'cargo' && <VoyageCargoPanel voyageId={voyage.id} cargoes={voyage.cargoes} />}
           {tab === 'portcall' && <VoyagePortCallPanel voyageId={voyage.id} portCalls={voyage.portCalls} />}
           {tab === 'finance' && <VoyageFinancePanel voyageId={voyage.id} counts={counts} portId={voyage.portId} />}
+          {tab === 'tasks' && (
+            <VoyageTaskPanel
+              voyageId={voyage.id}
+              initialTasks={tasks}
+              users={users}
+              role={role}
+              currentUserId={currentUserId}
+              voyageAnchors={voyageAnchors}
+            />
+          )}
         </div>
       </section>
 

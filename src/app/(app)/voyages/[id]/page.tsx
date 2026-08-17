@@ -13,6 +13,7 @@ import { requireTenant } from '@/services/context'
 import { getVoyage } from '@/services/master/voyage.service'
 import { listCustomers } from '@/services/master/customer.service'
 import { listPorts } from '@/services/master/port.service'
+import { listTasks } from '@/services/ops/task.service'
 import { ServiceError } from '@/services/errors'
 import { VoyageWorkspace } from '@/components/voyage/VoyageWorkspace'
 
@@ -45,12 +46,34 @@ export default async function VoyageDetailPage({ params }: { params: { id: strin
     throw e
   }
 
-  const [vessels, principals, customers, ports] = await Promise.all([
+  const [vessels, principals, customers, ports, users, tasks] = await Promise.all([
     prisma.vessel.findMany({ where: { tenantId }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     prisma.principal.findMany({ where: { tenantId }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     listCustomers(ctx),
     listPorts(ctx),
+    // Fase 7d — daftar pengguna aktif tenant untuk dropdown penanggung jawab
+    // Tugas. Dibaca LANGSUNG lewat prisma (pola sama dgn vessels/principals di
+    // atas), BUKAN lewat listTeam() (user.service.ts) yang sengaja ADMIN-only
+    // (K98: mengelola tim ≠ melihat nama untuk dropdown penugasan).
+    prisma.user.findMany({
+      where: { tenantId, isActive: true },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    }),
+    // Tab Tugas (§15/1) — tugas voyage ini, kelima kolom (K91), diambil lewat
+    // service YANG SAMA dengan papan lintas-voyage (task.service.ts) supaya
+    // urutan/penyaringan tak pernah dua tafsir.
+    listTasks(ctx, { voyageId: params.id, termasukSelesai: true }),
   ])
+
+  const voyageAnchors = {
+    eta: voyage.eta,
+    etb: voyage.etb,
+    etc: voyage.etc,
+    etd: voyage.etd,
+    ata: voyage.ata,
+    voyageCreatedAt: voyage.createdAt,
+  }
 
   return (
     <div className="p-margin-page max-w-[1400px] mx-auto space-y-6">
@@ -70,6 +93,11 @@ export default async function VoyageDetailPage({ params }: { params: { id: strin
         principals={principals}
         customers={customers.map((c) => ({ id: c.id, name: c.name }))}
         ports={ports.map((p) => ({ id: p.id, name: p.name }))}
+        users={users}
+        tasks={JSON.parse(JSON.stringify(tasks))}
+        role={session!.user.role}
+        currentUserId={session!.user.id}
+        voyageAnchors={voyageAnchors}
       />
     </div>
   )

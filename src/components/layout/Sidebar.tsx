@@ -16,6 +16,7 @@ import {
   Route,
   LayoutDashboard,
   ClipboardList,
+  ListChecks,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/i18n'
@@ -30,6 +31,7 @@ const navItems = [
   { id: 'finance', label: 'Finance Generator', sublabel: 'EPDA · FPDA · Invoice', href: '/finance', icon: DollarSign },
   { id: 'dokumen', label: 'Maritime Dokumen', sublabel: 'FAL · SOF · NOR · Clearance', href: '/dokumen', icon: FileText, count: DOK_COUNT },
   { id: 'portcall', label: 'Port Call Manager', sublabel: 'Status · Timeline · Task', href: '/portcall', icon: Ship },
+  { id: 'tasks', label: 'Tugas', sublabel: 'Papan Kanban · Checklist · SLA', href: '/tasks', icon: ListChecks },
   { id: 'tracker', label: 'DA & Invoice Tracker', sublabel: 'Outstanding · Aging', href: '/tracker', icon: BarChart3, locked: true },
   { id: 'reports', label: 'Reports', sublabel: 'Voyage Register · Analisa', href: '/reports', icon: ClipboardList },
 ] as const
