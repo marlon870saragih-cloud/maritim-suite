@@ -38,8 +38,8 @@ model Tenant {
   /// mengubah asal baris yang SUDAH ada — asal adalah snapshot, bukan turunan.
   goLiveAt DateTime?
 
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   users      User[]
   vessels    Vessel[]
@@ -64,6 +64,20 @@ model Tenant {
   approvals        Approval[]
   auditLogs        AuditLog[]
   notifications    Notification[]
+
+  // --- Fase 7 (operations & collaboration). Lihat docs/FASE-7-OPERATIONS.md ---
+  tasks             Task[]
+  taskTemplates     TaskTemplate[]
+  attachments       Attachment[]
+  comments          Comment[]
+  vendorRatings     VendorRating[]
+  purchaseOrders    PurchaseOrder[]
+  workOrders        WorkOrder[]
+  crewChanges       CrewChange[]
+  voyageEvents      VoyageEvent[]
+  emailLogs         EmailLog[]
+  portPlaybooks     PortPlaybook[]
+  knowledgeArticles KnowledgeArticle[]
 }
 
 model Payment {
@@ -176,6 +190,10 @@ model PortCall {
   updatedAt DateTime       @updatedAt
 
   documents MaritimeDocument[]
+
+  // --- Fase 7 ---
+  tasks        Task[]
+  voyageEvents VoyageEvent[]
 
   @@index([tenantId])
   @@index([status])
@@ -346,6 +364,11 @@ model Port {
   serviceRates     ServiceRate[]
   serviceTemplates ServiceTemplate[]
 
+  // --- Fase 7 ---
+  taskTemplates TaskTemplate[]
+  crewChanges   CrewChange[]
+  playbooks     PortPlaybook[]
+
   @@unique([tenantId, unlocode])
   @@index([tenantId])
 }
@@ -397,6 +420,12 @@ model Vendor {
 
   services          ServiceCatalog[]
   disbursementItems DisbursementItem[]
+
+  // --- Fase 7 ---
+  tasks          Task[]
+  ratings        VendorRating[]
+  purchaseOrders PurchaseOrder[]
+  workOrders     WorkOrder[]
 
   @@index([tenantId])
 }
@@ -484,6 +513,9 @@ model ServiceCatalog {
   rates             ServiceRate[]
   templateItems     ServiceTemplateItem[]
   disbursementItems DisbursementItem[]
+
+  // --- Fase 7 ---
+  workOrders WorkOrder[]
 
   @@unique([tenantId, serviceCode])
   @@index([tenantId, category])
@@ -584,7 +616,7 @@ model Voyage {
   atb DateTime?
   atd DateTime?
 
-  baseCurrency String    @default("IDR")
+  baseCurrency String  @default("IDR")
   notes        String?
 
   /// Fase 6a / K55 — 'SEED' | 'UJI' | 'NYATA'. Dicap SAAT BARIS DIBUAT (K56),
@@ -594,15 +626,22 @@ model Voyage {
   /// `null` ditafsirkan 'UJI' — BUKAN NYATA (K57).
   dataOrigin String?
 
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  deletedAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 
   portCalls     PortCall[]
   cargoes       Cargo[]
   disbursements Disbursement[]
   invoices      Invoice[]
   documents     MaritimeDocument[]
+
+  // --- Fase 7 ---
+  tasks          Task[]
+  purchaseOrders PurchaseOrder[]
+  workOrders     WorkOrder[]
+  crewChanges    CrewChange[]
+  events         VoyageEvent[]
 
   @@unique([tenantId, voyageNumber])
   @@index([tenantId, status])
@@ -681,12 +720,15 @@ model Disbursement {
   /// = yang paling pesimis antara voyage & dokumen ini (K58, asalEfektif()).
   dataOrigin String?
 
-  createdAt  DateTime           @default(now())
-  updatedAt  DateTime           @updatedAt
-  deletedAt  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 
   items    DisbursementItem[]
   invoices Invoice[]
+
+  // --- Fase 7 ---
+  tasks Task[]
 
   @@unique([tenantId, docNumber])
   @@index([tenantId, voyageId, kind])
@@ -881,11 +923,554 @@ model Notification {
   type       String // APPROVAL_PENDING | INVOICE_OVERDUE | INVOICE_PAID
   title      String
   message    String?
-  entityType String? // DISBURSEMENT | INVOICE
+  entityType String? // DISBURSEMENT | INVOICE | TASK | PURCHASE_ORDER | WORK_ORDER | VENDOR | CREW_CHANGE
   entityId   String?
   href       String?
   readAt     DateTime?
-  createdAt  DateTime  @default(now())
 
+  /// Fase 7 / K86 + K101 — kunci idempotensi untuk pengingat & SLA yang ditulis
+  /// job tanpa manusia: sapuan yang sama dijalankan 1× atau 50× sehari harus
+  /// menghasilkan baris yang sama persis. `null` untuk notifikasi yang dipicu
+  /// peristiwa (approval/invoice) — dan `@@unique` di bawah aman justru karena
+  /// Postgres tidak pernah menganggap dua `NULL` bertabrakan (K89).
+  dedupeKey String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, dedupeKey])
   @@index([tenantId, readAt, createdAt])
+}
+
+// ============================================================================
+// FASE 7 — OPERATIONS & COLLABORATION
+// Rujukan: docs/FASE-7-OPERATIONS.md. Seluruh penambahan di bawah ADITIF (K89):
+// tidak ada kolom lama yang berubah tipe, nullability, atau dihapus.
+//
+// Dua belas model bertenant di bawah WAJIB terdaftar di TENANT_MODELS
+// (src/services/tenant-guard.ts). Empat model ANAK — TaskTemplateItem,
+// PurchaseOrderItem, CrewChangeMember, PortPlaybookSection — sengaja TIDAK
+// membawa tenantId dan TIDAK didaftarkan; aksesnya wajib lewat induk (K44/K89).
+//
+// entityType/entityId pada Attachment, Comment, dan EmailLog bersifat POLIMORFIK
+// (K84): tidak ada FK, jadi database TIDAK menjamin entityId menunjuk baris yang
+// ada — apalagi baris milik tenant yang sama. Karena itu setiap penulisan wajib
+// lewat pastikanEntitasMilikTenant() (K85, services/ops/ownership.service.ts).
+// ============================================================================
+
+// ------------------------------------------------------------ TASK & CHECKLIST
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  BLOCKED
+  DONE
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+/// K90 — Task menempel pada Voyage, dengan penunjuk opsional ke entitas yang
+/// lebih spesifik. Keempat penunjuk itu FK sungguhan (bukan polimorfik):
+/// jumlahnya tetap dan sudah diketahui semuanya, jadi K84 tidak berlaku.
+model Task {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  /// K83 — nullable HANYA untuk tugas kantor yang bukan milik kunjungan mana pun (P45).
+  voyageId String?
+  voyage   Voyage? @relation(fields: [voyageId], references: [id])
+
+  portCallId     String?
+  portCall       PortCall?     @relation(fields: [portCallId], references: [id])
+  disbursementId String?
+  disbursement   Disbursement? @relation(fields: [disbursementId], references: [id])
+  vendorId       String?
+  vendor         Vendor?       @relation(fields: [vendorId], references: [id])
+
+  title       String
+  description String?
+  category    String? // PORT_CLEARANCE | HUSBANDRY | CREW | FINANCE | DOCUMENT | VENDOR | OTHER
+  status      TaskStatus   @default(TODO)
+  priority    TaskPriority @default(NORMAL)
+
+  /// String polos TANPA relasi — sama seperti AuditLog.userId. Pengguna
+  /// dinonaktifkan (isActive=false), tidak dihapus keras, dan tugas lama harus
+  /// tetap terbaca meski penanggung jawabnya sudah keluar.
+  assigneeUserId  String?
+  createdByUserId String
+
+  /// K92 — urutan dalam kolom Kanban. Float supaya sisipan di tengah menyentuh
+  /// SATU baris, bukan menomori ulang seluruh kolom.
+  boardOrder Float @default(0)
+
+  // --- penjadwalan (K94-K96) ---
+  anchor      String? // ETA | ETB | ETC | ETD | ATA | VOYAGE_CREATED | MANUAL
+  offsetHours Int? // negatif = SEBELUM jangkar. -24 = "24 jam sebelum ETA"
+  dueAt       DateTime?
+  dueAtManual Boolean   @default(false) // true = jangkar berhenti menggerakkannya
+  slaHours    Int? // target penyelesaian (K100)
+
+  startedAt     DateTime?
+  completedAt   DateTime? // K99 — snapshot, bukan turunan updatedAt
+  blockedReason String?
+
+  /// K95 — idempotensi instansiasi checklist. NULL untuk tugas yang dibuat tangan;
+  /// Postgres memperlakukan tiap NULL sebagai berbeda, jadi tugas buatan tangan
+  /// tidak saling bertabrakan pada @@unique di bawah.
+  sourceTemplateItemId String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@unique([voyageId, sourceTemplateItemId])
+  @@index([tenantId, status, dueAt])
+  @@index([tenantId, voyageId, status, boardOrder])
+  @@index([tenantId, assigneeUserId, status])
+}
+
+/// K93 — auto-checklist per pelabuhan/jenis keagenan, dengan jangkar waktu
+/// RELATIF (bukan tanggal absolut: ETA kapal selalu berubah).
+model TaskTemplate {
+  id         String    @id @default(cuid())
+  tenantId   String
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name       String
+  portId     String? // null = berlaku untuk semua pelabuhan
+  port       Port?     @relation(fields: [portId], references: [id])
+  agencyType String? // FULL | PROTECTIVE | HUSBANDRY — cocok dengan Voyage.agencyType
+  vesselType String?
+  isDefault  Boolean   @default(false)
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+
+  items TaskTemplateItem[]
+
+  @@index([tenantId, portId])
+}
+
+/// Model ANAK — tanpa tenantId, akses wajib lewat induk (K44).
+model TaskTemplateItem {
+  id           String       @id @default(cuid())
+  templateId   String
+  template     TaskTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  title        String
+  description  String?
+  category     String?
+  anchor       String       @default("ETA") // ETA | ETB | ETC | ETD | VOYAGE_CREATED
+  offsetHours  Int          @default(0) // negatif = sebelum jangkar
+  slaHours     Int?
+  defaultRole  String? // USUL penugasan, bukan pagar (K98)
+  priority     TaskPriority @default(NORMAL)
+  displayOrder Int          @default(0)
+
+  @@index([templateId])
+}
+
+// ------------------------------------------------------ ATTACHMENT & COMMENT
+
+/// K106 — satu tabel lampiran untuk SEMUA entitas. Nilainya justru pada layar
+/// "semua lampiran voyage ini": satu query, bukan sepuluh.
+model Attachment {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  /// K84/K85 — daftar putih di services/ops/owner-guard.ts. TIDAK ADA FK;
+  /// kepemilikan diperiksa kode sebelum setiap penulisan.
+  entityType String
+  entityId   String
+
+  fileName   String // nama asli, sudah dinormalkan (K109)
+  mimeType   String
+  sizeBytes  Int
+  sha256     String // integritas + deteksi unggahan ganda
+  storageKey String // kunci di adapter penyimpanan (K107) — BUKAN path yang bisa ditebak
+
+  kind      String? // RECEIPT | RATE_SHEET | CREW_DOC | VENDOR_DOC | CONTRACT | GENERAL
+  note      String?
+  sensitive Boolean   @default(false) // K126 — dokumen pribadi awak, dll
+  expiresAt DateTime? // K115 — sertifikat/izin vendor yang kedaluwarsa
+
+  uploadedByUserId String
+  createdAt        DateTime  @default(now())
+  deletedAt        DateTime? // K110 — soft delete; berkas fisik TIDAK pernah dihapus
+
+  @@index([tenantId, entityType, entityId, createdAt])
+  @@index([tenantId, sha256])
+  @@index([tenantId, expiresAt])
+}
+
+/// K128 — catatan pada entitas. Datar (tanpa thread), bukan messenger.
+model Comment {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  /// K84/K85 — daftar putih owner-guard.ts.
+  entityType String
+  entityId   String
+
+  body             String
+  authorUserId     String
+  authorName       String? // disalin, pola Approval.userName — penulis bisa nonaktif nanti
+  mentionedUserIds String[] @default([])
+
+  editedAt  DateTime?
+  createdAt DateTime  @default(now())
+  deletedAt DateTime? // soft delete: baris tetap tampil sebagai "komentar dihapus"
+
+  @@index([tenantId, entityType, entityId, createdAt])
+}
+
+// ------------------------------------------------------------------- VENDOR
+
+/// K115 — penilaian manusia atas satu pekerjaan vendor. Append-only, seperti
+/// Approval: penilaian yang bisa diedit sesudah faktanya bukan penilaian,
+/// melainkan opini terkini. Karena itu TIDAK ada updatedAt/deletedAt.
+model VendorRating {
+  id          String  @id @default(cuid())
+  tenantId    String
+  tenant      Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vendorId    String
+  vendor      Vendor  @relation(fields: [vendorId], references: [id])
+  workOrderId String? // konteks penilaian, bila ada
+  voyageId    String?
+
+  score         Int // 1..5, divalidasi service
+  note          String?
+  ratedByUserId String
+  ratedByName   String? // disalin, pola Approval.userName
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, vendorId, createdAt])
+}
+
+// --------------------------------------------------- PURCHASE & WORK ORDER
+
+/// K3 diteruskan: satu tabel untuk PR & PO, karena bentuk & alurnya identik
+/// dan yang berbeda hanya siapa penerimanya + tahap dalam proses pengadaan.
+enum PurchaseKind {
+  PR // permintaan internal
+  PO // pesanan ke vendor
+}
+
+enum PurchaseStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  SENT
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CLOSED
+  CANCELLED
+}
+
+/// K117 — entitas v2. Jalur MaritimeDocument lama TIDAK disentuh & tidak
+/// dimatikan; PDF-nya memakai ulang ProcurementDocument yang sudah ada (K119).
+model PurchaseOrder {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  voyageId String? // K83: pengadaan kantor boleh tanpa voyage
+  voyage   Voyage? @relation(fields: [voyageId], references: [id])
+  vendorId String? // wajib untuk kind = PO, opsional untuk PR (belum tahu vendornya)
+  vendor   Vendor? @relation(fields: [vendorId], references: [id])
+
+  sourceRequisitionId String? // PO yang lahir dari PR
+
+  kind      PurchaseKind
+  docNumber String // PO/2026/08/0001 — formatDocNumber yang sudah ada (K32)
+  status    PurchaseStatus @default(DRAFT)
+
+  currency     String @default("IDR")
+  exchangeRate Float  @default(1) // snapshot (K5/K29)
+  subtotal     Float  @default(0)
+  taxPct       Float?
+  taxAmount    Float  @default(0)
+  grandTotal   Float  @default(0)
+
+  deliveryTo      String?
+  neededBy        DateTime?
+  terms           String?
+  notes           String?
+  issuedAt        DateTime  @default(now())
+  createdByUserId String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  items PurchaseOrderItem[]
+
+  @@unique([tenantId, docNumber])
+  @@index([tenantId, status])
+  @@index([tenantId, voyageId, kind])
+  @@index([tenantId, vendorId])
+}
+
+/// Model ANAK (tanpa tenantId) — akses wajib lewat induk (K44).
+model PurchaseOrderItem {
+  id              String        @id @default(cuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+
+  description  String
+  quantity     Float   @default(1)
+  unit         String?
+  unitPrice    Float   @default(0)
+  amount       Float   @default(0)
+  receivedQty  Float   @default(0) // untuk PARTIALLY_RECEIVED
+  displayOrder Int     @default(0)
+
+  @@index([purchaseOrderId])
+}
+
+enum WorkOrderStatus {
+  DRAFT
+  ISSUED
+  IN_PROGRESS
+  COMPLETED
+  VERIFIED
+  CANCELLED
+}
+
+/// K121 — SPK ke vendor untuk satu pekerjaan. Terpisah dari PO, dan bukan Task:
+/// Task menjawab "siapa di tim kita", WorkOrder menjawab "vendor apa yang kita
+/// perintahkan, dengan harga berapa".
+model WorkOrder {
+  id        String          @id @default(cuid())
+  tenantId  String
+  tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  voyageId  String // K83 — WAJIB, tak ada work order tanpa kunjungan
+  voyage    Voyage          @relation(fields: [voyageId], references: [id])
+  vendorId  String
+  vendor    Vendor          @relation(fields: [vendorId], references: [id])
+  serviceId String? // jasa dari katalog, bila cocok
+  service   ServiceCatalog? @relation(fields: [serviceId], references: [id])
+
+  woNumber String
+  scope    String // uraian pekerjaan
+  status   WorkOrderStatus @default(DRAFT)
+
+  plannedStart DateTime?
+  plannedEnd   DateTime?
+  actualStart  DateTime?
+  actualEnd    DateTime? // K114 — bahan metrik ketepatan waktu
+
+  agreedAmount    Float?
+  currency        String    @default("IDR")
+  notes           String?
+  createdByUserId String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  @@unique([tenantId, woNumber])
+  @@index([tenantId, voyageId, status])
+  @@index([tenantId, vendorId, actualEnd])
+}
+
+// -------------------------------------------------------------- CREW CHANGE
+
+enum CrewChangeStatus {
+  PLANNED
+  DOCUMENTS_READY
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+/// K125 — satu-satunya husbandry yang butuh tabel sendiri, karena ia membawa
+/// data yang bukan milik Tribuana (identitas orang) dan jadwal yang bukan
+/// jadwal kapal (penerbangan).
+model CrewChange {
+  id       String  @id @default(cuid())
+  tenantId String
+  tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  voyageId String // K83 — wajib
+  voyage   Voyage  @relation(fields: [voyageId], references: [id])
+  portId   String?
+  port     Port?   @relation(fields: [portId], references: [id])
+
+  plannedDate     DateTime?
+  status          CrewChangeStatus @default(PLANNED)
+  agentNote       String?
+  createdByUserId String
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  deletedAt       DateTime?
+
+  members CrewChangeMember[]
+
+  @@index([tenantId, voyageId])
+  @@index([tenantId, plannedDate])
+}
+
+/// Model ANAK (tanpa tenantId) — akses wajib lewat induk (K44).
+///
+/// ⚠️ K126 — field di bawah adalah DAFTAR PUTIH yang dipilih sadar: cukup untuk
+/// mengisi CREW_CHANGE_NOTICE / CREW_SIGN_ON/OFF / SHORE_PASS / CREW_LIST yang
+/// sudah ada, dan tidak lebih. Yang SENGAJA tidak disimpan meski lazim di
+/// formulir: tanggal lahir, alamat rumah, kontak keluarga, data medis, nomor
+/// rekening awak. Setiap kolom yang ada akan terisi lalu harus dijaga selamanya.
+/// `documentNo` tidak pernah ikut di respons API daftar (K126/1).
+model CrewChangeMember {
+  id           String     @id @default(cuid())
+  crewChangeId String
+  crewChange   CrewChange @relation(fields: [crewChangeId], references: [id], onDelete: Cascade)
+
+  movement    String // SIGN_ON | SIGN_OFF
+  fullName    String
+  rank        String? // Master, C/O, 2/E, AB, ...
+  nationality String?
+  documentNo  String? // paspor / buku pelaut — LIHAT K126
+  flightNo    String?
+  flightAt    DateTime?
+  hotel       String?
+  visaStatus  String?
+  remarks     String?
+
+  displayOrder Int @default(0)
+
+  @@index([crewChangeId])
+}
+
+// ----------------------------------------------------------- VOYAGE EVENT
+
+/// K130 — fakta bertanda waktu; sumber data SOF yang selama ini diketik ulang
+/// sebagai teks bebas di dalam JSON dokumen.
+model VoyageEvent {
+  id         String    @id @default(cuid())
+  tenantId   String
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  voyageId   String
+  voyage     Voyage    @relation(fields: [voyageId], references: [id])
+  portCallId String?
+  portCall   PortCall? @relation(fields: [portCallId], references: [id])
+
+  /// Daftar kode tetap + OTHER, BUKAN enum Prisma — alasan yang sama dengan K55
+  /// (dataOrigin): daftar peristiwa pelabuhan akan bertambah dari pengalaman,
+  /// dan setiap penambahan tidak boleh butuh migration.
+  eventCode   String // EOSP | NOR_TENDERED | PILOT_ON_BOARD | ALL_FAST | COMMENCED | ...
+  description String?
+  occurredAt  DateTime
+  source      String   @default("MANUAL") // MANUAL | IMPORT | SYSTEM
+  remarks     String?
+
+  recordedByUserId String
+  createdAt        DateTime  @default(now())
+  deletedAt        DateTime?
+
+  @@index([tenantId, voyageId, occurredAt])
+}
+
+// -------------------------------------------------------------- EMAIL LOG
+
+/// K136 — mencatat yang DIAKUI MANUSIA, bukan hasil pengiriman. Tidak ada
+/// mailer di repo ini (P10 masih terbuka): status SENT_MANUAL berarti "operator
+/// menyatakan sudah mengirimnya", persis semantik Disbursement.status = SENT.
+model EmailLog {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  /// K84/K85 — daftar putih owner-guard.ts.
+  entityType String // VOYAGE | DISBURSEMENT | INVOICE | PURCHASE_ORDER | WORK_ORDER
+  entityId   String
+
+  template      String? // EPDA_PENGANTAR | FDA_PENYELESAIAN | INVOICE_TAGIHAN | VENDOR_PENAWARAN (K79)
+  toAddress     String?
+  ccAddress     String?
+  subject       String
+  bodySnapshot  String? // isi saat itu — K138 (semangat snapshot K5)
+  attachmentIds String[] @default([])
+
+  status String    @default("DRAFTED") // DRAFTED | SENT_MANUAL | NO_RESPONSE | REPLIED
+  sentAt DateTime? // diisi operator, BUKAN oleh sistem
+
+  recordedByUserId String
+  createdAt        DateTime  @default(now())
+  deletedAt        DateTime?
+
+  @@index([tenantId, entityType, entityId, createdAt])
+}
+
+// ------------------------------------------------- PLAYBOOK & KNOWLEDGE BASE
+
+enum PlaybookStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+/// K139 — berversi, dengan pola yang sudah dipakai Disbursement (K37):
+/// menerbitkan versi baru = baris baru, versi lama jadi ARCHIVED dan TIDAK
+/// pernah disentuh isinya. Port.notes tidak dihapus & tidak dimigrasikan paksa.
+model PortPlaybook {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  portId   String
+  port     Port   @relation(fields: [portId], references: [id])
+
+  version     Int            @default(1)
+  title       String
+  status      PlaybookStatus @default(DRAFT)
+  publishedAt DateTime?
+  summary     String?
+
+  authorUserId String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  sections PortPlaybookSection[]
+
+  @@unique([tenantId, portId, version])
+  @@index([tenantId, portId, status])
+}
+
+/// Model ANAK (tanpa tenantId) — akses wajib lewat induk (K44).
+model PortPlaybookSection {
+  id         String       @id @default(cuid())
+  playbookId String
+  playbook   PortPlaybook @relation(fields: [playbookId], references: [id], onDelete: Cascade)
+
+  heading      String
+  body         String // teks panjang; Markdown ringan, dirender TANPA HTML mentah
+  displayOrder Int    @default(0)
+
+  @@index([playbookId])
+}
+
+/// K140 — pengetahuan yang TIDAK terikat pelabuhan. Sengaja tanpa versi (beda
+/// dari playbook): artikel umum tidak dipakai sebagai dasar tindakan pada satu
+/// kunjungan tertentu, jadi tak ada yang perlu dibuktikan "apa yang tertulis
+/// saat itu". Perbedaan ini keputusan, bukan kelalaian.
+model KnowledgeArticle {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  title  String
+  body   String
+  tags   String[]       @default([])
+  status PlaybookStatus @default(DRAFT)
+
+  authorUserId String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  @@index([tenantId, status])
 }

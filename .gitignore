@@ -38,3 +38,8 @@ next-env.d.ts
 
 # database backups (dump lokal, jangan masuk repo)
 /backup
+
+# lampiran yang diunggah (Fase 7 / K107 — adapter disk lokal, env UPLOAD_DIR).
+# Isinya dokumen pelanggan; tidak pernah masuk repo, dan TIDAK pernah ditaruh di
+# bawah public/ (K108 — public/ disajikan Next.js tanpa melewati kode kita).
+/.uploads

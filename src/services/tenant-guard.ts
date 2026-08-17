@@ -10,12 +10,21 @@
 
 /**
  * Model yang punya kolom tenantId. Model anak (Cargo, DisbursementItem,
- * InvoiceItem, ServiceTemplateItem) sengaja TIDAK ada di sini — isolasinya
- * diwarisi dari induk lewat relasi + onDelete: Cascade (keputusan #4 di
- * docs/FASE-0-SKEMA-v2.md §7). Akses model anak WAJIB lewat induknya.
+ * InvoiceItem, ServiceTemplateItem, dan empat anak Fase 7: TaskTemplateItem,
+ * PurchaseOrderItem, CrewChangeMember, PortPlaybookSection) sengaja TIDAK ada
+ * di sini — isolasinya diwarisi dari induk lewat relasi + onDelete: Cascade
+ * (keputusan #4 di docs/FASE-0-SKEMA-v2.md §7, ditegaskan lagi di K89).
+ * Akses model anak WAJIB lewat induknya.
  *
  * ⚠️ Menambah model bertenant baru di schema.prisma? Tambahkan namanya di sini.
  *    `node prisma/check-tenant-guard.mjs` akan GAGAL kalau daftar ini ketinggalan.
+ *
+ * ⚠️ Fase 7 / K85 — untuk Attachment, Comment, dan EmailLog pagar ini SAJA TIDAK
+ *    CUKUP. Ketiganya polimorfik (entityType/entityId tanpa FK): guard menyaring
+ *    baris miliknya sendiri, tapi tidak ada yang memeriksa bahwa entityId yang
+ *    ditunjuk milik tenant yang sama. Pemeriksaan itu tugas
+ *    pastikanEntitasMilikTenant() di services/ops/ownership.service.ts, dan ia
+ *    WAJIB dipanggil sebelum setiap penulisan yang menyebut entityId.
  */
 export const TENANT_MODELS: ReadonlySet<string> = new Set([
   'Payment',
@@ -39,6 +48,20 @@ export const TENANT_MODELS: ReadonlySet<string> = new Set([
   'Approval',
   'AuditLog',
   'Notification',
+
+  // --- Fase 7 / K89 — dua belas model bertenant baru ---
+  'Task',
+  'TaskTemplate',
+  'Attachment',
+  'Comment',
+  'VendorRating',
+  'PurchaseOrder',
+  'WorkOrder',
+  'CrewChange',
+  'VoyageEvent',
+  'EmailLog',
+  'PortPlaybook',
+  'KnowledgeArticle',
 ])
 
 /** Operasi yang aman disaring lewat `where`. */

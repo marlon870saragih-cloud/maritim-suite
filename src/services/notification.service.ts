@@ -43,13 +43,61 @@ export async function markAllRead(ctx: TenantContext): Promise<void> {
   })
 }
 
+/**
+ * K86 — Fase 7 TIDAK membangun sistem notifikasi kedua. Reminder, SLA, dan
+ * @sebut menulis ke tabel `Notification` yang sudah ada lewat notify() yang
+ * sudah ada. Yang berubah di bawah hanyalah TIPE-nya (kolom `type` di database
+ * memang sudah `String`, jadi tak ada migration untuk ini) — perubahan tipe,
+ * bukan perubahan mekanisme.
+ */
 export type NewNotification = {
-  type: 'APPROVAL_PENDING' | 'INVOICE_OVERDUE' | 'INVOICE_PAID'
+  type:
+    | 'APPROVAL_PENDING'
+    | 'INVOICE_OVERDUE'
+    | 'INVOICE_PAID'
+    // --- Fase 7 (K86) ---
+    | 'TASK_DUE'
+    | 'TASK_OVERDUE'
+    | 'TASK_ASSIGNED'
+    | 'SLA_BREACH'
+    | 'MENTION'
+    | 'PO_APPROVAL_PENDING'
+    | 'WO_OVERDUE'
+    | 'VENDOR_DOC_EXPIRING'
+    | 'CREW_CHANGE_UPCOMING'
   title: string
   message?: string
-  entityType?: 'DISBURSEMENT' | 'INVOICE'
+  entityType?:
+    | 'DISBURSEMENT'
+    | 'INVOICE'
+    // --- Fase 7 ---
+    | 'VOYAGE'
+    | 'PORT_CALL'
+    | 'TASK'
+    | 'VENDOR'
+    | 'PURCHASE_ORDER'
+    | 'WORK_ORDER'
+    | 'CREW_CHANGE'
+    | 'PORT_PLAYBOOK'
+    | 'VESSEL'
   entityId?: string
   href?: string
+  /**
+   * K101 — penerima. `undefined`/`null` = SIARAN ke semua pengguna tenant
+   * (perilaku Fase 5d, dipertahankan apa adanya untuk tiga notifikasi finance).
+   *
+   * ⚠️ Untuk apa pun yang ditujukan ke ORANG TERTENTU (@sebut, pengingat tugas)
+   * kolom ini WAJIB diisi. Alasannya ada di komentar skema `Notification`:
+   * `readAt` satu nilai per baris — siaran ditandai terbaca oleh siapa pun yang
+   * membacanya duluan, dan itu tidak bisa diterima untuk pesan bertarget (T5).
+   */
+  userId?: string | null
+  /**
+   * K101 — kunci idempotensi untuk penulisan yang dilakukan job tanpa manusia.
+   * Unik per tenant (`@@unique([tenantId, dedupeKey])`), sehingga sapuan yang
+   * sama dijalankan 1× atau 50× sehari tetap menghasilkan satu baris.
+   */
+  dedupeKey?: string | null
 }
 
 /**
@@ -64,13 +112,16 @@ export async function notify(ctx: TenantContext, data: NewNotification): Promise
     await forTenant(ctx).notification.create({
       data: {
         tenantId: ctx.tenantId,
-        userId: null,
+        // Bawaannya tetap `null` (siaran) — perilaku Fase 5d tidak berubah bagi
+        // pemanggil yang tidak menyebut userId.
+        userId: data.userId ?? null,
         type: data.type,
         title: data.title,
         message: data.message ?? null,
         entityType: data.entityType ?? null,
         entityId: data.entityId ?? null,
         href: data.href ?? null,
+        dedupeKey: data.dedupeKey ?? null,
       },
     })
   } catch (e) {
