@@ -6,11 +6,16 @@ import { createPurchaseOrder, listPurchaseOrders } from '@/services/ops/purchase
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-// GET /api/purchase-orders?voyageId=&kind=&status=
+// GET /api/purchase-orders?voyageId=&kind=&status=&vendorId=
 export const GET = withTenant(async (ctx, req) => {
   const q = new URL(req.url).searchParams
   return Response.json(
-    await listPurchaseOrders(ctx, { voyageId: q.get('voyageId'), kind: q.get('kind'), status: q.get('status') }),
+    await listPurchaseOrders(ctx, {
+      voyageId: q.get('voyageId'),
+      kind: q.get('kind'),
+      status: q.get('status'),
+      vendorId: q.get('vendorId'),
+    }),
   )
 })
 

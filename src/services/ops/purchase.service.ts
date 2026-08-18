@@ -53,7 +53,7 @@ async function lengkapi(ctx: TenantContext, po: PurchaseOrder & { items: Purchas
 
 export async function listPurchaseOrders(
   ctx: TenantContext,
-  f: { voyageId?: string | null; kind?: string | null; status?: string | null } = {},
+  f: { voyageId?: string | null; kind?: string | null; status?: string | null; vendorId?: string | null } = {},
 ): Promise<PurchaseOrderDetail[]> {
   const rows = await forTenant(ctx).purchaseOrder.findMany({
     where: {
@@ -61,6 +61,7 @@ export async function listPurchaseOrders(
       ...(f.voyageId ? { voyageId: f.voyageId } : {}),
       ...(f.kind ? { kind: f.kind as PurchaseKind } : {}),
       ...(f.status ? { status: f.status as PurchaseStatus } : {}),
+      ...(f.vendorId ? { vendorId: f.vendorId } : {}),
     },
     include: { items: { orderBy: { displayOrder: 'asc' } } },
     orderBy: { createdAt: 'desc' },

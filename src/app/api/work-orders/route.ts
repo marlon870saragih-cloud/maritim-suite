@@ -4,10 +4,12 @@ import { createWorkOrder, listWorkOrders } from '@/services/ops/workorder.servic
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-// GET /api/work-orders?voyageId=&status=
+// GET /api/work-orders?voyageId=&status=&vendorId=
 export const GET = withTenant(async (ctx, req) => {
   const q = new URL(req.url).searchParams
-  return Response.json(await listWorkOrders(ctx, { voyageId: q.get('voyageId'), status: q.get('status') }))
+  return Response.json(
+    await listWorkOrders(ctx, { voyageId: q.get('voyageId'), status: q.get('status'), vendorId: q.get('vendorId') }),
+  )
 })
 
 // POST /api/work-orders { voyageId, vendorId, serviceId?, scope, plannedStart?, plannedEnd?, agreedAmount?, currency?, notes? }

@@ -21,6 +21,11 @@ import { sinkronkanJadwalTugas, tanggalJangkarBerubah } from '../ops/task-schedu
 // AuditLog, persis pola Disbursement/Invoice (services/finance/audit.ts sudah
 // dipakai lintas-domain sejak Fase 7b/7c, bukan hal baru di sini).
 import { catatAudit } from '../finance/audit'
+// Fase 7j — vendor-score.service.ts (K113) perlu cara MENGUJI penyaringan
+// dataOrigin tanpa menunggu 90 hari trial berakhir sungguhan: ADMIN boleh
+// menimpa asal voyage secara manual. ASAL_DATA/adalahAsalData dari modul
+// murni Fase 6a (provenance.ts) — bukan daftar baru.
+import { ASAL_DATA, adalahAsalData } from '../ai/provenance'
 
 const STATUSES: readonly VoyageStatus[] = [
   'PLANNED', 'CONFIRMED', 'ARRIVED', 'BERTHED', 'WORKING', 'COMPLETED', 'DEPARTED', 'CLOSED', 'CANCELLED',
@@ -181,7 +186,7 @@ export async function updateVoyage(
 ): Promise<Voyage> {
   requireRole(ctx, 'ADMIN', 'OPERATOR')
   const db = forTenant(ctx)
-  const data = bacaInput(body)
+  const data: ReturnType<typeof bacaInput> & { dataOrigin?: string | null } = bacaInput(body)
 
   await pastikanRelasiMilikTenant(ctx, data)
 
@@ -195,6 +200,20 @@ export async function updateVoyage(
     select: { eta: true, etb: true, etc: true, etd: true, ata: true },
   })
   if (!sebelum) throw notFound('Voyage')
+
+  // K113 (Fase 7j) — ADMIN boleh menimpa asal voyage secara manual, TERPISAH
+  // dari `data` di atas (bukan lewat bacaInput()): field ini sengaja tak
+  // tunduk pada gerbang OPERATOR yang berlaku untuk particulars biasa —
+  // menandai sebuah voyage 'SEED'/'UJI' memutus semua metrik vendor yang
+  // bersandar padanya (K59), jadi bukan keputusan operasional harian.
+  if ('dataOrigin' in body) {
+    requireRole(ctx, 'ADMIN')
+    const nilai = str(body.dataOrigin)
+    if (nilai !== null && !adalahAsalData(nilai)) {
+      throw conflict(`dataOrigin tidak sah. Pilihan: ${ASAL_DATA.join(', ')}, atau kosongkan.`)
+    }
+    data.dataOrigin = nilai
+  }
 
   // voyageNumber TIDAK ikut diubah — nomor sekali terbit dipertahankan (dipakai
   // di PDF/rujukan lain), sejalan prinsip snapshot K5.

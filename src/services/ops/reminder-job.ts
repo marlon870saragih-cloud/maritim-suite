@@ -40,8 +40,8 @@ import { AMBANG_MENDEKATI_JAM, BATAS_NOTIFIKASI_PER_JALAN, PERAN_ESKALASI_SLA } 
 
 // ------------------------------------------------------------------ kebijakan
 
-/** Tiga jenis notifikasi yang lahir dari job ini (K86/K102). */
-export type JenisPengingat = 'TASK_DUE' | 'TASK_OVERDUE' | 'SLA_BREACH'
+/** Empat jenis notifikasi yang lahir dari job ini (K86/K102, K115 Fase 7j). */
+export type JenisPengingat = 'TASK_DUE' | 'TASK_OVERDUE' | 'SLA_BREACH' | 'VENDOR_DOC_EXPIRING'
 
 /** Status yang tidak lagi menunggu dikerjakan — tak pantas diingatkan. */
 const STATUS_TERMINAL: readonly TaskStatus[] = ['DONE', 'CANCELLED']
@@ -61,7 +61,11 @@ const PRIORITAS_JENIS: Readonly<Record<JenisPengingat, number>> = {
   SLA_BREACH: 0,
   TASK_OVERDUE: 1,
   TASK_DUE: 2,
+  VENDOR_DOC_EXPIRING: 3,
 }
+
+/** K115 — jendela peringatan dokumen vendor: 30 hari sebelum `expiresAt`. */
+const AMBANG_HARI_DOKUMEN_VENDOR = 30
 
 const JAM = 3_600_000
 
@@ -106,6 +110,18 @@ export function kunciTaskOverdue(taskId: string, sekarang: Date): string {
  */
 export function kunciSlaBreach(taskId: string, penerimaUserId: string): string {
   return `SLA_BREACH:${taskId}:${penerimaUserId}`
+}
+
+/**
+ * `VENDOR_DOC_EXPIRING:<attachmentId>:<YYYY-MM>` — paling banyak SATU per
+ * BULAN KALENDER selama dokumen masih dalam jendela peringatan (K115: "jalankan
+ * lagi di bulan yang sama → tidak bertambah"). Bulan diambil dari waktu
+ * JALANNYA JOB (pola sama `kunciTaskOverdue`), bukan dari `expiresAt` — dokumen
+ * yang tersisa 25 hari lalu dicek lagi 20 hari kemudian (bulan berbeda) memang
+ * boleh mengingatkan lagi, tapi dalam bulan yang sama cukup sekali.
+ */
+export function kunciVendorDocExpiring(attachmentId: string, sekarang: Date): string {
+  return `VENDOR_DOC_EXPIRING:${attachmentId}:${sekarang.toISOString().slice(0, 7)}`
 }
 
 // -------------------------------------------------------------- bentuk hasil
@@ -377,6 +393,60 @@ async function sapuanDilanggar(ctx: TenantContext, sekarang: Date): Promise<Calo
   return calon
 }
 
+// -------------------------------------------------------------- sapuan 4 dari 4
+
+/**
+ * VENDOR_DOC_EXPIRING (K115) — `Attachment` ber-`entityType='VENDOR'`,
+ * `kind='VENDOR_DOC'`, `expiresAt` dalam 30 hari ke depan. NOL tabel baru
+ * (K84): dokumen vendor sudah jadi Attachment biasa sejak 7f, job ini cuma
+ * menyapunya. SIARAN (`userId=null`, pola sama TASK_OVERDUE tanpa
+ * assignee) — interim: belum ada P-jawaban yang menyempitkannya ke peran
+ * tertentu, dan kedaluwarsa izin vendor adalah risiko operasional yang
+ * relevan bagi tim, bukan satu orang.
+ */
+async function sapuanDokumenVendorKedaluwarsa(ctx: TenantContext, sekarang: Date): Promise<Calon[]> {
+  const batasAtas = new Date(sekarang.getTime() + AMBANG_HARI_DOKUMEN_VENDOR * 24 * JAM)
+
+  const rows = await forTenant(ctx).attachment.findMany({
+    where: {
+      deletedAt: null,
+      entityType: 'VENDOR',
+      kind: 'VENDOR_DOC',
+      expiresAt: { gte: sekarang, lte: batasAtas },
+    },
+    orderBy: [{ expiresAt: 'asc' }, { id: 'asc' }],
+    take: BATAS_BARIS_DIBACA_PER_SAPUAN,
+  })
+  if (rows.length === 0) return []
+
+  const vendorIds = Array.from(new Set(rows.map((a) => a.entityId)))
+  const vendors = await forTenant(ctx).vendor.findMany({ where: { id: { in: vendorIds } }, select: { id: true, name: true } })
+  const namaVendor = new Map(vendors.map((v) => [v.id, v.name]))
+
+  const calon: Calon[] = []
+  for (const a of rows) {
+    if (!a.expiresAt) continue
+    const kunci = kunciVendorDocExpiring(a.id, sekarang)
+    const vendor = namaVendor.get(a.entityId) ?? '—'
+    calon.push({
+      dedupeKey: kunci,
+      jenis: 'VENDOR_DOC_EXPIRING',
+      urut: `${a.expiresAt.toISOString()}:${a.id}`,
+      data: {
+        type: 'VENDOR_DOC_EXPIRING',
+        userId: null,
+        title: `Dokumen vendor akan kedaluwarsa: ${vendor}`,
+        message: `${potong(a.fileName)} kedaluwarsa ${waktuLokal(a.expiresAt)}.`,
+        entityType: 'VENDOR',
+        entityId: a.entityId,
+        href: `/settings/vendors/${a.entityId}`,
+        dedupeKey: kunci,
+      },
+    })
+  }
+  return calon
+}
+
 // --------------------------------------------------------------- satu tenant
 
 /**
@@ -400,13 +470,14 @@ export async function jalankanPengingatUntukTenant(
     dibuat: 0,
     dilewati: 0,
     dibatasi: 0,
-    perJenis: { TASK_DUE: 0, TASK_OVERDUE: 0, SLA_BREACH: 0 },
+    perJenis: { TASK_DUE: 0, TASK_OVERDUE: 0, SLA_BREACH: 0, VENDOR_DOC_EXPIRING: 0 },
   }
 
   const semua = [
     ...(await sapuanMendekati(ctx, sekarang)),
     ...(await sapuanTerlambat(ctx, sekarang)),
     ...(await sapuanDilanggar(ctx, sekarang)),
+    ...(await sapuanDokumenVendorKedaluwarsa(ctx, sekarang)),
   ]
 
   // Kembar di dalam satu jalan (mustahil menurut bentuk kuncinya, tapi kalau
@@ -489,7 +560,7 @@ export async function jalankanPengingatUntukSemuaTenant(
         dibuat: 0,
         dilewati: 0,
         dibatasi: 0,
-        perJenis: { TASK_DUE: 0, TASK_OVERDUE: 0, SLA_BREACH: 0 },
+        perJenis: { TASK_DUE: 0, TASK_OVERDUE: 0, SLA_BREACH: 0, VENDOR_DOC_EXPIRING: 0 },
         galat: e instanceof Error ? e.message : String(e),
       })
     }

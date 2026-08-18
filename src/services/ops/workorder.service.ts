@@ -38,13 +38,14 @@ async function lengkapi(ctx: TenantContext, wo: WorkOrder): Promise<WorkOrderDet
 
 export async function listWorkOrders(
   ctx: TenantContext,
-  f: { voyageId?: string | null; status?: string | null } = {},
+  f: { voyageId?: string | null; status?: string | null; vendorId?: string | null } = {},
 ): Promise<WorkOrderDetail[]> {
   const rows = await forTenant(ctx).workOrder.findMany({
     where: {
       deletedAt: null,
       ...(f.voyageId ? { voyageId: f.voyageId } : {}),
       ...(f.status ? { status: f.status as WorkOrderStatus } : {}),
+      ...(f.vendorId ? { vendorId: f.vendorId } : {}),
     },
     orderBy: { createdAt: 'desc' },
   })
