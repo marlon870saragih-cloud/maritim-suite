@@ -779,6 +779,15 @@ model DisbursementItem {
   vendorInvoiceNo  String?
   actualReceiptRef String?
 
+  // --- K122 (Fase 7i) — "Ambil dari PO/WO" mengisi FORM baris, operator tetap
+  // menyimpan sendiri (K52: tak ada jalur tulis otomatis ke tabel uang). Kolom
+  // ini HANYA menandai "baris ini lahir dari PO/WO tsb", supaya PO/WO yang
+  // sudah dipakai tak muncul lagi di daftar tawaran — bukan relasi Prisma
+  // formal (pola sama sourceItemId di atas: tanpa @relation, tak ada back-
+  // array di PurchaseOrder/WorkOrder yang perlu dijaga).
+  sourcePurchaseOrderId String?
+  sourceWorkOrderId     String?
+
   displayOrder Int      @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -786,6 +795,8 @@ model DisbursementItem {
   @@index([disbursementId])
   @@index([serviceId])
   @@index([sourceItemId])
+  @@index([sourcePurchaseOrderId])
+  @@index([sourceWorkOrderId])
 }
 
 // ---------------------------------------------------------------- FINANCE (AR)
@@ -878,7 +889,7 @@ model Approval {
   id         String   @id @default(cuid())
   tenantId   String
   tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  entityType String // DISBURSEMENT | INVOICE | PO
+  entityType String // DISBURSEMENT | INVOICE | PURCHASE_ORDER (K120, Fase 7i — bukan "PO", disamakan dgn owner-guard.ts)
   entityId   String
   level      Int      @default(1)
   userId     String

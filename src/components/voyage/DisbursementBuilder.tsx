@@ -49,10 +49,11 @@ import { SummaryDialog } from '@/components/ai/SummaryDialog'
 import { AttachmentPanel } from '@/components/ops/AttachmentPanel'
 import { CommentPanel } from '@/components/ops/CommentPanel'
 import { EmailLogPanel } from '@/components/ops/EmailLogPanel'
+import { ProcurementPickerDialog } from './ProcurementPickerDialog'
 
 const STR: Record<Lang, Record<string, string>> = {
   id: {
-    addCatalog: 'Tambah Jasa', addTemplate: 'Dari Template', downloadPdf: 'Unduh PDF',
+    addCatalog: 'Tambah Jasa', addTemplate: 'Dari Template', addFromProcurement: 'Ambil dari PO/WO', downloadPdf: 'Unduh PDF',
     status: 'Status', version: 'Versi', baseCurrency: 'Mata Uang Dasar', agencyPct: 'Agency Fee (%)',
     validUntil: 'Berlaku Sampai', notes: 'Catatan', edit: 'Ubah', save: 'Simpan', cancel: 'Batal',
     subtotal: 'Subtotal', agencyAmount: 'Agency Fee', taxAmount: 'Pajak', grandTotal: 'Total',
@@ -66,7 +67,7 @@ const STR: Record<Lang, Record<string, string>> = {
     assistant: 'Asisten', draftEmail: 'Draft Email', summarize: 'Ringkas',
   },
   en: {
-    addCatalog: 'Add Service', addTemplate: 'From Template', downloadPdf: 'Download PDF',
+    addCatalog: 'Add Service', addTemplate: 'From Template', addFromProcurement: 'Take from PO/WO', downloadPdf: 'Download PDF',
     status: 'Status', version: 'Version', baseCurrency: 'Base Currency', agencyPct: 'Agency Fee (%)',
     validUntil: 'Valid Until', notes: 'Notes', edit: 'Edit', save: 'Save', cancel: 'Cancel',
     subtotal: 'Subtotal', agencyAmount: 'Agency Fee', taxAmount: 'Tax', grandTotal: 'Grand Total',
@@ -140,6 +141,7 @@ export function DisbursementBuilder({ disb: initial, voyageId }: { disb: Builder
   const router = useRouter()
   const [disb, setDisb] = useState(initial)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [procurementPickerOpen, setProcurementPickerOpen] = useState(false)
   const [pickerTab, setPickerTab] = useState<'catalog' | 'template'>('catalog')
   const [itemBusyId, setItemBusyId] = useState<string | null>(null)
   const [addBusy, setAddBusy] = useState(false)
@@ -606,6 +608,13 @@ export function DisbursementBuilder({ disb: initial, voyageId }: { disb: Builder
           >
             <Plus className="w-4 h-4" /> {t.addTemplate}
           </button>
+          <button
+            type="button"
+            onClick={() => setProcurementPickerOpen(true)}
+            className="inline-flex items-center gap-2 border border-border-muted text-text-secondary hover:text-white hover:border-accent-blue/50 hover:bg-surface-tertiary rounded px-3.5 py-2 text-sm font-medium transition-colors"
+          >
+            <Plus className="w-4 h-4" /> {t.addFromProcurement}
+          </button>
         </div>
       )}
 
@@ -719,6 +728,18 @@ export function DisbursementBuilder({ disb: initial, voyageId }: { disb: Builder
         onPickService={pickService}
         onPickTemplate={pickTemplate}
         busy={addBusy}
+      />
+
+      <ProcurementPickerDialog
+        open={procurementPickerOpen}
+        onOpenChange={setProcurementPickerOpen}
+        voyageId={voyageId}
+        disbursementId={disb.id}
+        onSaved={async () => {
+          const res = await fetch(`/api/disbursements/${disb.id}`)
+          if (res.ok) setDisb(await res.json())
+          router.refresh()
+        }}
       />
 
       <RevisionDialog

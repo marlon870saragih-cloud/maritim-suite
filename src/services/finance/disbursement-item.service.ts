@@ -261,8 +261,16 @@ export async function addItem(
 
   await pastikanBarisSah(ctx, usulan, disb.baseCurrency)
 
+  // K122 (Fase 7i) — penanda opsional "baris ini lahir dari PO/WO tsb", TIDAK
+  // menyentuh usulan/pastikanBarisSah sama sekali: operator sudah mengonfirmasi
+  // isi baris (harga/qty dari sini tetap yang ia ketik/setujui di form, bukan
+  // ditulis otomatis oleh PO/WO — K52). Dua field ini murni jejak asal-usul.
   const item = await forTenant(ctx).disbursementItem.create({
-    data: dataBaris(usulan, disbursementId),
+    data: {
+      ...dataBaris(usulan, disbursementId),
+      sourcePurchaseOrderId: str(body.sourcePurchaseOrderId),
+      sourceWorkOrderId: str(body.sourceWorkOrderId),
+    },
   })
 
   await catatAudit(
