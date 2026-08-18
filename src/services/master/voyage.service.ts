@@ -17,6 +17,10 @@ import { stempelAsal } from '../ai/origin.service'
 // tidak berubah sedikit pun.
 import { instansiasiOtomatisChecklist } from '../ops/task-template.service'
 import { sinkronkanJadwalTugas, tanggalJangkarBerubah } from '../ops/task-schedule.service'
+// Fase 7g — Timeline (K131) butuh perubahan status voyage TERCATAT di
+// AuditLog, persis pola Disbursement/Invoice (services/finance/audit.ts sudah
+// dipakai lintas-domain sejak Fase 7b/7c, bukan hal baru di sini).
+import { catatAudit } from '../finance/audit'
 
 const STATUSES: readonly VoyageStatus[] = [
   'PLANNED', 'CONFIRMED', 'ARRIVED', 'BERTHED', 'WORKING', 'COMPLETED', 'DEPARTED', 'CLOSED', 'CANCELLED',
@@ -260,7 +264,25 @@ export async function setVoyageStatus(
   requireRole(ctx, 'ADMIN', 'OPERATOR')
   const nilai = pilihan(status, STATUSES, 'Status')
   const db = forTenant(ctx)
+
+  const lama = await db.voyage.findFirst({ where: { id, deletedAt: null }, select: { status: true } })
+  if (!lama) throw notFound('Voyage')
+
   const hasil = await db.voyage.updateMany({ where: { id, deletedAt: null }, data: { status: nilai } })
   if (hasil.count === 0) throw notFound('Voyage')
+
+  // K131 — sumber TIMELINE "perubahan status". Ditulis hanya saat statusnya
+  // BENAR berubah (bukan PATCH dengan nilai sama), sama semangatnya dengan
+  // pengecekan tanggalJangkarBerubah() di updateVoyage() di bawah.
+  if (lama.status !== nilai) {
+    await catatAudit(ctx, {
+      tableName: 'Voyage',
+      recordId: id,
+      action: 'UPDATE',
+      oldValue: { status: lama.status },
+      newValue: { status: nilai },
+    })
+  }
+
   return getVoyage(ctx, id)
 }

@@ -7,7 +7,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Role } from '@prisma/client'
-import { Boxes, Anchor, ClipboardList, Loader2, Paperclip, Pencil, Sparkles, Wallet } from 'lucide-react'
+import { Boxes, Anchor, ClipboardList, History, Loader2, Paperclip, Pencil, Plus, Sparkles, Wallet } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useT, type Lang } from '@/lib/i18n'
 import { AssistantPanel } from '@/components/ai/AssistantPanel'
@@ -24,7 +24,9 @@ import {
   VOYAGE_STATUSES,
   VOYAGE_STATUS_COLOR,
   nextVoyageStatus,
+  particularsForm,
   type VoyageStatusStr,
+  type WorkspaceVoyage,
 } from './voyage-status'
 import { VoyageCargoPanel, type CargoRow } from './VoyageCargoPanel'
 import { VoyagePortCallPanel, type VoyagePortCallRow } from './VoyagePortCallPanel'
@@ -33,6 +35,8 @@ import { VoyageTaskPanel } from '@/components/ops/VoyageTaskPanel'
 import type { TaskRow, UserOption } from '@/components/ops/task-shared'
 import { AttachmentPanel } from '@/components/ops/AttachmentPanel'
 import { CommentPanel } from '@/components/ops/CommentPanel'
+import { TimelinePanel } from '@/components/ops/TimelinePanel'
+import { VoyageEventDialog } from '@/components/ops/VoyageEventDialog'
 
 const STR: Record<Lang, Record<string, string>> = {
   id: {
@@ -50,8 +54,8 @@ const STR: Record<Lang, Record<string, string>> = {
     dialogTitle: 'Ubah Particulars Voyage',
     dialogDesc: 'Nomor voyage tidak bisa diubah — sudah dipakai sebagai rujukan di dokumen.',
     selVessel: '— pilih kapal —', selNone: '— tanpa —', cancel: 'Batal', save: 'Simpan Perubahan',
-    tabCargo: 'Cargo', tabPortCall: 'Port Call', tabFinance: 'Finansial', tabTasks: 'Tugas', tabAttachments: 'Lampiran',
-    assistant: 'Asisten',
+    tabCargo: 'Cargo', tabPortCall: 'Port Call', tabFinance: 'Finansial', tabTasks: 'Tugas', tabAttachments: 'Lampiran', tabTimeline: 'Timeline',
+    assistant: 'Asisten', recordEvent: 'Catat Peristiwa', buildSofFromEvents: 'Buat SOF dari Peristiwa',
   },
   en: {
     lifecycle: 'Stages', statusNow: 'Current status', advance: 'Advance to', jump: 'Change status',
@@ -68,36 +72,12 @@ const STR: Record<Lang, Record<string, string>> = {
     dialogTitle: 'Edit Voyage Particulars',
     dialogDesc: 'The voyage number cannot be changed — it is already referenced by documents.',
     selVessel: '— select vessel —', selNone: '— none —', cancel: 'Cancel', save: 'Save changes',
-    tabCargo: 'Cargo', tabPortCall: 'Port Calls', tabFinance: 'Financial', tabTasks: 'Tasks', tabAttachments: 'Attachments',
-    assistant: 'Assistant',
+    tabCargo: 'Cargo', tabPortCall: 'Port Calls', tabFinance: 'Financial', tabTasks: 'Tasks', tabAttachments: 'Attachments', tabTimeline: 'Timeline',
+    assistant: 'Assistant', recordEvent: 'Record Event', buildSofFromEvents: 'Build SOF from Events',
   },
 }
 
-export type WorkspaceVoyage = {
-  id: string
-  voyageNumber: string
-  status: VoyageStatusStr
-  vesselId: string
-  principalId: string | null
-  customerId: string | null
-  portId: string | null
-  agencyType: string | null
-  baseCurrency: string
-  notes: string | null
-  eta: string | Date | null
-  etb: string | Date | null
-  etc: string | Date | null
-  etd: string | Date | null
-  ata: string | Date | null
-  atb: string | Date | null
-  atd: string | Date | null
-  vessel: { id: string; name: string; imoNumber: string | null } | null
-  principal: { id: string; name: string } | null
-  customer: { id: string; name: string } | null
-  port: { id: string; name: string; unlocode: string | null } | null
-  cargoes: CargoRow[]
-  portCalls: VoyagePortCallRow[]
-}
+export type { WorkspaceVoyage } from './voyage-status'
 
 type Option = { id: string; name: string }
 
@@ -107,11 +87,6 @@ const inputCls =
   'focus:ring-1 focus:ring-accent-blue/40 transition-colors'
 const labelCls = 'block text-[10px] font-mono uppercase tracking-wider text-text-secondary mb-1'
 
-const toDateInput = (d: string | Date | null) => {
-  if (!d) return ''
-  const v = new Date(d)
-  return Number.isNaN(v.getTime()) ? '' : v.toISOString().slice(0, 10)
-}
 const fmtDate = (d: string | Date | null) => {
   if (!d) return '—'
   const v = new Date(d)
@@ -120,7 +95,7 @@ const fmtDate = (d: string | Date | null) => {
     : v.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })
 }
 
-const TABS = ['cargo', 'portcall', 'finance', 'tasks', 'attachments'] as const
+const TABS = ['cargo', 'portcall', 'finance', 'tasks', 'timeline', 'attachments'] as const
 type TabKey = (typeof TABS)[number]
 
 function Field({ label, value }: { label: string; value: string }) {
@@ -159,6 +134,8 @@ export function VoyageWorkspace({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [assistantOpen, setAssistantOpen] = useState(false)
+  const [eventDialogOpen, setEventDialogOpen] = useState(false)
+  const [timelineRefreshKey, setTimelineRefreshKey] = useState(0)
 
   const [form, setForm] = useState(() => particularsForm(voyage))
   const set = (k: keyof ReturnType<typeof particularsForm>, v: string) => setForm((p) => ({ ...p, [k]: v }))
@@ -227,15 +204,16 @@ export function VoyageWorkspace({
   }
 
   const tabLabel: Record<TabKey, string> = {
-    cargo: t.tabCargo, portcall: t.tabPortCall, finance: t.tabFinance, tasks: t.tabTasks, attachments: t.tabAttachments,
+    cargo: t.tabCargo, portcall: t.tabPortCall, finance: t.tabFinance, tasks: t.tabTasks, attachments: t.tabAttachments, timeline: t.tabTimeline,
   }
-  const tabIcon = { cargo: Boxes, portcall: Anchor, finance: Wallet, tasks: ClipboardList, attachments: Paperclip }
+  const tabIcon = { cargo: Boxes, portcall: Anchor, finance: Wallet, tasks: ClipboardList, attachments: Paperclip, timeline: History }
   const tabCount: Record<TabKey, number | null> = {
     cargo: voyage.cargoes.length,
     portcall: voyage.portCalls.length,
     finance: null,
     tasks: tasks.filter((tk) => tk.status !== 'CANCELLED' && tk.status !== 'DONE').length,
     attachments: null,
+    timeline: null,
   }
 
   return (
@@ -428,6 +406,26 @@ export function VoyageWorkspace({
             />
           )}
           {tab === 'attachments' && <AttachmentPanel entityType="VOYAGE" entityId={voyage.id} />}
+          {tab === 'timeline' && (
+            <div className="space-y-4">
+              <div className="flex justify-end gap-2">
+                <a
+                  href={`/dokumen/new/SOF?voyageId=${voyage.id}`}
+                  className="inline-flex items-center gap-1.5 rounded border border-border-muted px-3 py-1.5 text-xs font-medium text-text-secondary hover:text-white hover:border-accent-blue/60 hover:bg-surface-tertiary transition-colors"
+                >
+                  <History className="w-3.5 h-3.5" /> {t.buildSofFromEvents}
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setEventDialogOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded bg-accent-blue hover:bg-primary text-[#231a06] px-3 py-1.5 text-xs font-medium transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" /> {t.recordEvent}
+                </button>
+              </div>
+              <TimelinePanel voyageId={voyage.id} refreshKey={timelineRefreshKey} />
+            </div>
+          )}
         </div>
 
         <div className="border-t border-card-border p-5">
@@ -566,25 +564,16 @@ export function VoyageWorkspace({
       </Dialog>
 
       <AssistantPanel jenis="VOYAGE" entityId={voyage.id} open={assistantOpen} onOpenChange={setAssistantOpen} />
+      <VoyageEventDialog
+        voyage={voyage}
+        open={eventDialogOpen}
+        onOpenChange={(o) => {
+          setEventDialogOpen(o)
+          // Timeline dibaca sendiri di client (TimelinePanel), router.refresh()
+          // saja tak memicunya ulang — refreshKey memaksa useEffect-nya jalan lagi.
+          if (!o) setTimelineRefreshKey((k) => k + 1)
+        }}
+      />
     </>
   )
-}
-
-function particularsForm(v: WorkspaceVoyage) {
-  return {
-    vesselId: v.vesselId,
-    principalId: v.principalId ?? '',
-    customerId: v.customerId ?? '',
-    portId: v.portId ?? '',
-    agencyType: v.agencyType ?? '',
-    baseCurrency: v.baseCurrency,
-    notes: v.notes ?? '',
-    eta: toDateInput(v.eta),
-    etb: toDateInput(v.etb),
-    etc: toDateInput(v.etc),
-    etd: toDateInput(v.etd),
-    ata: toDateInput(v.ata),
-    atb: toDateInput(v.atb),
-    atd: toDateInput(v.atd),
-  }
 }

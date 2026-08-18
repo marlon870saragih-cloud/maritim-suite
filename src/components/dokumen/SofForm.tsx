@@ -5,6 +5,7 @@ import { createLinkQuery } from '@/lib/link-params'
 import Link from 'next/link'
 import { ArrowLeft, Plus, Trash2, Download, Eye, Loader2, Save, Check } from 'lucide-react'
 import { SAMPLE_SOF, type SofData, type SofEvent } from '@/lib/pdf/sof-data'
+import { sofEventsDariPeristiwa, type PeristiwaUntukSof } from '@/lib/pdf/sof-from-events'
 import { blankSample } from '@/lib/blank-sample'
 import { useT, type Lang } from '@/lib/i18n'
 import { FORM_COMMON } from '@/lib/i18n-forms'
@@ -79,6 +80,41 @@ export function SofForm() {
     const params = new URLSearchParams(window.location.search)
     const id = params.get('id')
     const portCallId = params.get('portcall')
+    const voyageId = params.get('voyageId')
+
+    // K130 — tombol "Buat SOF dari Peristiwa" di tab Timeline Voyage
+    // Workspace. Mengisi HEAD dari voyage (pola sama cabang portcall di
+    // bawah) DAN `events[]` dari VoyageEvent — form manual tetap bisa
+    // dipakai sesudahnya tanpa peristiwa (M6, K130 poin 1).
+    if (!id && voyageId) {
+      Promise.all([
+        fetch(`/api/voyages/${voyageId}`).then((r) => (r.ok ? r.json() : null)),
+        fetch(`/api/voyages/${voyageId}/events`).then((r) => (r.ok ? r.json() : [])),
+      ]).then(([v, ev]: [
+        {
+          vessel?: { name?: string; imoNumber?: string; flag?: string } | null
+          port?: { name?: string } | null
+          cargoes?: { cargoName?: string; quantity?: number; unit?: string }[]
+        } | null,
+        PeristiwaUntukSof[],
+      ]) => {
+        if (v) {
+          const cargo = v.cargoes?.[0]
+          setHead((f) => ({
+            ...f,
+            vesselName: v.vessel?.name || f.vesselName,
+            imo: v.vessel?.imoNumber || f.imo,
+            flag: v.vessel?.flag || f.flag,
+            port: v.port?.name || f.port,
+            cargo: cargo?.cargoName || f.cargo,
+            cargoQty: cargo?.quantity ? `${cargo.quantity} ${cargo.unit ?? ''}`.trim() : f.cargoQty,
+          }))
+          setFromPortCall(true)
+        }
+        if (Array.isArray(ev) && ev.length > 0) setEvents(sofEventsDariPeristiwa(ev))
+      })
+      return
+    }
 
     if (!id && portCallId) {
       fetch(`/api/portcalls/${portCallId}`)
