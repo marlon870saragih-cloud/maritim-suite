@@ -67,10 +67,13 @@ export function EmailDraftDialog({
   open,
   onOpenChange,
   context,
+  onLogged,
 }: {
   open: boolean
   onOpenChange: (o: boolean) => void
   context: EmailDraftContext
+  /** K137 — dipanggil sesudah EmailLog DRAFTED berhasil dicatat (Salin/Buka di email), supaya EmailLogPanel di layar bisa menyegarkan diri. */
+  onLogged?: () => void
 }) {
   const t = useT(STR)
   const { lang } = useLang()
@@ -90,6 +93,10 @@ export function EmailDraftDialog({
     ditolak: boolean
   } | null>(null)
   const [copied, setCopied] = useState(false)
+  // K137 — SATU EmailLog per draft yang dihasilkan (bukan satu per klik):
+  // menekan Salin dua kali atas draft yang SAMA tak boleh menggandakan
+  // baris riwayat. Direset setiap generate() sukses membuat draft baru.
+  const [logged, setLogged] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -97,6 +104,7 @@ export function EmailDraftDialog({
     setItemId(vendorItems[0]?.id ?? '')
     setDraftLang(lang)
     setResult(null)
+    setLogged(false)
     setError('')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
@@ -128,11 +136,32 @@ export function EmailDraftDialog({
         return
       }
       setResult({ subject: body.subject, body: body.body, to: body.to, toName: body.toName, ditolak: !!body.ditolak })
+      setLogged(false)
     } catch {
       setError(t.errConn)
     } finally {
       setBusy(false)
     }
+  }
+
+  /** K137 — dipanggil dari copyAll()/mailto onClick, bukan dari generate(): baru berarti sesudah operator benar-benar berniat memakainya. */
+  function catatEmailLog() {
+    if (logged || !result) return
+    setLogged(true) // optimis — draft ini tak boleh dicatat dua kali walau permintaan di bawah gagal
+    fetch('/api/email-logs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        entityType: context.kind,
+        entityId: context.kind === 'DISBURSEMENT' ? context.disbursementId : context.invoiceId,
+        template: templat,
+        toAddress: result.to,
+        subject: result.subject,
+        bodySnapshot: result.body,
+      }),
+    })
+      .then((r) => r.ok && onLogged?.())
+      .catch(() => {})
   }
 
   function copyAll() {
@@ -142,6 +171,7 @@ export function EmailDraftDialog({
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     })
+    catatEmailLog()
   }
 
   const mailtoHref = result?.to
@@ -259,6 +289,7 @@ export function EmailDraftDialog({
                   {mailtoHref && (
                     <a
                       href={mailtoHref}
+                      onClick={catatEmailLog}
                       className="inline-flex items-center gap-1.5 rounded border border-border-muted px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:text-white hover:border-accent-blue/60 hover:bg-surface-tertiary transition-colors"
                     >
                       <ExternalLink className="w-3.5 h-3.5" /> {t.openMail}

@@ -48,6 +48,7 @@ import { EmailDraftDialog, templatTersedia, type EmailDraftContext } from '@/com
 import { SummaryDialog } from '@/components/ai/SummaryDialog'
 import { AttachmentPanel } from '@/components/ops/AttachmentPanel'
 import { CommentPanel } from '@/components/ops/CommentPanel'
+import { EmailLogPanel } from '@/components/ops/EmailLogPanel'
 
 const STR: Record<Lang, Record<string, string>> = {
   id: {
@@ -149,6 +150,7 @@ export function DisbursementBuilder({ disb: initial, voyageId }: { disb: Builder
   const [revisionOpen, setRevisionOpen] = useState(false)
   const [assistantOpen, setAssistantOpen] = useState(false)
   const [emailOpen, setEmailOpen] = useState(false)
+  const [emailLogRefreshKey, setEmailLogRefreshKey] = useState(0)
   const [summaryOpen, setSummaryOpen] = useState(false)
   // Terpisah dari `disb`: respons mutasi item/status/header (`body.disbursement`)
   // tidak membawa field ini (bukan bagian DisbursementDetail — cuma dihitung di
@@ -706,6 +708,10 @@ export function DisbursementBuilder({ disb: initial, voyageId }: { disb: Builder
         <CommentPanel entityType="DISBURSEMENT" entityId={disb.id} />
       </section>
 
+      <section className="bg-card-bg border border-card-border rounded-lg p-5">
+        <EmailLogPanel entityType="DISBURSEMENT" entityId={disb.id} refreshKey={emailLogRefreshKey} />
+      </section>
+
       <ServicePickerDialog
         open={pickerOpen}
         onOpenChange={setPickerOpen}
@@ -723,7 +729,12 @@ export function DisbursementBuilder({ disb: initial, voyageId }: { disb: Builder
       />
 
       <AssistantPanel jenis="DISBURSEMENT" entityId={disb.id} open={assistantOpen} onOpenChange={setAssistantOpen} />
-      <EmailDraftDialog open={emailOpen} onOpenChange={setEmailOpen} context={emailDraftContext} />
+      <EmailDraftDialog
+        open={emailOpen}
+        onOpenChange={setEmailOpen}
+        context={emailDraftContext}
+        onLogged={() => setEmailLogRefreshKey((k) => k + 1)}
+      />
       <SummaryDialog open={summaryOpen} onOpenChange={setSummaryOpen} systemContext={{ jenis: 'DISBURSEMENT', id: disb.id }} />
     </div>
   )

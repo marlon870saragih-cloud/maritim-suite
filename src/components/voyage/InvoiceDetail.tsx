@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 import { useLang, useT, type Lang } from '@/lib/i18n'
 import { AttachmentPanel } from '@/components/ops/AttachmentPanel'
 import { CommentPanel } from '@/components/ops/CommentPanel'
+import { EmailLogPanel } from '@/components/ops/EmailLogPanel'
 
 const STR: Record<Lang, Record<string, string>> = {
   id: {
@@ -351,6 +352,10 @@ export function InvoiceDetail({ invoice: initial }: { invoice: BuilderInvoice })
       <section className="bg-card-bg border border-card-border rounded-lg p-5 grid gap-6 md:grid-cols-2">
         <AttachmentPanel entityType="INVOICE" entityId={inv.id} />
         <CommentPanel entityType="INVOICE" entityId={inv.id} />
+      </section>
+
+      <section className="bg-card-bg border border-card-border rounded-lg p-5">
+        <EmailLogPanel entityType="INVOICE" entityId={inv.id} />
       </section>
     </div>
   )
