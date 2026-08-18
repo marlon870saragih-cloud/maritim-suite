@@ -38,6 +38,13 @@ export const ENTITAS_DIDUKUNG = {
   CREW_CHANGE: { model: 'crewChange', lewat: 'langsung' },
   PORT_PLAYBOOK: { model: 'portPlaybook', lewat: 'langsung' },
   VESSEL: { model: 'vessel', lewat: 'langsung' },
+  // 7f/K112 — lembar tarif (Attachment kind=RATE_SHEET) ditautkan ke Port,
+  // bukan ServiceRate: satu lembar tarif lazimnya memuat BANYAK baris tarif
+  // (lintas jasa), jadi satu Attachment per impor lebih tepat ditautkan ke
+  // pelabuhan sumbernya (operator memilih eksplisit di RateImportDialog)
+  // daripada ke satu baris ServiceRate — dan ServiceRate sendiri tak pernah
+  // jadi tempat orang membuka lampiran.
+  PORT: { model: 'port', lewat: 'langsung' },
 } as const
 
 export type EntityType = keyof typeof ENTITAS_DIDUKUNG

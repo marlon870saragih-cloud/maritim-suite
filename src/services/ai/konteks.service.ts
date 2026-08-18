@@ -38,6 +38,7 @@ import { getInvoiceDetail } from '../finance/invoice.service'
 import { variancePasangan } from '../finance/fda.service'
 import { prediksiUntukDisbursement } from './prediction.service'
 import { anomaliUntukDisbursement } from './anomaly.service'
+import { listComments } from '../ops/comment.service'
 import {
   potongKonteks,
   type BarisKonteks,
@@ -325,6 +326,38 @@ async function konteksInvoice(ctx: TenantContext, id: string): Promise<KonteksAI
   }
 }
 
+// ------------------------------------------------------------------ komentar
+
+const MAKS_KOMENTAR = 10
+const BATAS_KARAKTER_KOMENTAR = 500
+
+/**
+ * K129 — komentar (Catatan) entitas ini, lewat `listComments()` yang SAMA
+ * dengan CommentPanel.tsx (K76/1: satu pintu, satu pagar K85 ikut otomatis).
+ * 10 TERBARU, masing-masing `isi` dipotong 500 karakter. Komentar yang sudah
+ * dihapus (`deleted`) dilewati — badan aslinya sudah diganti server dengan
+ * penanda "komentar dihapus", tak ada nilai informasi untuk model.
+ */
+async function komentarUntukKonteks(
+  ctx: TenantContext,
+  jenis: JenisKonteks,
+  id: string,
+): Promise<KonteksAI['komentar']> {
+  const semua = await listComments(ctx, jenis, id)
+  const nyata = semua.filter((c) => !c.deleted)
+  const terbaru = nyata.slice(-MAKS_KOMENTAR)
+  if (terbaru.length === 0) return undefined
+
+  return terbaru.map((c) => ({
+    penulis: c.authorName ?? '—',
+    waktu: c.createdAt.toISOString(),
+    isi:
+      c.body.length > BATAS_KARAKTER_KOMENTAR
+        ? `${c.body.slice(0, BATAS_KARAKTER_KOMENTAR)}…`
+        : c.body,
+  }))
+}
+
 // ---------------------------------------------------------------------- inti
 
 /**
@@ -359,6 +392,13 @@ export async function bangunKonteks(
       : jenis === 'DISBURSEMENT'
         ? await konteksDisbursement(ctx, id, { ...opsi, bahasa })
         : await konteksInvoice(ctx, id)
+
+  // K129 — komentar entitas ini, sesudah bentuk pokoknya siap (butuh id yang
+  // sudah terbukti sah lewat konteksVoyage/Disbursement/Invoice di atas —
+  // meski di sini id yang sama dipakai lagi, listComments() membuktikan
+  // kepemilikannya sendiri lewat pastikanEntitasMilikTenant, K85).
+  const komentar = await komentarUntukKonteks(ctx, jenis, id)
+  if (komentar) mentah.komentar = komentar
 
   // K76/3 — pemotongan deterministik + catatan, lewat modul murni 6b.
   return potongKonteks(mentah, { anggaranKarakter: opsi.anggaranKarakter, bahasa })

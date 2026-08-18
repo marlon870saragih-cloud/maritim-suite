@@ -7,7 +7,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Role } from '@prisma/client'
-import { Boxes, Anchor, ClipboardList, Loader2, Pencil, Sparkles, Wallet } from 'lucide-react'
+import { Boxes, Anchor, ClipboardList, Loader2, Paperclip, Pencil, Sparkles, Wallet } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useT, type Lang } from '@/lib/i18n'
 import { AssistantPanel } from '@/components/ai/AssistantPanel'
@@ -31,6 +31,8 @@ import { VoyagePortCallPanel, type VoyagePortCallRow } from './VoyagePortCallPan
 import { VoyageFinancePanel, type VoyageFinanceCounts } from './VoyageFinancePanel'
 import { VoyageTaskPanel } from '@/components/ops/VoyageTaskPanel'
 import type { TaskRow, UserOption } from '@/components/ops/task-shared'
+import { AttachmentPanel } from '@/components/ops/AttachmentPanel'
+import { CommentPanel } from '@/components/ops/CommentPanel'
 
 const STR: Record<Lang, Record<string, string>> = {
   id: {
@@ -48,7 +50,7 @@ const STR: Record<Lang, Record<string, string>> = {
     dialogTitle: 'Ubah Particulars Voyage',
     dialogDesc: 'Nomor voyage tidak bisa diubah — sudah dipakai sebagai rujukan di dokumen.',
     selVessel: '— pilih kapal —', selNone: '— tanpa —', cancel: 'Batal', save: 'Simpan Perubahan',
-    tabCargo: 'Cargo', tabPortCall: 'Port Call', tabFinance: 'Finansial', tabTasks: 'Tugas',
+    tabCargo: 'Cargo', tabPortCall: 'Port Call', tabFinance: 'Finansial', tabTasks: 'Tugas', tabAttachments: 'Lampiran',
     assistant: 'Asisten',
   },
   en: {
@@ -66,7 +68,7 @@ const STR: Record<Lang, Record<string, string>> = {
     dialogTitle: 'Edit Voyage Particulars',
     dialogDesc: 'The voyage number cannot be changed — it is already referenced by documents.',
     selVessel: '— select vessel —', selNone: '— none —', cancel: 'Cancel', save: 'Save changes',
-    tabCargo: 'Cargo', tabPortCall: 'Port Calls', tabFinance: 'Financial', tabTasks: 'Tasks',
+    tabCargo: 'Cargo', tabPortCall: 'Port Calls', tabFinance: 'Financial', tabTasks: 'Tasks', tabAttachments: 'Attachments',
     assistant: 'Assistant',
   },
 }
@@ -118,7 +120,7 @@ const fmtDate = (d: string | Date | null) => {
     : v.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })
 }
 
-const TABS = ['cargo', 'portcall', 'finance', 'tasks'] as const
+const TABS = ['cargo', 'portcall', 'finance', 'tasks', 'attachments'] as const
 type TabKey = (typeof TABS)[number]
 
 function Field({ label, value }: { label: string; value: string }) {
@@ -225,14 +227,15 @@ export function VoyageWorkspace({
   }
 
   const tabLabel: Record<TabKey, string> = {
-    cargo: t.tabCargo, portcall: t.tabPortCall, finance: t.tabFinance, tasks: t.tabTasks,
+    cargo: t.tabCargo, portcall: t.tabPortCall, finance: t.tabFinance, tasks: t.tabTasks, attachments: t.tabAttachments,
   }
-  const tabIcon = { cargo: Boxes, portcall: Anchor, finance: Wallet, tasks: ClipboardList }
+  const tabIcon = { cargo: Boxes, portcall: Anchor, finance: Wallet, tasks: ClipboardList, attachments: Paperclip }
   const tabCount: Record<TabKey, number | null> = {
     cargo: voyage.cargoes.length,
     portcall: voyage.portCalls.length,
     finance: null,
     tasks: tasks.filter((tk) => tk.status !== 'CANCELLED' && tk.status !== 'DONE').length,
+    attachments: null,
   }
 
   return (
@@ -424,6 +427,11 @@ export function VoyageWorkspace({
               voyageAnchors={voyageAnchors}
             />
           )}
+          {tab === 'attachments' && <AttachmentPanel entityType="VOYAGE" entityId={voyage.id} />}
+        </div>
+
+        <div className="border-t border-card-border p-5">
+          <CommentPanel entityType="VOYAGE" entityId={voyage.id} />
         </div>
       </section>
 

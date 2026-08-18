@@ -17,6 +17,8 @@ import { pastikanLanggananAktif } from '@/services/subscription'
 import { bangunKonteks } from '@/services/ai/konteks.service'
 import { type JenisKonteks } from '@/services/ai/konteks'
 import { periksaNarasi } from '@/services/ai/narasi-guard'
+import { uploadAttachment } from '@/services/ops/attachment.service'
+import type { TenantContext } from '@/services/context'
 import { promptRingkasBerkas, promptRingkasSistem } from '@/lib/ai/summary'
 import { flattenWorkbook } from '@/lib/ai/vessel-extract'
 import {
@@ -77,10 +79,11 @@ async function ringkasSistem(
   })
 }
 
-async function ringkasBerkas(req: Request, bahasa: 'id' | 'en') {
+async function ringkasBerkas(ctx: TenantContext, req: Request, bahasa: 'id' | 'en') {
   let file: File | null = null
+  let form: FormData
   try {
-    const form = await req.formData()
+    form = await req.formData()
     const f = form.get('file')
     if (f instanceof File) file = f
   } catch {
@@ -137,10 +140,36 @@ async function ringkasBerkas(req: Request, bahasa: 'id' | 'en') {
   const teks = firstMessageText(resp)
   if (!teks) throw new Error('Model tidak memberi ringkasan.')
 
+  // K111 — revisi K80: berkas boleh disimpan ke lampiran, OPSIONAL dan
+  // BAWAAN MATI (checkbox di SummaryDialog, tak dicentang kalau tak
+  // disentuh). Diproses SESUDAH ringkasan berhasil, dan kegagalannya TIDAK
+  // menggagalkan ringkasan yang sudah didapat — checkbox ini cuma
+  // menambahkan efek samping opsional di atas hasil yang sudah sah.
+  let lampiran: { ok: boolean; id?: string; error?: string } | undefined
+  const simpan = str(form.get('simpanLampiran')) === 'true'
+  if (simpan) {
+    const entityType = form.get('entityType')
+    const entityId = form.get('entityId')
+    try {
+      const hasil = await uploadAttachment(ctx, {
+        entityType,
+        entityId,
+        fileName: file.name,
+        mimeType: file.type || null,
+        isi: Buffer.from(ab),
+        kind: 'GENERAL',
+        note: 'Diringkas AI (Document Summary)',
+      })
+      lampiran = { ok: true, id: hasil.attachment.id }
+    } catch (e) {
+      lampiran = { ok: false, error: e instanceof Error ? e.message : 'Gagal menyimpan lampiran.' }
+    }
+  }
+
   // K80/2 — TIDAK diperiksa periksaNarasi(): tak ada payload sistem untuk
   // dibandingkan, ini murni pembacaan dokumen pihak ketiga. UI menandai
   // sumber 'berkas' secara visual berbeda dari 'sistem'.
-  return Response.json({ ok: true, sumber: 'berkas', summary: teks })
+  return Response.json({ ok: true, sumber: 'berkas', summary: teks, lampiran })
 }
 
 export const POST = withTenant(async (ctx, req) => {
@@ -151,7 +180,7 @@ export const POST = withTenant(async (ctx, req) => {
   const bahasa = (BAHASA as readonly string[]).includes(bahasaQ ?? '') ? (bahasaQ as 'id' | 'en') : 'id'
 
   if (contentType.includes('multipart/form-data')) {
-    return ringkasBerkas(req, bahasa)
+    return ringkasBerkas(ctx, req, bahasa)
   }
 
   const body = await req.json().catch(() => ({}))

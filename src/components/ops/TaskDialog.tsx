@@ -31,6 +31,8 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import { hitungDueAt, type TanggalJangkar } from '@/services/ops/task-schedule'
+import { AttachmentPanel } from './AttachmentPanel'
+import { CommentPanel } from './CommentPanel'
 import {
   TASK_CATEGORIES,
   TASK_PRIORITIES,
@@ -407,6 +409,13 @@ export function TaskDialog({
               <p className="text-status-danger text-xs bg-status-danger/10 border border-status-danger/30 rounded px-3 py-2">
                 {error}
               </p>
+            )}
+
+            {isEdit && task && (
+              <div className="space-y-4 pt-2 border-t border-border-muted">
+                <AttachmentPanel entityType="TASK" entityId={task.id} />
+                <CommentPanel entityType="TASK" entityId={task.id} />
+              </div>
             )}
 
             <div className="flex justify-end gap-2 pt-1">

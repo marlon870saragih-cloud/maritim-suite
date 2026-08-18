@@ -46,6 +46,19 @@ export type KonteksAI = {
   prediksi?: { serviceCode: string; median: number; tier: string; nNyata: number }[]
   anomali?: { kode: string; pesan: string }[]
   /**
+   * K129 — komentar (Catatan, K128) pada entitas ini. Maksimal 10 TERBARU,
+   * masing-masing `isi` dipotong 500 karakter (dengan "…" bila terpotong —
+   * pemotongan per-komentar terlihat langsung di teksnya, sejalan cara
+   * `notify()` memotong pesan sebutan). Teks bebas ketikan manusia — field
+   * paling murah bagi siapa pun menitipkan "perintah" ke model; itu sebabnya
+   * ia WAJIB melewati KALIMAT_K53 yang sama dengan 'catatan'/'catatanVoyage'
+   * (lihat assistant-context.ts). Komentar entitas crew change TIDAK PERNAH
+   * masuk ke sini (K129/4) — otomatis terjaga karena field ini hanya diisi
+   * untuk entitas VOYAGE/DISBURSEMENT/INVOICE yang sedang dibuka (K76),
+   * tak pernah untuk CrewChange.
+   */
+  komentar?: { penulis: string; waktu: string; isi: string }[]
+  /**
    * Diisi HANYA bila `baris` dipotong. K76/3 mewajibkan pemotongan dilaporkan di
    * DALAM konteks, bukan di log server: konteks yang terpotong diam-diam
    * menghasilkan jawaban yang percaya diri atas data yang tak lengkap, dan model

@@ -58,6 +58,9 @@ const STR: Record<Lang, Record<string, string>> = {
     errConn: 'Gagal terhubung ke server.',
     errRateReq: 'Rate wajib diisi dan lebih besar dari 0.',
     resultTitle: 'Hasil', resultOk: 'tersimpan', resultFail: 'gagal', close: 'Tutup',
+    attachmentPort: 'Pelabuhan sumber lembar tarif ini',
+    attachmentPortHint: 'Berkas ini akan tersimpan sebagai lampiran pada pelabuhan yang dipilih (K112) — wajib diisi.',
+    selPort: '— pilih pelabuhan —',
   },
   en: {
     trigger: 'Import Rates from PDF/Excel',
@@ -87,6 +90,9 @@ const STR: Record<Lang, Record<string, string>> = {
     errConn: 'Failed to connect to server.',
     errRateReq: 'Rate is required and must be greater than 0.',
     resultTitle: 'Result', resultOk: 'saved', resultFail: 'failed', close: 'Close',
+    attachmentPort: 'Port this rate sheet is from',
+    attachmentPortHint: 'This file will be saved as an attachment on the selected port (K112) — required.',
+    selPort: '— select port —',
   },
 }
 
@@ -129,6 +135,8 @@ export function RateImportDialog({
   const [error, setError] = useState('')
   const [dragging, setDragging] = useState(false)
   const [saveResult, setSaveResult] = useState<{ ok: number; fail: number; errors: string[] } | null>(null)
+  const [ports, setPorts] = useState<{ id: string; name: string }[]>([])
+  const [attachmentPortId, setAttachmentPortId] = useState('')
 
   useEffect(() => {
     if (!open) return
@@ -138,6 +146,13 @@ export function RateImportDialog({
     setError('')
     setDragging(false)
     setSaveResult(null)
+    setAttachmentPortId('')
+    // K112 — daftar pelabuhan untuk pemilihan wajib sebelum simpan. Diambil
+    // sekali per buka dialog, bukan per baris.
+    fetch('/api/ports')
+      .then((r) => (r.ok ? r.json() : []))
+      .then((list: { id: string; name: string }[]) => setPorts(Array.isArray(list) ? list : []))
+      .catch(() => setPorts([]))
   }, [open])
 
   function choose(f: File | null | undefined) {
@@ -178,25 +193,29 @@ export function RateImportDialog({
         setError(t.noneFound)
         return
       }
-      setRows(
-        items.map(({ draft, serviceMatch, portMatch, currentRate }) => ({
-          form: {
-            vesselType: draft.vesselType ?? '',
-            gtMin: draft.gtMin ?? '',
-            gtMax: draft.gtMax ?? '',
-            rate: draft.rate ?? '',
-            currency: draft.currency ?? currentRate?.currency ?? '',
-            minCharge: draft.minCharge ?? '',
-            effectiveFrom: draft.effectiveFrom ?? '',
-          },
-          serviceMatch,
-          serviceRaw: draft.serviceName || draft.serviceCode || '',
-          portMatch,
-          currentRate,
-          // K82/2 — bawaan TIDAK tercentang, beda sengaja dari MasterImportDialog (K81).
-          checked: false,
-        })),
-      )
+      const newRows = items.map(({ draft, serviceMatch, portMatch, currentRate }) => ({
+        form: {
+          vesselType: draft.vesselType ?? '',
+          gtMin: draft.gtMin ?? '',
+          gtMax: draft.gtMax ?? '',
+          rate: draft.rate ?? '',
+          currency: draft.currency ?? currentRate?.currency ?? '',
+          minCharge: draft.minCharge ?? '',
+          effectiveFrom: draft.effectiveFrom ?? '',
+        },
+        serviceMatch,
+        serviceRaw: draft.serviceName || draft.serviceCode || '',
+        portMatch,
+        currentRate,
+        // K82/2 — bawaan TIDAK tercentang, beda sengaja dari MasterImportDialog (K81).
+        checked: false,
+      }))
+      setRows(newRows)
+      // K112 — pra-isi pilihan pelabuhan lampiran dari baris pertama yang
+      // punya portMatch (kasus umum: satu lembar = satu pelabuhan). Operator
+      // tetap bisa mengubahnya; wajib diisi sebelum tombol Simpan aktif.
+      const portTebakan = newRows.find((r) => r.portMatch)?.portMatch
+      if (portTebakan) setAttachmentPortId(portTebakan.id)
     } catch {
       setError(t.errConn)
     } finally {
@@ -220,15 +239,20 @@ export function RateImportDialog({
       setError(t.errRateReq)
       return
     }
+    if (!attachmentPortId) {
+      setError(t.attachmentPortHint)
+      return
+    }
     setBusy(true)
     setError('')
     try {
-      const res = await fetch('/api/ai/rate-import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sourceFileName: file.name,
-          items: toSave.map((r) => ({
+      const form = new FormData()
+      form.append('file', file)
+      form.append('portId', attachmentPortId)
+      form.append(
+        'items',
+        JSON.stringify(
+          toSave.map((r) => ({
             serviceId: r.serviceMatch!.id,
             portId: r.portMatch?.id || null,
             vesselType: r.form.vesselType || null,
@@ -239,8 +263,9 @@ export function RateImportDialog({
             minCharge: r.form.minCharge || null,
             effectiveFrom: r.form.effectiveFrom || null,
           })),
-        }),
-      })
+        ),
+      )
+      const res = await fetch('/api/ai/rate-import', { method: 'POST', body: form })
       const body = await res.json().catch(() => null)
       if (!res.ok) {
         setError(body?.error?.message ?? t.errRead)
@@ -353,6 +378,23 @@ export function RateImportDialog({
             <div className="flex items-center gap-1.5 bg-accent-amber/10 border border-accent-amber/25 rounded-md px-2.5 py-1.5">
               <ShieldAlert className="w-3.5 h-3.5 text-accent-amber flex-shrink-0" />
               <span className="text-[11px] text-accent-amber">{t.guard}</span>
+            </div>
+
+            <div>
+              <label className="block text-[9px] font-mono uppercase tracking-wider text-text-secondary mb-0.5">
+                {t.attachmentPort} <span className="text-status-danger">*</span>
+              </label>
+              <select
+                value={attachmentPortId}
+                onChange={(e) => setAttachmentPortId(e.target.value)}
+                className="w-full bg-surface-secondary border border-border-muted rounded px-2 py-1.5 text-xs text-text-primary focus:border-accent-blue focus:outline-none focus:ring-1 focus:ring-accent-blue/40"
+              >
+                <option value="">{t.selPort}</option>
+                {ports.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+              <p className="text-[10px] text-text-secondary mt-1">{t.attachmentPortHint}</p>
             </div>
 
             <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
@@ -517,7 +559,7 @@ export function RateImportDialog({
               <button
                 type="button"
                 onClick={saveChecked}
-                disabled={busy || checkedCount === 0}
+                disabled={busy || checkedCount === 0 || !attachmentPortId}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded text-sm font-medium bg-accent-blue hover:bg-primary text-[#231a06] transition-colors disabled:opacity-50"
               >
                 {busy && <Loader2 className="w-4 h-4 animate-spin" />}

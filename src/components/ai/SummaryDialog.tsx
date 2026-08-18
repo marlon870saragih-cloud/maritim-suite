@@ -24,6 +24,8 @@ const STR: Record<Lang, Record<string, string>> = {
     copy: 'Salin', copied: 'Tersalin',
     warnUnverified: 'Ada angka pada ringkasan yang tak cocok dengan dokumen — periksa ulang sebelum dipakai.',
     errSummarize: 'Gagal membuat ringkasan.', errConn: 'Gagal terhubung ke server.', errNoFile: 'Pilih berkas dulu.',
+    saveAttachment: 'Simpan berkas ini ke lampiran',
+    lampiranOk: 'Berkas tersimpan sebagai lampiran.', lampiranFail: 'Ringkasan berhasil, tapi gagal menyimpan lampiran',
   },
   en: {
     title: 'Summarize Document', desc: 'A paste-ready summary for email/reports. Uploaded files are never stored.',
@@ -34,6 +36,8 @@ const STR: Record<Lang, Record<string, string>> = {
     copy: 'Copy', copied: 'Copied',
     warnUnverified: 'Some figures in the summary do not match the document — double-check before use.',
     errSummarize: 'Failed to generate summary.', errConn: 'Failed to connect to server.', errNoFile: 'Choose a file first.',
+    saveAttachment: 'Save this file to attachments',
+    lampiranOk: 'File saved as an attachment.', lampiranFail: 'Summary succeeded, but saving the attachment failed',
   },
 }
 
@@ -53,10 +57,18 @@ export function SummaryDialog({
   const [tab, setTab] = useState<Tab>(systemContext ? 'system' : 'upload')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [result, setResult] = useState<{ summary: string; sumber: 'sistem' | 'berkas'; ditolak: boolean } | null>(null)
+  const [result, setResult] = useState<{
+    summary: string
+    sumber: 'sistem' | 'berkas'
+    ditolak: boolean
+    lampiran?: { ok: boolean; error?: string }
+  } | null>(null)
   const [copied, setCopied] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const [fileName, setFileName] = useState('')
+  // K111 — bawaan MATI (revisi K80): meringkas dokumen pihak ketiga sekali
+  // pakai adalah hal wajar; menyimpannya diam-diam bukan.
+  const [saveAttachment, setSaveAttachment] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -64,6 +76,7 @@ export function SummaryDialog({
     setResult(null)
     setError('')
     setFileName('')
+    setSaveAttachment(false)
     if (fileRef.current) fileRef.current.value = ''
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
@@ -104,13 +117,18 @@ export function SummaryDialog({
     try {
       const form = new FormData()
       form.append('file', file)
+      if (saveAttachment && systemContext) {
+        form.append('simpanLampiran', 'true')
+        form.append('entityType', systemContext.jenis)
+        form.append('entityId', systemContext.id)
+      }
       const res = await fetch(`/api/ai/summarize?bahasa=${lang}`, { method: 'POST', body: form })
       const body = await res.json().catch(() => null)
       if (!res.ok) {
         setError(body?.error?.message ?? t.errSummarize)
         return
       }
-      setResult({ summary: body.summary, sumber: body.sumber, ditolak: false })
+      setResult({ summary: body.summary, sumber: body.sumber, ditolak: false, lampiran: body.lampiran })
     } catch {
       setError(t.errConn)
     } finally {
@@ -180,6 +198,17 @@ export function SummaryDialog({
                 />
               </label>
               <p className="text-text-secondary text-[11px]">{t.fileHint}</p>
+              {systemContext && (
+                <label className="flex items-center gap-2 text-xs text-text-secondary cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={saveAttachment}
+                    onChange={(e) => setSaveAttachment(e.target.checked)}
+                    className="w-3.5 h-3.5 rounded border-border-muted accent-accent-blue"
+                  />
+                  {t.saveAttachment}
+                </label>
+              )}
               <button
                 type="button"
                 onClick={summarizeUpload}
@@ -208,6 +237,11 @@ export function SummaryDialog({
               {result.ditolak && (
                 <p className="text-status-danger text-xs bg-status-danger/10 border border-status-danger/30 rounded px-3 py-2">
                   {t.warnUnverified}
+                </p>
+              )}
+              {result.lampiran && (
+                <p className={`text-xs ${result.lampiran.ok ? 'text-status-success' : 'text-status-danger'}`}>
+                  {result.lampiran.ok ? t.lampiranOk : `${t.lampiranFail}: ${result.lampiran.error}`}
                 </p>
               )}
               <button

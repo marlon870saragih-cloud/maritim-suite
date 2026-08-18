@@ -46,6 +46,8 @@ import { AnomalyPanel } from '@/components/ai/AnomalyPanel'
 import { AssistantPanel } from '@/components/ai/AssistantPanel'
 import { EmailDraftDialog, templatTersedia, type EmailDraftContext } from '@/components/ai/EmailDraftDialog'
 import { SummaryDialog } from '@/components/ai/SummaryDialog'
+import { AttachmentPanel } from '@/components/ops/AttachmentPanel'
+import { CommentPanel } from '@/components/ops/CommentPanel'
 
 const STR: Record<Lang, Record<string, string>> = {
   id: {
@@ -698,6 +700,11 @@ export function DisbursementBuilder({ disb: initial, voyageId }: { disb: Builder
         error={approvalError}
         onDecide={decideApproval}
       />
+
+      <section className="bg-card-bg border border-card-border rounded-lg p-5 grid gap-6 md:grid-cols-2">
+        <AttachmentPanel entityType="DISBURSEMENT" entityId={disb.id} />
+        <CommentPanel entityType="DISBURSEMENT" entityId={disb.id} />
+      </section>
 
       <ServicePickerDialog
         open={pickerOpen}

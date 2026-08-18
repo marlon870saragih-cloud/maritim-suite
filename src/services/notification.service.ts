@@ -80,6 +80,7 @@ export type NewNotification = {
     | 'CREW_CHANGE'
     | 'PORT_PLAYBOOK'
     | 'VESSEL'
+    | 'PORT'
   entityId?: string
   href?: string
   /**

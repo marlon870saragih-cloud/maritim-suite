@@ -162,10 +162,20 @@ if (blokTipe) {
   const kunci = Array.from(blokTipe[1].matchAll(/^\s{2}(\w+)\??:/gm)).map((m) => m[1])
   const DIIZINKAN = [
     'jenis', 'ringkas', 'fakta', 'baris', 'total', 'warning',
-    'variance', 'prediksi', 'anomali', 'catatanPemotongan',
+    'variance', 'prediksi', 'anomali', 'komentar', 'catatanPemotongan',
   ]
   const asing = kunci.filter((k) => !DIIZINKAN.includes(k))
   cek('tak ada field baru di KonteksAI', asing.length === 0, asing.join(', '))
+}
+
+// ------------------------------------------------------------- bagian 4b
+console.log("\n4b. K129 — 'komentar' ikut disebut di kalimat pagar K53 (bukan cuma di tipe)")
+
+const asistenSumber = baca('src/lib/ai/assistant-context.ts')
+const blokK53 = /export const KALIMAT_K53[\s\S]*?^\}/m.exec(asistenSumber)
+cek('blok KALIMAT_K53 ditemukan', blokK53 !== null)
+if (blokK53) {
+  cek("KALIMAT_K53 menyebut 'komentar' (id & en)", /'komentar'/.test(blokK53[0]))
 }
 
 // ---------------------------------------------------------------- bagian 5

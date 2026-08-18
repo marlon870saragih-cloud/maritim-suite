@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Plus, Pencil, Trash2, Loader2, Truck, FileUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -255,7 +256,11 @@ export function VendorsManager({ vendors }: { vendors: Vendor[] }) {
                       !v.isActive && 'opacity-50',
                     )}
                   >
-                    <td className="px-5 py-4 text-text-primary">{v.name}</td>
+                    <td className="px-5 py-4 text-text-primary">
+                      <Link href={`/settings/vendors/${v.id}`} className="hover:text-accent-blue transition-colors">
+                        {v.name}
+                      </Link>
+                    </td>
                     <td className="px-5 py-4 text-text-secondary">{v.vendorType ?? '—'}</td>
                     <td className="px-5 py-4 text-text-secondary">{v.phone ?? '—'}</td>
                     <td className="px-5 py-4">
