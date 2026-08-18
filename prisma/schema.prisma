@@ -38,6 +38,36 @@ model Tenant {
   /// mengubah asal baris yang SUDAH ada — asal adalah snapshot, bukan turunan.
   goLiveAt DateTime?
 
+  /// Fase 8 / K151. Keadaan wizard onboarding (langkah mana sudah tuntas/
+  /// dilewati). `Json?`, bukan tabel — bentuknya akan berubah beberapa kali
+  /// dalam setahun pertama, isinya kecil, tak ada yang perlu meng-query-nya
+  /// (semangat yang sama dengan `dataOrigin` dipilih `String?`, K55).
+  onboardingState Json?
+
+  /// Fase 8 / K180. Satu warna aksen white-label (hex). Dicek kontrasnya oleh
+  /// kode, bukan dipercaya apa adanya (K180 catatan aksesibilitas).
+  brandPrimaryColor String?
+  /// Fase 8 / K182. Alamat portal `<slug>.portal.maritimesuite.id` (8i) /
+  /// `/portal/<slug>` (8a-8g interim). Unik lintas-tenant.
+  portalSlug         String?   @unique
+  /// Fase 8 / K182. Domain milik tenant sendiri — add-on Enterprise (P57).
+  /// Kolomnya ada sejak sekarang supaya P57 tak butuh migration lagi;
+  /// jalurnya (penerbitan sertifikat) belum dibangun.
+  customDomain             String?
+  customDomainVerifiedAt  DateTime?
+  /// Fase 8 / K181. Pengganti `logoUrl` base64 — berkas asli lewat Attachment
+  /// (K106/K107). `logoUrl` TIDAK dihapus (M6): tetap dibaca sebagai cadangan
+  /// selama kolom ini null (tenant belum dimigrasi skrip `migrate-logo-to-
+  /// attachment.mjs`, K181).
+  logoAttachmentId String?
+  /// Fase 8 / K162. Gerbang pembayaran yang TERAKHIR BERHASIL dipakai tenant
+  /// ini — bawaan checkout berikutnya. Bukan pilihan wajib; kosong = pakai
+  /// GERBANG_BAWAAN (P50).
+  preferredGateway String?
+  /// Fase 8 / K165. Add-on yang aktif untuk periode langganan berjalan — pola
+  /// SAMA PERSIS `modulesEnabled` yang sudah ada (nol mekanisme baru).
+  addonsEnabled String[] @default([])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -78,6 +108,16 @@ model Tenant {
   emailLogs         EmailLog[]
   portPlaybooks     PortPlaybook[]
   knowledgeArticles KnowledgeArticle[]
+
+  // --- Fase 8 (SaaS commercial). Lihat docs/FASE-8-SAAS-COMMERCIAL.md ---
+  portalUsers               PortalUser[]
+  portalAccesses            PortalAccess[]
+  portalInvitations         PortalInvitation[]
+  subscriptionInvoices      SubscriptionInvoice[]
+  vendorInvoiceSubmissions  VendorInvoiceSubmission[]
+  marineDataCaches          MarineDataCache[]
+  usageEvents               UsageEvent[]
+  dataRequests              DataRequest[]
 }
 
 model Payment {
@@ -96,8 +136,26 @@ model Payment {
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
 
+  /// Fase 8 / K159. 'MIDTRANS' | 'DUITKU'. NULL = baris lama (semuanya
+  /// Midtrans) — sengaja TIDAK di-backfill (M6): riwayat lama tak punya arti
+  /// komersial, menulis ulang demi kerapian adalah risiko tanpa imbalan.
+  gateway    String?
+  /// Fase 8 / K159. Nomor rujukan milik gerbang (Duitku `reference`,
+  /// Midtrans `transaction_id`) — dipakai rekonsiliasi manual.
+  gatewayRef String?
+  /// Fase 8 / K159. Metode yang akhirnya dipakai pembeli (VA BCA, QRIS,
+  /// kartu…), apa adanya dari payload gerbang.
+  payMethod  String?
+
+  subscriptionInvoice SubscriptionInvoice?
+
   @@index([tenantId])
   @@index([status])
+  /// Fase 8 / K159/3. Berdampingan dengan @unique([orderId]) di atas — yang
+  /// lama tetap dipertahankan (ia yang menjamin awalan gerbang benar-benar
+  /// dipakai, bukan sekadar konvensi penamaan); yang ini menutup tabrakan
+  /// ruang nama orderId ANTAR gerbang saat handler mencari WHERE orderId+gateway.
+  @@unique([gateway, orderId])
 }
 
 model User {
@@ -396,6 +454,9 @@ model Customer {
   voyages  Voyage[]
   invoices Invoice[]
 
+  // --- Fase 8 ---
+  portalAccesses PortalAccess[]
+
   @@index([tenantId])
 }
 
@@ -426,6 +487,10 @@ model Vendor {
   ratings        VendorRating[]
   purchaseOrders PurchaseOrder[]
   workOrders     WorkOrder[]
+
+  // --- Fase 8 ---
+  portalAccesses            PortalAccess[]
+  vendorInvoiceSubmissions  VendorInvoiceSubmission[]
 
   @@index([tenantId])
 }
@@ -1115,9 +1180,17 @@ model Attachment {
   createdAt        DateTime  @default(now())
   deletedAt        DateTime? // K110 — soft delete; berkas fisik TIDAK pernah dihapus
 
+  /// Fase 8 / K170. true HANYA bila seseorang menekan "Bagikan ke portal".
+  /// Bawaan false (sama semangat K111). Lampiran `sensitive = true` TIDAK
+  /// PERNAH boleh disetel true — ditegakkan di service, bukan di sini.
+  sharedToPortal Boolean   @default(false)
+  sharedAt       DateTime?
+  sharedByUserId String?
+
   @@index([tenantId, entityType, entityId, createdAt])
   @@index([tenantId, sha256])
   @@index([tenantId, expiresAt])
+  @@index([tenantId, sharedToPortal])
 }
 
 /// K128 — catatan pada entitas. Datar (tanpa thread), bukan messenger.
@@ -1484,4 +1557,238 @@ model KnowledgeArticle {
   deletedAt    DateTime?
 
   @@index([tenantId, status])
+}
+
+// =====================================================================
+// Fase 8 — SaaS Commercial. Lihat docs/FASE-8-SAAS-COMMERCIAL.md (K143+).
+// 8a: identitas portal + dua lapis isolasi. Sembilan model di bawah dibuat
+// SEKALIGUS (bukan dicicil per increment) — K145: prosedur K7 (backup →
+// baseline → migrate) berbiaya tetap dan berisiko tiap kali dijalankan,
+// jadi dijalankan sekali untuk seluruh Fase 8, sama seperti 7a.
+// =====================================================================
+
+/// Orang di luar tenant yang boleh masuk portal. SENGAJA BUKAN `User` (K143):
+/// tabel, provider NextAuth, cookie, dan namespace API-nya semuanya terpisah
+/// — lihat services/portal/. Kalau kode internal lupa memagari sesuatu, sesi
+/// portal DITOLAK (tak dikenali), bukan diterima; itulah alasan tabelnya
+/// terpisah alih-alih menambah nilai ke enum Role (K143).
+model PortalUser {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  email    String
+  password String // bcrypt, pola yang sama dengan User
+  name     String
+  phone    String?
+
+  isActive      Boolean   @default(true)
+  lastLoginAt   DateTime?
+  passwordSetAt DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  accesses PortalAccess[]
+
+  /// Unik PER TENANT, bukan global — beda dari User.email yang unik global.
+  /// PT Samudra bisa jadi pelanggan tiga keagenan berbeda; orang yang sama
+  /// (ops@samudra.co.id) mewakili mereka di ketiganya, dengan tiga akun
+  /// terpisah (P63 interim) — bukan satu sesi berdaulat lintas-tenant.
+  @@unique([tenantId, email])
+  @@index([tenantId, isActive])
+}
+
+/// Hak seorang PortalUser atas SATU pihak (satu Customer atau satu Vendor).
+/// Dipisah dari PortalUser supaya satu orang bisa mewakili dua pihak pada
+/// tenant yang sama (mis. perusahaan yang jadi pelanggan sekaligus vendor)
+/// tanpa dua akun. Pencabutan akses = mengisi revokedAt, diperiksa SETIAP
+/// permintaan portal (K168) — tak pernah dipercaya dari isi token saja.
+model PortalAccess {
+  id           String     @id @default(cuid())
+  tenantId     String
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  portalUserId String
+  portalUser   PortalUser @relation(fields: [portalUserId], references: [id], onDelete: Cascade)
+
+  pihak      String // 'CUSTOMER' | 'VENDOR' — konstanta di modul murni (services/portal/pihak.ts), bukan enum DB (alasan K55)
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id])
+  vendorId   String?
+  vendor     Vendor?   @relation(fields: [vendorId], references: [id])
+
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  @@unique([portalUserId, pihak, customerId, vendorId])
+  @@index([tenantId, customerId])
+  @@index([tenantId, vendorId])
+}
+
+/// Undangan berbatas waktu. Token disimpan sebagai HASH, bukan apa adanya —
+/// bocornya isi tabel tidak boleh berarti bocornya akses (pola yang sama
+/// dengan bcrypt, bukan kata sandi apa adanya).
+model PortalInvitation {
+  id              String    @id @default(cuid())
+  tenantId        String
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email           String
+  pihak           String
+  customerId      String?
+  vendorId        String?
+  tokenHash       String    @unique // sha256(token); token asli hanya pernah ada di tautan undangan
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  invitedByUserId String
+  createdAt       DateTime  @default(now())
+
+  @@index([tenantId, email])
+}
+
+/// Fase 8 / K164. Tagihan LANGGANAN (Maritime Suite → Tenant) — BUKAN
+/// `Invoice` (tagihan keagenan Tenant → Customer, §1.3 dokumen desain). Kop
+/// dokumen ini memakai identitas Maritime Suite, bukan Tenant.logoUrl —
+/// satu-satunya dokumen di seluruh aplikasi yang begitu (K164/K179).
+/// Terbit OTOMATIS, satu per Payment lunas, di transaksi yang sama dengan
+/// perpanjangan langganan (K163) — karena itu paymentId unik (1:1).
+model SubscriptionInvoice {
+  id            String   @id @default(cuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  paymentId     String   @unique
+  payment       Payment  @relation(fields: [paymentId], references: [id])
+
+  invoiceNumber String // INV-SUB/2026/08/0001 — formatDocNumber yang sudah ada (K32)
+  currency      String   @default("IDR")
+  subtotal      Float
+  taxAmount     Float    @default(0) // P64 belum dijawab (PPN atas langganan) — 0 sampai diputuskan
+  grandTotal    Float
+  issuedAt      DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  items SubscriptionInvoiceItem[]
+
+  @@unique([tenantId, invoiceNumber])
+  @@index([tenantId, issuedAt])
+}
+
+/// Model ANAK (tanpa tenantId) — akses wajib lewat induk (K44), sama pola
+/// DisbursementItem/InvoiceItem.
+model SubscriptionInvoiceItem {
+  id                     String              @id @default(cuid())
+  subscriptionInvoiceId  String
+  subscriptionInvoice    SubscriptionInvoice @relation(fields: [subscriptionInvoiceId], references: [id], onDelete: Cascade)
+
+  description String // "Langganan Professional — 30 hari", "Add-on: Data AIS", dst
+  amount      Float
+
+  @@index([subscriptionInvoiceId])
+}
+
+/// Fase 8 / K172. Tagihan yang DIUNGGAH vendor lewat portal — masuk sebagai
+/// USULAN, tidak pernah langsung jadi baris biaya (sejalan K122: PO/WO tidak
+/// pernah menulis baris Disbursement sendiri). purchaseOrderId/workOrderId/
+/// voyageId SENGAJA polos tanpa @relation formal — pola sama
+/// DisbursementItem.sourcePurchaseOrderId (K122, Fase 7i): penanda asal, bukan
+/// FK yang dipaksakan pada model yang sumbernya opsional/vendor-side.
+model VendorInvoiceSubmission {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  vendorId        String
+  vendor          Vendor @relation(fields: [vendorId], references: [id])
+  purchaseOrderId String?
+  workOrderId     String?
+  voyageId        String?
+
+  invoiceNo   String
+  invoiceDate DateTime
+  currency    String   @default("IDR")
+  amount      Float
+  note        String?
+
+  /// SUBMITTED → UNDER_REVIEW → ACCEPTED | REJECTED. Mesin transisi murni,
+  /// cetakan disbursement-status.ts (K34-K36), sama seperti K91/K120/K121.
+  status           String    @default("SUBMITTED")
+  reviewNote       String?
+  reviewedByUserId String?
+  reviewedAt       DateTime?
+
+  /// Diisi HANYA bila operator menekan "Ambil ke FDA" dan MENYIMPAN sendiri.
+  linkedDisbursementItemId String?
+
+  submittedByPortalUserId String
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@index([tenantId, vendorId, status])
+  @@index([tenantId, status, createdAt])
+}
+
+/// Fase 8 / K176. Cache bertanda waktu dari penyedia data pihak ketiga
+/// (AIS/cuaca/kongesti) — TIDAK PERNAH menimpa kolom operasional
+/// (Voyage.eta, PortCall.ata, Vessel.*). Per tenant, bukan global (K176/3):
+/// dua tenant memantau kapal yang sama membayar dua panggilan — cache lintas
+/// tenant akan jadi satu-satunya tabel yang barisnya dibagi antar-tenant,
+/// meruntuhkan invarian TENANT_MODELS demi menghemat panggilan API.
+model MarineDataCache {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  jenis    String // 'VESSEL_POSITION' | 'PORT_WEATHER' | 'PORT_CONGESTION'
+  kunci    String // IMO / MMSI / kode pelabuhan — apa adanya, bukan id internal kita
+  penyedia String
+  payload  Json // respons apa adanya (semangat Payment.raw)
+
+  diambilPada   DateTime @default(now())
+  berlakuSampai DateTime
+
+  @@unique([tenantId, jenis, kunci, penyedia])
+  @@index([tenantId, berlakuSampai])
+}
+
+/// Fase 8 / K183. Satu tabel ringkas untuk Product Analytics — MILIK SENDIRI,
+/// TERPISAH dari AuditLog (K183: AuditLog adalah jejak hukum yang tak boleh
+/// dipangkas/disampel/dipadatkan; analitik justru ingin ketiganya).
+/// `meta` TAK PERNAH memuat isi dokumen, nama pihak, atau nominal (K183).
+model UsageEvent {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  nama String // 'VOYAGE_CREATED' | 'EPDA_ISSUED' | 'AI_PREDICT_USED' | 'PORTAL_LOGIN' | …
+  meta Json?
+  userId String? // string polos (pola AuditLog); null untuk peristiwa portal/sistem
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, nama, createdAt])
+  @@index([createdAt])
+}
+
+/// Fase 8 / K187. Permintaan hak subjek data (UU PDP: akses/koreksi/
+/// penghapusan). Append-only pada bagian PERMINTAANnya; penyelesaiannya
+/// ditulis manusia — sistem TIDAK PERNAH menghapus data sendiri atas dasar
+/// baris ini (K187/1, sebentuk dengan K110).
+model DataRequest {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  jenis   String // 'AKSES' | 'KOREKSI' | 'PENGHAPUSAN'
+  subjek  String // siapa yang meminta (nama/surel, apa adanya)
+  konteks String? // 'CREW' | 'PORTAL_USER' | 'USER' | 'LAINNYA'
+  uraian  String
+
+  status String @default("BARU") // BARU | DIPROSES | SELESAI | DITOLAK
+  hasil  String?
+
+  ditanganiUserId String?
+  selesaiPada     DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([tenantId, status, createdAt])
 }

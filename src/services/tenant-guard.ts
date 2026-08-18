@@ -62,6 +62,18 @@ export const TENANT_MODELS: ReadonlySet<string> = new Set([
   'EmailLog',
   'PortPlaybook',
   'KnowledgeArticle',
+
+  // --- Fase 8 / K145 — delapan model bertenant baru (identitas portal +
+  // billing + kepatuhan). SubscriptionInvoiceItem SENGAJA tidak di sini —
+  // model anak tanpa tenantId (K44), akses wajib lewat induk.
+  'PortalUser',
+  'PortalAccess',
+  'PortalInvitation',
+  'SubscriptionInvoice',
+  'VendorInvoiceSubmission',
+  'MarineDataCache',
+  'UsageEvent',
+  'DataRequest',
 ])
 
 /** Operasi yang aman disaring lewat `where`. */

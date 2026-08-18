@@ -8,6 +8,10 @@ declare module 'next-auth' {
       role: Role
       tenantId: string
       tenant: Tenant
+      /** Fase 8 / K143-K144 — HANYA terisi pada sesi PORTAL (lib/portal-auth.ts).
+       * Sesi internal (lib/auth.ts) tidak pernah mengisinya; kode internal
+       * yang membaca session.user tidak boleh bergantung pada field ini. */
+      portalUserId?: string
     } & DefaultSession['user']
   }
 
@@ -23,5 +27,7 @@ declare module 'next-auth/jwt' {
     role: Role
     tenantId: string
     tenant: Tenant
+    /** Fase 8 — sesi portal saja (lib/portal-auth.ts). */
+    portalUserId?: string
   }
 }

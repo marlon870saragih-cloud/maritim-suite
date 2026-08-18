@@ -13,7 +13,15 @@ import type { Prisma } from '@prisma/client'
 import type { TenantContext } from '../context'
 import { forTenant } from '../tenant-db'
 
-export type AksiAudit = 'CREATE' | 'UPDATE' | 'DELETE' | 'APPROVE' | 'EXPORT'
+export type AksiAudit =
+  | 'CREATE'
+  | 'UPDATE'
+  | 'DELETE'
+  | 'APPROVE'
+  | 'EXPORT'
+  /** Fase 8 / K144. Satu permintaan portal yang BERHASIL (baca atau tulis) —
+   * withPortal() menulis satu baris ini per permintaan, userId `portal:<id>`. */
+  | 'ACCESS'
 
 /** Data non-HTTP yang hanya route bisa tahu. */
 export type Jejak = { ipAddress?: string | null }

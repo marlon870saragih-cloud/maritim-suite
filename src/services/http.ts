@@ -10,7 +10,9 @@ import { ServiceError, conflict, notFound } from './errors'
 
 export type ApiError = { error: { code: string; message: string; details?: unknown } }
 
-function toResponse(e: unknown): Response {
+/** Diekspor untuk dipakai ulang services/portal/http.ts (K144) — satu-satunya
+ * bagian yang dipakai bersama; route & konteksnya sendiri tetap terpisah total. */
+export function toResponse(e: unknown): Response {
   const err = normalize(e)
   if (!(err instanceof ServiceError)) {
     // Kesalahan tak terduga: catat lengkap di server, balas seadanya ke klien
