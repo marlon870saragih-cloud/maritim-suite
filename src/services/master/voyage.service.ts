@@ -28,6 +28,8 @@ import { catatAudit } from '../finance/audit'
 import { ASAL_DATA, adalahAsalData } from '../ai/provenance'
 // Fase 8c — kuota (K156).
 import { pastikanKuota } from '../saas/quota.service'
+// Fase 8j — pemakaian (K183/K184).
+import { catatPemakaian } from '../saas/usage.service'
 
 const STATUSES: readonly VoyageStatus[] = [
   'PLANNED', 'CONFIRMED', 'ARRIVED', 'BERTHED', 'WORKING', 'COMPLETED', 'DEPARTED', 'CLOSED', 'CANCELLED',
@@ -182,6 +184,10 @@ export async function createVoyage(ctx: TenantContext, body: Record<string, unkn
   const voyage = await db.voyage.create({
     data: { ...data, dataOrigin, voyageNumber, tenantId: ctx.tenantId },
   })
+
+  // Fase 8j / K183 — SESUDAH create berhasil, sebelum efek samping lain
+  // (gagal di sini tak boleh membatalkan voyage yang sudah lahir).
+  await catatPemakaian(ctx, 'VOYAGE_CREATED')
 
   // K95 pintu 1 — checklist otomatis, SEKALI, saat voyage lahir dan hanya bila
   // pelabuhannya sudah diketahui. Tidak ada template yang cocok → tidak terjadi

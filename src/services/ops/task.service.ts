@@ -48,6 +48,8 @@ import {
 } from './board-order'
 import { nilaiSla, type HasilSla } from './sla'
 import { AMBANG_MENDEKATI_JAM, slaBawaanKategori } from './sla-policy'
+// Fase 8j — pemakaian (K183/K184).
+import { catatPemakaian } from '../saas/usage.service'
 
 // ------------------------------------------------------------------ kebijakan
 
@@ -569,6 +571,13 @@ export async function changeTaskStatus(
     },
     opts.jejak ?? {},
   )
+
+  // Fase 8j / K183 — dicatat setiap kali tugas MENDARAT di DONE (termasuk
+  // sesudah dibuka kembali lalu diselesaikan lagi — repetisi genuine, bukan
+  // dobel-hitung yang perlu dijaga).
+  if (ke === 'DONE') {
+    await catatPemakaian(ctx, 'TASK_COMPLETED')
+  }
 
   return getTask(ctx, id)
 }

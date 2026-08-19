@@ -25,6 +25,8 @@ import {
 } from './invoice-status'
 import { catatAudit, type Jejak } from './audit'
 import { notify } from '../notification.service'
+// Fase 8j — pemakaian (K183/K184).
+import { catatPemakaian } from '../saas/usage.service'
 
 export type InvoiceWithItems = Invoice & {
   items: InvoiceItem[]
@@ -278,6 +280,11 @@ export async function setInvoiceStatus(
       entityId: id,
       href: inv.voyageId ? `/voyages/${inv.voyageId}/invoices/${id}` : undefined,
     })
+  }
+
+  // Fase 8j / K183.
+  if (ke === 'ISSUED') {
+    await catatPemakaian(ctx, 'INVOICE_ISSUED')
   }
 
   return getInvoiceDetail(ctx, id)

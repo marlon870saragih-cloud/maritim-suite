@@ -46,6 +46,8 @@ import { ServiceError, notFound, validation } from '../errors'
 import { forTenant } from '../tenant-db'
 import { pastikanLanggananAktif } from '../subscription'
 import { pastikanKuota } from '../saas/quota.service'
+// Fase 8j — pemakaian (K183/K184).
+import { catatPemakaian } from '../saas/usage.service'
 import { getLatestRate } from '../master/exchange-rate.service'
 import {
   hitungBaris,
@@ -686,6 +688,10 @@ export async function prediksiUntukDisbursement(
   // di atas (K33). Dua pagar berdiri sendiri: langganan habis tetap menolak
   // meski kuota longgar, dan sebaliknya.
   await pastikanKuota(ctx, 'PANGGILAN_AI')
+  // Fase 8j / K183 — dicatat begitu kedua gerbang lolos (langganan+kuota),
+  // bukan menunggu hasil akhir: menjawab "fitur AI dipakai", bukan "hasilnya
+  // tak kosong".
+  await catatPemakaian(ctx, 'AI_PREDICT_USED', { jenis: 'disbursement' })
 
   const disb = await forTenant(ctx).disbursement.findFirst({
     where: { id: disbursementId, deletedAt: null },
@@ -752,6 +758,8 @@ export async function prediksiUntukVoyage(
   // di atas (K33). Dua pagar berdiri sendiri: langganan habis tetap menolak
   // meski kuota longgar, dan sebaliknya.
   await pastikanKuota(ctx, 'PANGGILAN_AI')
+  // Fase 8j / K183.
+  await catatPemakaian(ctx, 'AI_PREDICT_USED', { jenis: 'voyage' })
 
   const diminta = Array.from(
     new Set((serviceIds ?? []).filter((s) => typeof s === 'string' && s !== '')),

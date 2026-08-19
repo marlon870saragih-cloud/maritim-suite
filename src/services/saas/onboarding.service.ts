@@ -9,6 +9,8 @@ import { requireRole, systemContext } from '../context'
 import { forTenant } from '../tenant-db'
 import { notFound, validation } from '../errors'
 import { seedTenant, type HasilSeed } from './seed-data'
+// Fase 8j — pemakaian (K183/K184): di langkah mana onboarding berhenti.
+import { catatPemakaian } from './usage.service'
 
 export const LANGKAH_ONBOARDING = [
   'PROFIL',
@@ -76,11 +78,15 @@ export async function completeStep(ctx: TenantContext, langkah: unknown): Promis
   if (typeof langkah !== 'string' || !(LANGKAH_ONBOARDING as readonly string[]).includes(langkah)) {
     throw validation(`Langkah tidak sah. Pilihan: ${LANGKAH_ONBOARDING.join(', ')}.`)
   }
-  return simpanState(ctx, (s) => {
+  const hasil = await simpanState(ctx, (s) => {
     const selesai = new Set(s.selesai ?? [])
     selesai.add(langkah as LangkahOnboarding)
     return { ...s, selesai: Array.from(selesai) }
   })
+  // Fase 8j / K183 — satu baris per langkah selesai; distribusi `meta.langkah`
+  // lintas tenant menjawab "di langkah mana onboarding paling sering berhenti".
+  await catatPemakaian(ctx, 'ONBOARDING_STEP_DONE', { langkah })
+  return hasil
 }
 
 /** K152 — "Lewati semua langkah → aplikasi tetap bisa dipakai penuh; kartu

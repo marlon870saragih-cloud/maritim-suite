@@ -8,6 +8,10 @@ import {
   extractVesselDraftFromWorkbook,
   type VesselDraft,
 } from '@/lib/ai/vessel-extract'
+// Fase 8j — pemakaian (K183/K184). Rute ini memakai sesi NextAuth mentah
+// (bukan withTenant/TenantContext), jadi ctx dibangun manual dari session.user
+// yang sudah membawa id/tenantId/role — bentuknya persis TenantContext.
+import { catatPemakaian } from '@/services/saas/usage.service'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -87,6 +91,14 @@ export async function POST(req: Request) {
     const msg = e instanceof Error ? e.message : 'Gagal membaca berkas'
     return new Response(msg, { status: 422 })
   }
+
+  // Fase 8j / K183 — ekstraksi berhasil, sebelum pencocokan IMO (yang tak
+  // mengubah apakah "fitur AI ini dipakai" sudah terjadi).
+  await catatPemakaian(
+    { tenantId: session.user.tenantId, userId: session.user.id, role: session.user.role },
+    'AI_VESSEL_IMPORT_USED',
+    { kind },
+  )
 
   // Cocokkan IMO di aplikasi, bukan di query: nomor tersimpan bisa ber-format
   // ("IMO 9123456", "9123456 "), jadi dibandingkan setelah disaring jadi digit.

@@ -18,6 +18,11 @@ import type { NextAuthOptions, User } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
 import { prisma } from './prisma'
+// Fase 8j — pemakaian (K183/K184), churn signal K184: tenant portal yang mulai
+// sepi sebelum langganannya habis. systemContext karena tak ada TenantContext
+// pra-sesi di sini (persis alasan `authorize()` memakai `prisma` mentah).
+import { systemContext } from '@/services/context'
+import { catatPemakaian } from '@/services/saas/usage.service'
 
 const COOKIE_PORTAL_SESSION =
   process.env.NODE_ENV === 'production' ? '__Host-portal-session' : 'portal-session-dev'
@@ -51,6 +56,10 @@ export const portalAuthOptions: NextAuthOptions = {
               where: { id: u.id },
               data: { lastLoginAt: new Date() },
             })
+            // Fase 8j / K183 — userId sengaja TIDAK diisi (skema: null untuk
+            // peristiwa portal/sistem); PORTAL_LOGIN sendiri sudah menyatakan
+            // sumbernya, sentinel tambahan hanya mengulang informasi yang sama.
+            await catatPemakaian(systemContext(u.tenantId), 'PORTAL_LOGIN')
             // `next-auth`'s `User` type juga mewajibkan `role`/`tenant` (dipakai
             // sesi INTERNAL, lib/auth.ts) — PortalUser tak punya keduanya sama
             // sekali (K143: pihak luar tak punya peran internal). Type cast di

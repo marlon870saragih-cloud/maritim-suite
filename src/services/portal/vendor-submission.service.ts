@@ -17,6 +17,11 @@ import { notFound, validation, rateLimited, forbidden } from '../errors'
 import { str, num, tanggal } from '../input'
 import { uploadAttachment, type HasilUnggah } from '../ops/attachment.service'
 import { BATAS_KIRIMAN_VENDOR_PER_HARI } from '../saas/commercial-policy'
+// Fase 8j — pemakaian (K183/K184). Boleh diimpor: usage.service.ts murni
+// bertetangga services/saas/, bukan services/portal/ — larangan §13 di kepala
+// berkas ini hanya soal service INTERNAL mengimpor services/portal/, bukan
+// arah sebaliknya.
+import { catatPemakaian } from '../saas/usage.service'
 import type { PortalContext } from './context'
 
 function pastikanVendor(pctx: PortalContext): void {
@@ -183,6 +188,10 @@ export async function buatUsulanTagihan(
     kind: 'RECEIPT',
     note: `Tagihan vendor (portal) — ${invoiceNo}`,
   })
+
+  // Fase 8j / K183 — userId null (peristiwa portal), sysCtx sudah dibangun
+  // di atas untuk #3/#4, dipakai ulang di sini.
+  await catatPemakaian(sysCtx, 'VENDOR_INVOICE_SUBMITTED')
 
   return { ok: true, submissionId: submission.id, status: submission.status, unggahan }
 }

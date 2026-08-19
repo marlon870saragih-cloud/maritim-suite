@@ -31,7 +31,9 @@
     "test:vendor-portal": "node prisma/check-vendor-portal.mjs",
     "test:branding": "node prisma/check-branding.mjs",
     "test:logo-migration": "node prisma/check-logo-migration.mjs",
-    "db:migrate-logo": "node prisma/migrate-logo-to-attachment.mjs"
+    "db:migrate-logo": "node prisma/migrate-logo-to-attachment.mjs",
+    "test:usage": "node prisma/check-usage.mjs",
+    "usage:report": "node prisma/usage-report.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

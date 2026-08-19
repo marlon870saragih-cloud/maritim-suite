@@ -2,6 +2,8 @@ import { withTenant } from '@/services/http'
 import { forTenant } from '@/services/tenant-db'
 import { getVoyageRegister } from '@/services/reports.service'
 import { buildVoyageRegisterWorkbook } from '@/lib/voyage-register-xlsx'
+// Fase 8j — pemakaian (K183/K184).
+import { catatPemakaian } from '@/services/saas/usage.service'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -12,6 +14,7 @@ export const GET = withTenant(async (ctx) => {
     forTenant(ctx).tenant.findFirst({ where: { id: ctx.tenantId }, select: { companyName: true } }),
   ])
   const buffer = await buildVoyageRegisterWorkbook(rows, tenant?.companyName ?? 'Maritime Suite')
+  await catatPemakaian(ctx, 'REPORT_EXPORTED', { laporan: 'voyage-register' })
   const today = new Date().toISOString().slice(0, 10)
 
   return new Response(buffer as ArrayBuffer, {

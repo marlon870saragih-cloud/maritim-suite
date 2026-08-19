@@ -42,6 +42,8 @@ import { nextDisbursementNumber } from './disbursement-number'
 import { catatAudit, type Jejak } from './audit'
 import { notify } from '../notification.service'
 import { stempelAsal } from '../ai/origin.service'
+// Fase 8j — pemakaian (K183/K184).
+import { catatPemakaian } from '../saas/usage.service'
 
 const KINDS: readonly DisbursementKind[] = ['EPDA', 'FPDA', 'FDA']
 
@@ -630,6 +632,13 @@ export async function setDisbursementStatus(
       entityId: id,
       href: `/voyages/${disb.voyageId}/disbursements/${id}`,
     })
+  }
+
+  // Fase 8j / K183 — "dikirim ke principal" adalah nilai inti EPDA/FDA;
+  // EPDA dan FDA berbagi satu nama peristiwa (kind di meta) karena keduanya
+  // model Disbursement yang sama, hanya bedanya kind.
+  if (ke === 'SENT') {
+    await catatPemakaian(ctx, 'DISBURSEMENT_SENT', { kind: disb.kind })
   }
 
   return getDisbursementDetail(ctx, id)
