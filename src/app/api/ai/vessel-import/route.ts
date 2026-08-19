@@ -12,6 +12,9 @@ import {
 // (bukan withTenant/TenantContext), jadi ctx dibangun manual dari session.user
 // yang sudah membawa id/tenantId/role — bentuknya persis TenantContext.
 import { catatPemakaian } from '@/services/saas/usage.service'
+// Checklist go-live / K185 — jaring pengaman penyalahgunaan (BUKAN kuota
+// K156). Lihat catatan panjang di services/security/rate-limit.ts.
+import { cekBolehPanggilAi, catatPanggilanAi } from '@/services/security/rate-limit'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -56,6 +59,14 @@ const digits = (v: string | null) => (v ?? '').replace(/\D/g, '')
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return new Response('Unauthorized', { status: 401 })
+
+  // Checklist go-live / K185 — diperiksa sebelum apa pun lain (berkas belum
+  // dibaca, AI belum dipanggil).
+  const { diblokir } = await cekBolehPanggilAi(session.user.id)
+  if (diblokir) {
+    return new Response('Terlalu banyak panggilan dalam waktu singkat. Tunggu beberapa menit sebelum mencoba lagi.', { status: 429 })
+  }
+  await catatPanggilanAi(session.user.id)
 
   let file: File | null = null
   try {

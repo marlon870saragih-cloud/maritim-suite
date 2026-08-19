@@ -42,12 +42,15 @@
 
 import type { CalcMethod, DisbursementKind, DisbursementStatus, Prisma } from '@prisma/client'
 import type { TenantContext } from '../context'
-import { ServiceError, notFound, validation } from '../errors'
+import { ServiceError, notFound, validation, rateLimited } from '../errors'
 import { forTenant } from '../tenant-db'
 import { pastikanLanggananAktif } from '../subscription'
 import { pastikanKuota } from '../saas/quota.service'
 // Fase 8j — pemakaian (K183/K184).
 import { catatPemakaian } from '../saas/usage.service'
+// Checklist go-live / K185 — jaring pengaman penyalahgunaan, BUKAN kuota
+// K156 (lihat catatan panjang di rate-limit.ts: pertanyaan berbeda).
+import { cekBolehPanggilAi, catatPanggilanAi } from '../security/rate-limit'
 import { getLatestRate } from '../master/exchange-rate.service'
 import {
   hitungBaris,
@@ -665,6 +668,20 @@ async function kursPrediksi(
 }
 
 /**
+ * Checklist go-live / K185 — jaring pengaman penyalahgunaan pada endpoint AI.
+ * `ctx.system` (skrip/job internal) dilewati: batas ini menahan PENGGUNA,
+ * bukan proses sistem yang memang boleh memanggil berulang atas nama tenant.
+ */
+async function pastikanBelumMelebihiLajuAi(ctx: TenantContext): Promise<void> {
+  if (ctx.system) return
+  const { diblokir } = await cekBolehPanggilAi(ctx.userId)
+  if (diblokir) {
+    throw rateLimited('Terlalu banyak panggilan prediksi AI dalam waktu singkat. Tunggu beberapa menit sebelum mencoba lagi.')
+  }
+  await catatPanggilanAi(ctx.userId)
+}
+
+/**
  * Prediksi untuk SEMUA baris yang sudah ada di sebuah disbursement (dipakai
  * builder EPDA di 6d: kolom pembanding di samping `unitPrice` tiap baris).
  *
@@ -688,9 +705,12 @@ export async function prediksiUntukDisbursement(
   // di atas (K33). Dua pagar berdiri sendiri: langganan habis tetap menolak
   // meski kuota longgar, dan sebaliknya.
   await pastikanKuota(ctx, 'PANGGILAN_AI')
-  // Fase 8j / K183 — dicatat begitu kedua gerbang lolos (langganan+kuota),
-  // bukan menunggu hasil akhir: menjawab "fitur AI dipakai", bukan "hasilnya
-  // tak kosong".
+  // Checklist go-live / K185 — jaring pengaman penyalahgunaan (BUKAN kuota
+  // K156 di atas — lihat catatan di security/rate-limit.ts).
+  await pastikanBelumMelebihiLajuAi(ctx)
+  // Fase 8j / K183 — dicatat begitu ketiga gerbang lolos (langganan+kuota+
+  // laju), bukan menunggu hasil akhir: menjawab "fitur AI dipakai", bukan
+  // "hasilnya tak kosong".
   await catatPemakaian(ctx, 'AI_PREDICT_USED', { jenis: 'disbursement' })
 
   const disb = await forTenant(ctx).disbursement.findFirst({
@@ -758,6 +778,8 @@ export async function prediksiUntukVoyage(
   // di atas (K33). Dua pagar berdiri sendiri: langganan habis tetap menolak
   // meski kuota longgar, dan sebaliknya.
   await pastikanKuota(ctx, 'PANGGILAN_AI')
+  // Checklist go-live / K185 — lihat catatan pada prediksiUntukDisbursement().
+  await pastikanBelumMelebihiLajuAi(ctx)
   // Fase 8j / K183.
   await catatPemakaian(ctx, 'AI_PREDICT_USED', { jenis: 'voyage' })
 

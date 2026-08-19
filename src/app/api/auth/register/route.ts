@@ -3,6 +3,10 @@ import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { seedTenantOnboarding } from '@/services/saas/onboarding.service'
+import { jejakDari } from '@/services/http'
+// Checklist go-live / K185 — "batas laju pendaftaran per IP per jam" (§1.5
+// dokumen desain), prasyarat membuka pendaftaran ke publik.
+import { cekBolehDaftar, catatPendaftaran } from '@/services/security/rate-limit'
 
 const schema = z.object({
   // Akun admin
@@ -29,6 +33,19 @@ const clean = (v?: string) => {
 }
 
 export async function POST(req: Request) {
+  // Diperiksa PALING AWAL — sebelum membaca/mem-parse body sama sekali —
+  // supaya IP yang sudah melewati batas tak sempat membebani apa pun.
+  const { ipAddress } = jejakDari(req)
+  const ip = ipAddress ?? 'tak-diketahui'
+  const kunci = await cekBolehDaftar(ip)
+  if (kunci.diblokir) {
+    return NextResponse.json(
+      { error: 'Terlalu banyak percobaan pendaftaran dari alamat ini. Coba lagi dalam satu jam.' },
+      { status: 429 },
+    )
+  }
+  await catatPendaftaran(ip)
+
   const body = await req.json().catch(() => null)
   const parsed = schema.safeParse(body)
   if (!parsed.success) {

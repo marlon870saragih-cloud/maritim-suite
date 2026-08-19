@@ -1843,3 +1843,29 @@ model SystemConfig {
 
   updatedAt DateTime @updatedAt
 }
+
+/// Checklist go-live / K185 — telemetri KEAMANAN (percobaan login gagal,
+/// pendaftaran, panggilan API), BUKAN jejak hukum. SENGAJA BUKAN model
+/// bertenant (tak didaftarkan TENANT_MODELS): percobaan login yang belum
+/// tentu emailnya benar-benar ada tak punya tenant yang sah untuk disaring
+/// dengannya, dan pembatasan per-IP pada pendaftaran secara alami lintas
+/// tenant (tenant-nya belum lahir). Baris di sini SELALU pendek umur — setiap
+/// pemeriksaan menghapus barisnya sendiri yang sudah lewat jendela SEBELUM
+/// menghitung (lihat rate-limit.ts), jadi tabel ini tak pernah tumbuh tak
+/// terbatas tanpa perlu job pembersih terpisah.
+model SecurityEvent {
+  id String @id @default(cuid())
+
+  /// 'LOGIN_FAIL_INTERNAL' | 'LOGIN_FAIL_PORTAL' | 'REGISTER' | 'AI_CALL'
+  kind String
+
+  /// Makna tergantung `kind`: email yang dicoba (login), alamat IP
+  /// (pendaftaran), atau userId (panggilan AI). Selalu string mentah — pola
+  /// sama AuditLog.userId, sengaja tanpa relasi FK.
+  identifier String
+  ip         String?
+
+  createdAt DateTime @default(now())
+
+  @@index([kind, identifier, createdAt])
+}

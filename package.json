@@ -35,7 +35,8 @@
     "test:usage": "node prisma/check-usage.mjs",
     "usage:report": "node prisma/usage-report.mjs",
     "test:compliance": "node prisma/check-compliance.mjs",
-    "db:delete-tenant": "node prisma/delete-tenant.mjs"
+    "db:delete-tenant": "node prisma/delete-tenant.mjs",
+    "test:rate-limit": "node prisma/check-rate-limit.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

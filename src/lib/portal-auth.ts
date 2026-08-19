@@ -23,6 +23,8 @@ import { prisma } from './prisma'
 // pra-sesi di sini (persis alasan `authorize()` memakai `prisma` mentah).
 import { systemContext } from '@/services/context'
 import { catatPemakaian } from '@/services/saas/usage.service'
+// Checklist go-live / K185 — kunci sementara sesudah percobaan gagal beruntun.
+import { cekBolehLogin, catatLoginGagal, ipDariHeaderNextAuth } from '@/services/security/rate-limit'
 
 const COOKIE_PORTAL_SESSION =
   process.env.NODE_ENV === 'production' ? '__Host-portal-session' : 'portal-session-dev'
@@ -37,8 +39,15 @@ export const portalAuthOptions: NextAuthOptions = {
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },
       },
-      async authorize(credentials) {
+      async authorize(credentials, req) {
         if (!credentials?.email || !credentials.password) return null
+
+        // Diperiksa SEBELUM query — pola sama persis lib/auth.ts, kunci
+        // terpisah dari sesi internal ('LOGIN_FAIL_PORTAL') supaya percobaan
+        // di satu pintu tak pernah mengunci pintu yang lain.
+        const kunci = await cekBolehLogin('LOGIN_FAIL_PORTAL', credentials.email)
+        if (kunci.diblokir) return null
+        const ip = ipDariHeaderNextAuth(req?.headers)
 
         // PortalUser.email unik PER TENANT (bukan global, K166) — tanpa
         // konteks tenant di form login, satu email bisa cocok >1 baris kalau
@@ -68,6 +77,11 @@ export const portalAuthOptions: NextAuthOptions = {
             return { id: u.id, email: u.email, name: u.name, tenantId: u.tenantId } as unknown as User
           }
         }
+        // Tak ada kandidat cocok SAMA SEKALI, atau tak satu pun kata sandinya
+        // cocok — keduanya "gagal", dicatat ke jendela yang sama. Tak
+        // membedakan "email tak terdaftar" dari "kata sandi salah" (sengaja,
+        // sama alasan lib/auth.ts: tak membocorkan status akun).
+        await catatLoginGagal('LOGIN_FAIL_PORTAL', credentials.email, ip)
         return null
       },
     }),

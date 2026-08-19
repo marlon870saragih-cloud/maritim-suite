@@ -2,6 +2,8 @@ import type { NextAuthOptions } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
 import { prisma } from './prisma'
+// Checklist go-live / K185 — kunci sementara sesudah percobaan gagal beruntun.
+import { cekBolehLogin, catatLoginGagal, ipDariHeaderNextAuth } from '@/services/security/rate-limit'
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -11,18 +13,39 @@ export const authOptions: NextAuthOptions = {
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },
       },
-      async authorize(credentials) {
+      async authorize(credentials, req) {
         if (!credentials?.email || !credentials.password) return null
+
+        // Diperiksa SEBELUM apa pun lain — termasuk sebelum query User — supaya
+        // identifier yang terblokir tak sempat membebani DB atau bcrypt (yang
+        // sengaja lambat). Hasilnya SELALU `null` yang sama seperti password
+        // salah: pemanggil tak bisa membedakan "terkunci" dari "salah kata
+        // sandi" lewat respons ini (K185 — tak membocorkan status akun).
+        const kunci = await cekBolehLogin('LOGIN_FAIL_INTERNAL', credentials.email)
+        if (kunci.diblokir) return null
 
         const user = await prisma.user.findUnique({
           where: { email: credentials.email },
           include: { tenant: true },
         })
-        if (!user) return null
-        if (!user.isActive) return null // Fase 5g — dinonaktifkan lewat UI Tim
+        const ip = ipDariHeaderNextAuth(req?.headers)
+        if (!user) {
+          await catatLoginGagal('LOGIN_FAIL_INTERNAL', credentials.email, ip)
+          return null
+        }
+        if (!user.isActive) {
+          // Fase 5g — dinonaktifkan lewat UI Tim. Tetap dihitung ke jendela
+          // yang sama: endpoint ini masih dipukul berulang, dan menutupnya
+          // dari penghitungan hanya membuka celah kecil yang tak perlu ada.
+          await catatLoginGagal('LOGIN_FAIL_INTERNAL', credentials.email, ip)
+          return null
+        }
 
         const valid = await bcrypt.compare(credentials.password, user.password)
-        if (!valid) return null
+        if (!valid) {
+          await catatLoginGagal('LOGIN_FAIL_INTERNAL', credentials.email, ip)
+          return null
+        }
 
         return {
           id: user.id,
