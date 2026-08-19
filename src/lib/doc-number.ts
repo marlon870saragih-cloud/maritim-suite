@@ -14,6 +14,10 @@ const PREFIX: Record<string, string> = {
   TIME_SHEET: 'TS', BUNKER_REQUISITION: 'BRQ',
   FAL_5: 'CL', FAL_1: 'GD', FAL_3: 'SS', FAL_2: 'CD', AGENCY_APPOINTMENT: 'AA',
   BILL_OF_LADING: 'BL',
+  // Fase 8e / K164 — kuitansi LANGGANAN (Maritime Suite → tenant), bukan
+  // dokumen MaritimeDocument. Dipakai lewat formatDocNumber() apa adanya,
+  // supaya format & jendela bulan (K32) tetap satu mesin untuk semua nomor.
+  SUBSCRIPTION_INVOICE: 'INV-SUB',
 }
 
 /** Perlu nomor otomatis bila kosong atau placeholder (tak mengandung satu angka pun). */

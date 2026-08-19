@@ -29,6 +29,8 @@ import { prisma } from '@/lib/prisma'
 import { SUBSCRIPTION_DAYS } from '@/lib/billing/plans'
 import type { Gerbang } from '@/lib/billing/gateway'
 import { hitungAkhirLangganan } from './subscription-calc'
+// Fase 8e / K164 — kuitansi terbit di TRANSAKSI YANG SAMA dengan aktivasi.
+import { buatOperasiKuitansi, nomorKuitansiBerikutnya } from './sub-invoice.service'
 
 export type HasilTerap =
   /** Langkah 3 — pesanan tak dikenal (mis. tombol "test notification" di dasbor gerbang). */
@@ -130,6 +132,17 @@ export async function terapkanHasilPembayaran(input: {
     SUBSCRIPTION_DAYS,
   )
 
+  // K164 — nomor kuitansi (satu query async) diselesaikan SEBELUM transaksi
+  // dibuka; `buatOperasiKuitansi()` sendiri SINKRON (bukan di-`await`) supaya
+  // operasi `create()`-nya tetap `PrismaPromise` belum-jalan, siap ditaruh ke
+  // `$transaction` yang sama dengan Payment & Tenant (lihat catatan tipe di
+  // sub-invoice.service.ts).
+  const invoiceNumber = await nomorKuitansiBerikutnya(payment.tenantId)
+  const kuitansi = buatOperasiKuitansi(
+    { id: payment.id, tenantId: payment.tenantId, planId: payment.planId, amount: payment.amount, addons: payment.addons },
+    invoiceNumber,
+  )
+
   const [baru] = await prisma.$transaction([
     prisma.payment.update({ where: { id: payment.id }, data: dataPayment }),
     prisma.tenant.update({
@@ -137,11 +150,16 @@ export async function terapkanHasilPembayaran(input: {
       data: {
         plan: payment.plan,
         modulesEnabled: payment.modules,
+        // K165 — DIGANTI, bukan ditambah: pola identik modulesEnabled. Add-on
+        // yang tak diikutkan pada pembayaran/perpanjangan ini "habis
+        // bersamaan" dengan periode yang lama, persis kalimat K165.
+        addonsEnabled: payment.addons,
         subscriptionEndsAt,
         // K162 — gerbang yang BERHASIL diingat sebagai bawaan berikutnya.
         preferredGateway: input.gerbang,
       },
     }),
+    kuitansi,
   ])
 
   return { hasil: 'DITERAPKAN', payment: baru, status: 'PAID', aktif: true }

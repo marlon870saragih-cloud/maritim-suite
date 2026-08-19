@@ -170,3 +170,55 @@ export const PAKET_UNTUK_PLAN: Readonly<Record<Plan, string | null>> = {
   PRO: 'm2',
   FULL_SUITE: 'all',
 }
+
+// ------------------------------------------------------------------------ K165
+
+export type Addon = { id: string; labelId: string; labelEn: string; priceIDR: number | null }
+
+/**
+ * K165 — Add-on lisensi: baris TAMBAHAN pada pesanan yang sama, bukan mesin
+ * langganan kedua (prorata/siklus penagihan sendiri ditolak eksplisit — itu
+ * produk tersendiri). Blueprint §11.3 menyebut empat kandidat: tiga jasa
+ * manusia (penyiapan, pelatihan, templat) dan satu yang menyalakan fitur
+ * (data AIS, §8/8h — belum dibangun, boleh dicoret seluruhnya per P55).
+ *
+ * `priceIDR: null` = BELUM DIJUAL, bukan gratis. Tak ada P-jawaban yang
+ * menetapkan harganya (beda dari P48/P49 yang setidaknya punya interim jelas
+ * "semua null = tak dibatasi" — untuk add-on, null yang sama berarti "tak
+ * muncul di checkout sama sekali"). Menjualnya dengan harga karangan adalah
+ * kesalahan yang tercatat di uang orang, bukan di kode — persis alasan
+ * KUOTA_PER_PAKET dan RETENSI_SESUDAH_BERHENTI_HARI di atas.
+ */
+export const KATALOG_ADDON: readonly Addon[] = [
+  { id: 'setup', labelId: 'Penyiapan & pemindahan data', labelEn: 'Setup & data migration', priceIDR: null },
+  { id: 'training', labelId: 'Pelatihan tim', labelEn: 'Team training', priceIDR: null },
+  { id: 'template', labelId: 'Penyesuaian templat dokumen', labelEn: 'Document template customization', priceIDR: null },
+]
+
+/** Add-on yang BENAR-BENAR bisa dibeli hari ini. Kosong sampai satu pun diberi harga. */
+export function addonTersedia(): readonly Addon[] {
+  return KATALOG_ADDON.filter((a) => a.priceIDR !== null)
+}
+
+/** `hasOwnProperty`-gaya pencarian aman — lihat alasan yang sama di `kuotaUntukPaket`. */
+export function addonById(id: unknown): Addon | null {
+  if (typeof id !== 'string') return null
+  return KATALOG_ADDON.find((a) => a.id === id) ?? null
+}
+
+/**
+ * Total harga sekumpulan add-on. `null` bila SATU SAJA dari yang diminta tak
+ * dikenal atau belum dijual — pemanggil WAJIB menolak seluruh permintaan,
+ * bukan diam-diam mengabaikan sebagian. Menerima sebagian addon yang diminta
+ * tanpa memberi tahu pembeli adalah kelas kebocoran monetisasi yang sama
+ * dengan yang dicegah `pastikanKuota` (satu pemeriksa, satu titik panggil).
+ */
+export function totalHargaAddon(ids: readonly unknown[]): number | null {
+  let total = 0
+  for (const id of ids) {
+    const a = addonById(id)
+    if (!a || a.priceIDR === null) return null
+    total += a.priceIDR
+  }
+  return total
+}

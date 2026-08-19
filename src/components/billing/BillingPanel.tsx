@@ -7,6 +7,7 @@ import { BILLING_PLANS, BILLING_MODULES, planNeedsChoice, type BillingModule } f
 // Fase 8d — dua gerbang (K158/K162).
 import { GatewayPicker } from './GatewayPicker'
 import { LABEL_GERBANG, gerbangAlternatif, type Gerbang } from '@/lib/billing/gateway'
+import { BANK_PENJUAL, WA_PENJUAL } from '@/lib/billing/seller-identity'
 
 // Snap.js menyuntik window.snap saat script termuat.
 declare global {
@@ -118,11 +119,11 @@ function formatIDR(n: number) {
   return 'Rp ' + n.toLocaleString('id-ID')
 }
 
-// Rekening transfer manual.
-const BANK_NAME = 'Bank Mandiri'
-const BANK_ACCOUNT = '148-00-68812000'
-const BANK_HOLDER = 'PT Tribuana Solusi Maritim'
-const WA_NUMBER = '6282154950193' // 0821-5495-0193
+// Rekening transfer manual — SATU sumber dgn kop kuitansi PDF (K164, Fase 8e).
+const BANK_NAME = BANK_PENJUAL.name
+const BANK_ACCOUNT = BANK_PENJUAL.account
+const BANK_HOLDER = BANK_PENJUAL.holder
+const WA_NUMBER = WA_PENJUAL
 
 export function BillingPanel({
   lang,

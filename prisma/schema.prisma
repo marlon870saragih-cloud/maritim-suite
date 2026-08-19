@@ -129,6 +129,11 @@ model Payment {
   plan      Plan // enum hasil pemetaan planId
   amount    Int // IDR, tanpa desimal — sama dengan gross_amount ke Midtrans
   modules   String[] // modul yang dipilih untuk paket ini
+  /// Fase 8e / K165. Add-on yang dipilih SAAT checkout ini — baris tambahan
+  /// pada pesanan yang sama (bukan mesin langganan kedua). Disalin apa adanya
+  /// ke Tenant.addonsEnabled saat lunas (pola identik `modules`→`modulesEnabled`);
+  /// bawaan array kosong = tak ada add-on, aman untuk baris lama.
+  addons    String[] @default([])
   status    PaymentStatus @default(PENDING)
   snapToken String?
   paidAt    DateTime?

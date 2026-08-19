@@ -39,6 +39,10 @@ export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return new Response('Unauthorized', { status: 401 })
 
+  // Fase 8e / K155 — sama dengan checkout: memicu aktivasi lewat jalur yang
+  // sama (terapkanHasilPembayaran), jadi risikonya identik. ADMIN saja.
+  if (session.user.role !== 'ADMIN') return new Response('Forbidden', { status: 403 })
+
   const body = (await req.json().catch(() => ({}))) as { orderId?: string }
   const orderId = String(body.orderId ?? '').trim()
   if (!orderId) return new Response('orderId wajib diisi.', { status: 400 })

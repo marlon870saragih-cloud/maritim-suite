@@ -223,7 +223,9 @@ function bagianB() {
   const dkCreate = baca('../src/app/api/billing/duitku/create/route.ts')
   const mtCreate = baca('../src/app/api/billing/checkout/route.ts')
   const picker = baca('../src/components/billing/GatewayPicker.tsx')
-  const settings = baca('../src/app/(app)/settings/page.tsx')
+  // Fase 8e — panel pembayaran & pemilih gerbang pindah dari hub /settings ke
+  // /settings/billing (K155, halaman tergerbang perannya sendiri).
+  const settings = baca('../src/app/(app)/settings/billing/page.tsx')
 
   cek('butir 10 — create Duitku dijaga duitkuConfigured() → 503',
     dkCreate.includes('duitkuConfigured()') && dkCreate.includes('503'))
