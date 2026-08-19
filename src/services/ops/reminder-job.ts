@@ -37,11 +37,21 @@ import { forTenant } from '../tenant-db'
 import { notify, type NewNotification } from '../notification.service'
 import { nilaiSla } from './sla'
 import { AMBANG_MENDEKATI_JAM, BATAS_NOTIFIKASI_PER_JALAN, PERAN_ESKALASI_SLA } from './sla-policy'
+// Fase 8c / K156 — sapuan kelima. Keputusan keadaannya tetap dari modul murni
+// (quota.ts), sama seperti sapuan SLA memakai nilaiSla(): berkas ini tidak
+// pernah memutuskan sendiri apa arti "mendekati batas".
+import { KEADAAN_PERLU_PERINGATAN } from '../saas/quota'
+import { LABEL_KUOTA, ringkasanKuota } from '../saas/quota.service'
 
 // ------------------------------------------------------------------ kebijakan
 
-/** Empat jenis notifikasi yang lahir dari job ini (K86/K102, K115 Fase 7j). */
-export type JenisPengingat = 'TASK_DUE' | 'TASK_OVERDUE' | 'SLA_BREACH' | 'VENDOR_DOC_EXPIRING'
+/** Lima jenis notifikasi yang lahir dari job ini (K86/K102, K115 Fase 7j, K156 Fase 8c). */
+export type JenisPengingat =
+  | 'TASK_DUE'
+  | 'TASK_OVERDUE'
+  | 'SLA_BREACH'
+  | 'VENDOR_DOC_EXPIRING'
+  | 'KUOTA_MENDEKATI'
 
 /** Status yang tidak lagi menunggu dikerjakan — tak pantas diingatkan. */
 const STATUS_TERMINAL: readonly TaskStatus[] = ['DONE', 'CANCELLED']
@@ -56,12 +66,22 @@ const STATUS_TERMINAL: readonly TaskStatus[] = ['DONE', 'CANCELLED']
  */
 const BATAS_BARIS_DIBACA_PER_SAPUAN = BATAS_NOTIFIKASI_PER_JALAN * 4
 
-/** Urutan prioritas saat jatah notifikasi habis: yang paling gawat lebih dulu. */
+/**
+ * Urutan prioritas saat jatah notifikasi habis: yang paling gawat lebih dulu.
+ *
+ * `KUOTA_MENDEKATI` ditaruh PALING ATAS (Fase 8c): jumlahnya paling banyak
+ * empat baris per tenant per bulan — ia tak akan pernah menghabiskan jatah —
+ * sementara akibat tak menyampaikannya adalah pekerjaan yang mendadak ditolak
+ * tanpa peringatan apa pun sebelumnya. Tugas yang terlambat masih terlihat di
+ * papan tugas; batas paket yang tercapai tidak terlihat di mana pun sampai
+ * seseorang mencoba membuat sesuatu dan gagal.
+ */
 const PRIORITAS_JENIS: Readonly<Record<JenisPengingat, number>> = {
-  SLA_BREACH: 0,
-  TASK_OVERDUE: 1,
-  TASK_DUE: 2,
-  VENDOR_DOC_EXPIRING: 3,
+  KUOTA_MENDEKATI: 0,
+  SLA_BREACH: 1,
+  TASK_OVERDUE: 2,
+  TASK_DUE: 3,
+  VENDOR_DOC_EXPIRING: 4,
 }
 
 /** K115 — jendela peringatan dokumen vendor: 30 hari sebelum `expiresAt`. */
@@ -122,6 +142,35 @@ export function kunciSlaBreach(taskId: string, penerimaUserId: string): string {
  */
 export function kunciVendorDocExpiring(attachmentId: string, sekarang: Date): string {
   return `VENDOR_DOC_EXPIRING:${attachmentId}:${sekarang.toISOString().slice(0, 7)}`
+}
+
+/**
+ * `KUOTA:<jenis>:<keadaan>:<penerimaUserId>:<YYYY-MM>` — paling banyak SATU per
+ * BULAN KALENDER, per jenis kuota, per KEADAAN, per penerima (K156, Fase 8c).
+ *
+ * Dua komponen yang sengaja masuk, masing-masing menahan satu kesalahan:
+ *
+ *   • **`keadaan`** — tanpa ini, tenant yang bulan ini menyentuh 80%
+ *     (`MENDEKATI`) lalu melewati 100% (`HABIS`) hanya akan diberi tahu SEKALI,
+ *     dan kabar yang tidak sampai justru yang lebih penting dari keduanya.
+ *     Alasan & bentuknya sama dengan `dueAt` di `kunciTaskDue`: keadaan yang
+ *     BERUBAH memang harus berbunyi lagi; yang tak boleh berbunyi dua kali
+ *     adalah keadaan yang SAMA.
+ *   • **`penerimaUserId`** — sama seperti `kunciSlaBreach` (K103): satu baris
+ *     per ADMIN, jadi idempotensinya harus per pasangan (kuota, penerima).
+ *     Satu kunci global akan membuat ADMIN kedua tidak pernah kebagian.
+ *
+ * Bulannya diambil dari waktu JALANNYA JOB (pola `kunciTaskOverdue`/
+ * `kunciVendorDocExpiring`), bukan dari data — kuota `voyagePerBulan` memang
+ * disetel ulang tiap bulan kalender, jadi peringatannya pun demikian.
+ */
+export function kunciKuota(
+  jenis: string,
+  keadaan: string,
+  penerimaUserId: string,
+  sekarang: Date,
+): string {
+  return `KUOTA:${jenis}:${keadaan}:${penerimaUserId}:${sekarang.toISOString().slice(0, 7)}`
 }
 
 // -------------------------------------------------------------- bentuk hasil
@@ -447,6 +496,67 @@ async function sapuanDokumenVendorKedaluwarsa(ctx: TenantContext, sekarang: Date
   return calon
 }
 
+// -------------------------------------------------------------- sapuan 5 dari 5
+
+/**
+ * KUOTA_MENDEKATI (K156, Fase 8c) — kuota paket yang sudah `MENDEKATI` (≥80%)
+ * atau `HABIS` (≥100%).
+ *
+ * BERTARGET ke ADMIN (bukan siaran): batas paket hanya bisa ditindaklanjuti oleh
+ * yang berhak menaikkan paket. Menyiarkannya ke VIEWER & OPERATOR berarti
+ * mengirim kabar yang tak bisa mereka apa-apakan — pertimbangan yang sama sudah
+ * dipakai K103 untuk menyempitkan eskalasi SLA.
+ *
+ * NOL BIAYA hari ini: `ringkasanKuota()` berhenti di `adaBatasTerpasang()` —
+ * konstanta, tanpa query — selama P49 belum dijawab. Sapuan ini tidak menambah
+ * satu pun query ke jalan job yang sudah ada.
+ *
+ * Tak ada `take` di sini (berbeda dari empat sapuan lain): jumlah calonnya
+ * terbatas secara struktural pada 4 jenis × jumlah ADMIN, bukan pada banyaknya
+ * baris data.
+ */
+async function sapuanKuota(ctx: TenantContext, sekarang: Date): Promise<Calon[]> {
+  const kuota = (await ringkasanKuota(ctx)).filter((k) => KEADAAN_PERLU_PERINGATAN.has(k.keadaan))
+  if (kuota.length === 0) return []
+
+  const penerima = await forTenant(ctx).user.findMany({
+    where: { role: 'ADMIN', isActive: true },
+    select: { id: true },
+    orderBy: { id: 'asc' },
+  })
+  if (penerima.length === 0) return []
+
+  const calon: Calon[] = []
+  for (const k of kuota) {
+    const label = LABEL_KUOTA[k.jenis]
+    const habis = k.keadaan === 'HABIS'
+    for (const u of penerima) {
+      const kunci = kunciKuota(k.jenis, k.keadaan, u.id, sekarang)
+      calon.push({
+        dedupeKey: kunci,
+        jenis: 'KUOTA_MENDEKATI',
+        urut: `${k.jenis}:${u.id}`,
+        data: {
+          type: 'QUOTA_WARNING',
+          userId: u.id,
+          title: habis
+            ? `Batas paket tercapai: ${label.id}`
+            : `Mendekati batas paket: ${label.id}`,
+          message:
+            `${bulat1(k.terpakai)} dari ${k.batas} ${label.satuan} terpakai` +
+            `${k.persen === null ? '' : ` (${Math.round(k.persen)}%)`}. ` +
+            (habis
+              ? 'Pembuatan baru ditolak sampai paket dinaikkan. Data yang sudah ada tetap bisa dibuka, disunting, dicetak, dan ditagih.'
+              : 'Naikkan paket sebelum batasnya tercapai supaya pekerjaan tidak tertahan.'),
+          href: '/settings',
+          dedupeKey: kunci,
+        },
+      })
+    }
+  }
+  return calon
+}
+
 // --------------------------------------------------------------- satu tenant
 
 /**
@@ -470,7 +580,7 @@ export async function jalankanPengingatUntukTenant(
     dibuat: 0,
     dilewati: 0,
     dibatasi: 0,
-    perJenis: { TASK_DUE: 0, TASK_OVERDUE: 0, SLA_BREACH: 0, VENDOR_DOC_EXPIRING: 0 },
+    perJenis: { TASK_DUE: 0, TASK_OVERDUE: 0, SLA_BREACH: 0, VENDOR_DOC_EXPIRING: 0, KUOTA_MENDEKATI: 0 },
   }
 
   const semua = [
@@ -478,6 +588,7 @@ export async function jalankanPengingatUntukTenant(
     ...(await sapuanTerlambat(ctx, sekarang)),
     ...(await sapuanDilanggar(ctx, sekarang)),
     ...(await sapuanDokumenVendorKedaluwarsa(ctx, sekarang)),
+    ...(await sapuanKuota(ctx, sekarang)),
   ]
 
   // Kembar di dalam satu jalan (mustahil menurut bentuk kuncinya, tapi kalau
@@ -560,7 +671,7 @@ export async function jalankanPengingatUntukSemuaTenant(
         dibuat: 0,
         dilewati: 0,
         dibatasi: 0,
-        perJenis: { TASK_DUE: 0, TASK_OVERDUE: 0, SLA_BREACH: 0, VENDOR_DOC_EXPIRING: 0 },
+        perJenis: { TASK_DUE: 0, TASK_OVERDUE: 0, SLA_BREACH: 0, VENDOR_DOC_EXPIRING: 0, KUOTA_MENDEKATI: 0 },
         galat: e instanceof Error ? e.message : String(e),
       })
     }

@@ -6,6 +6,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { BillingPanel } from '@/components/billing/BillingPanel'
+import { QuotaMeter } from '@/components/billing/QuotaMeter'
 import { midtransIsProduction } from '@/lib/billing/midtrans'
 import { isSuperadmin } from '@/lib/billing/superadmin'
 import { getLang, type Lang } from '@/lib/i18n-server'
@@ -145,6 +146,11 @@ export default async function SettingsPage() {
           {planLabel}
         </span>
       </div>
+
+      {/* K156 — pengukur kuota di atas pemilih paket: "berapa yang sudah
+          terpakai" adalah alasan orang membuka halaman ini, dan jawabannya harus
+          terbaca sebelum harga. Tak tampil sama sekali selama batasnya null. */}
+      <QuotaMeter lang={lang} />
 
       <BillingPanel lang={lang} />
 

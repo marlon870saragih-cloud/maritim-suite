@@ -18,6 +18,7 @@ import { jsonBody, withTenant } from '@/services/http'
 import { validation } from '@/services/errors'
 import { pilihan } from '@/services/input'
 import { pastikanLanggananAktif } from '@/services/subscription'
+import { pastikanKuota } from '@/services/saas/quota.service'
 import { TEKS_NARASI_DITOLAK, periksaNarasi } from '@/services/ai/narasi-guard'
 import { promptJelaskan } from '@/lib/ai/explain'
 import { chatCompletion, firstMessageText } from '@/lib/ai/openrouter'
@@ -35,6 +36,10 @@ export const POST = withTenant(async (ctx, req) => {
   // Dipanggil eksplisit di sini (bukan lewat konteks.service.ts) karena jalur
   // ini memang tak menyentuh database sama sekali.
   await pastikanLanggananAktif(ctx)
+  // Fase 8c / K156 — kuota panggilan AI, BERSEBELAHAN dengan gerbang langganan
+  // di atas (K33). Dua pagar berdiri sendiri: langganan habis tetap menolak
+  // meski kuota longgar, dan sebaliknya.
+  await pastikanKuota(ctx, 'PANGGILAN_AI')
 
   const body = await jsonBody(req)
   const bahasa = pilihan(body.bahasa, BAHASA, 'Bahasa', 'id')

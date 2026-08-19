@@ -23,7 +23,8 @@
     "test:ops-api": "node prisma/check-ops-api.mjs",
     "test:jobs": "node prisma/check-reminder-job.mjs",
     "test:portal": "node prisma/check-portal-guard.mjs",
-    "test:onboarding": "node prisma/check-onboarding.mjs"
+    "test:onboarding": "node prisma/check-onboarding.mjs",
+    "test:quota": "node prisma/check-quota.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

@@ -65,6 +65,8 @@ export type NewNotification = {
     | 'WO_OVERDUE'
     | 'VENDOR_DOC_EXPIRING'
     | 'CREW_CHANGE_UPCOMING'
+    // --- Fase 8c (K156) — kuota paket mendekati/habis ---
+    | 'QUOTA_WARNING'
   title: string
   message?: string
   entityType?:

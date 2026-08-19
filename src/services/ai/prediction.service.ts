@@ -45,6 +45,7 @@ import type { TenantContext } from '../context'
 import { ServiceError, notFound, validation } from '../errors'
 import { forTenant } from '../tenant-db'
 import { pastikanLanggananAktif } from '../subscription'
+import { pastikanKuota } from '../saas/quota.service'
 import { getLatestRate } from '../master/exchange-rate.service'
 import {
   hitungBaris,
@@ -681,6 +682,10 @@ export async function prediksiUntukDisbursement(
   // K54/K33 — dipanggil PALING AWAL, sebelum query berat: tenant yang masa
   // ujinya habis tak boleh memakai fitur baru, dan tak perlu dibayari querynya.
   await pastikanLanggananAktif(ctx)
+  // Fase 8c / K156 — kuota panggilan AI, BERSEBELAHAN dengan gerbang langganan
+  // di atas (K33). Dua pagar berdiri sendiri: langganan habis tetap menolak
+  // meski kuota longgar, dan sebaliknya.
+  await pastikanKuota(ctx, 'PANGGILAN_AI')
 
   const disb = await forTenant(ctx).disbursement.findFirst({
     where: { id: disbursementId, deletedAt: null },
@@ -743,6 +748,10 @@ export async function prediksiUntukVoyage(
   opsi: OpsiPrediksiVoyage = {},
 ): Promise<PrediksiBaris[]> {
   await pastikanLanggananAktif(ctx)
+  // Fase 8c / K156 — kuota panggilan AI, BERSEBELAHAN dengan gerbang langganan
+  // di atas (K33). Dua pagar berdiri sendiri: langganan habis tetap menolak
+  // meski kuota longgar, dan sebaliknya.
+  await pastikanKuota(ctx, 'PANGGILAN_AI')
 
   const diminta = Array.from(
     new Set((serviceIds ?? []).filter((s) => typeof s === 'string' && s !== '')),

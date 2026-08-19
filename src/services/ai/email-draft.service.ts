@@ -24,6 +24,7 @@
 import type { TenantContext } from '../context'
 import { validation } from '../errors'
 import { pastikanLanggananAktif } from '../subscription'
+import { pastikanKuota } from '../saas/quota.service'
 import { getVoyage } from '../master/voyage.service'
 import { getVendor } from '../master/vendor.service'
 import { getCustomer } from '../master/customer.service'
@@ -219,6 +220,10 @@ export async function rakitDataEmail(
   opsi: OpsiDataEmail = {},
 ): Promise<DataEmail> {
   await pastikanLanggananAktif(ctx)
+  // Fase 8c / K156 — kuota panggilan AI, BERSEBELAHAN dengan gerbang langganan
+  // di atas (K33). Dua pagar berdiri sendiri: langganan habis tetap menolak
+  // meski kuota longgar, dan sebaliknya.
+  await pastikanKuota(ctx, 'PANGGILAN_AI')
 
   if (!TEMPLAT_EMAIL.includes(templat)) throw validation(`Templat email tidak dikenal: ${String(templat)}.`)
   if (typeof entityId !== 'string' || entityId.trim() === '') throw validation('id entitas wajib diisi.')

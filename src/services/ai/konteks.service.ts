@@ -32,6 +32,7 @@
 import type { TenantContext } from '../context'
 import { validation } from '../errors'
 import { pastikanLanggananAktif } from '../subscription'
+import { pastikanKuota } from '../saas/quota.service'
 import { getVoyage, type VoyageDetail } from '../master/voyage.service'
 import { getDisbursementDetail } from '../finance/disbursement.service'
 import { getInvoiceDetail } from '../finance/invoice.service'
@@ -377,6 +378,10 @@ export async function bangunKonteks(
 ): Promise<KonteksAI> {
   // K54/K33 — gerbang paling awal, sebelum satu query pun dibayar.
   await pastikanLanggananAktif(ctx)
+  // Fase 8c / K156 — kuota panggilan AI, BERSEBELAHAN dengan gerbang langganan
+  // di atas (K33). Dua pagar berdiri sendiri: langganan habis tetap menolak
+  // meski kuota longgar, dan sebaliknya.
+  await pastikanKuota(ctx, 'PANGGILAN_AI')
 
   if (!JENIS.includes(jenis)) {
     throw validation(`Jenis konteks tidak dikenal: ${String(jenis)}.`)

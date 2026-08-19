@@ -14,6 +14,7 @@ import { withTenant } from '@/services/http'
 import { validation } from '@/services/errors'
 import { str, wajib } from '@/services/input'
 import { pastikanLanggananAktif } from '@/services/subscription'
+import { pastikanKuota } from '@/services/saas/quota.service'
 import { bangunKonteks } from '@/services/ai/konteks.service'
 import { type JenisKonteks } from '@/services/ai/konteks'
 import { periksaNarasi } from '@/services/ai/narasi-guard'
@@ -174,6 +175,10 @@ async function ringkasBerkas(ctx: TenantContext, req: Request, bahasa: 'id' | 'e
 
 export const POST = withTenant(async (ctx, req) => {
   await pastikanLanggananAktif(ctx)
+  // Fase 8c / K156 — kuota panggilan AI, BERSEBELAHAN dengan gerbang langganan
+  // di atas (K33). Dua pagar berdiri sendiri: langganan habis tetap menolak
+  // meski kuota longgar, dan sebaliknya.
+  await pastikanKuota(ctx, 'PANGGILAN_AI')
 
   const contentType = req.headers.get('content-type') ?? ''
   const bahasaQ = new URL(req.url).searchParams.get('bahasa')

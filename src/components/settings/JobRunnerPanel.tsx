@@ -56,7 +56,7 @@ const STR: Record<Lang, Strings> = {
     perTenant: 'Rincian per tenant',
     noTenant: 'Tidak ada tenant terdaftar.',
     error: 'Galat',
-    types: { TASK_DUE: 'Mendekati', TASK_OVERDUE: 'Terlambat', SLA_BREACH: 'Pelanggaran SLA', VENDOR_DOC_EXPIRING: 'Dokumen vendor kedaluwarsa' },
+    types: { TASK_DUE: 'Mendekati', TASK_OVERDUE: 'Terlambat', SLA_BREACH: 'Pelanggaran SLA', VENDOR_DOC_EXPIRING: 'Dokumen vendor kedaluwarsa', KUOTA_MENDEKATI: 'Kuota paket' },
   },
   en: {
     run: 'Run reminders now',
@@ -72,11 +72,11 @@ const STR: Record<Lang, Strings> = {
     perTenant: 'Per-tenant breakdown',
     noTenant: 'No tenants registered.',
     error: 'Error',
-    types: { TASK_DUE: 'Approaching', TASK_OVERDUE: 'Overdue', SLA_BREACH: 'SLA breach', VENDOR_DOC_EXPIRING: 'Vendor doc expiring' },
+    types: { TASK_DUE: 'Approaching', TASK_OVERDUE: 'Overdue', SLA_BREACH: 'SLA breach', VENDOR_DOC_EXPIRING: 'Vendor doc expiring', KUOTA_MENDEKATI: 'Plan quota' },
   },
 }
 
-const JENIS_URUT: JenisPengingat[] = ['SLA_BREACH', 'TASK_OVERDUE', 'TASK_DUE', 'VENDOR_DOC_EXPIRING']
+const JENIS_URUT: JenisPengingat[] = ['KUOTA_MENDEKATI', 'SLA_BREACH', 'TASK_OVERDUE', 'TASK_DUE', 'VENDOR_DOC_EXPIRING']
 
 type JobRunResponse = {
   job: string

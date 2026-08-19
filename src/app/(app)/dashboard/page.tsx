@@ -4,6 +4,7 @@ import { requireTenant } from '@/services/context'
 import { getDashboardData } from '@/services/dashboard.service'
 import { DashboardView } from '@/components/dashboard/DashboardView'
 import { OnboardingCard } from '@/components/onboarding/OnboardingCard'
+import { QuotaBanner } from '@/components/billing/QuotaBanner'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,6 +20,7 @@ export default async function DashboardPage() {
   return (
     <div className="p-margin-page max-w-[1600px] mx-auto space-y-6">
       <PageHeader kicker={PH[getLang()].kicker} title={PH[getLang()].title} description={PH[getLang()].desc} />
+      <QuotaBanner lang={getLang()} />
       <OnboardingCard lang={getLang()} />
       <DashboardView
         kpi={data.kpi}

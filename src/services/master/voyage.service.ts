@@ -26,6 +26,8 @@ import { catatAudit } from '../finance/audit'
 // menimpa asal voyage secara manual. ASAL_DATA/adalahAsalData dari modul
 // murni Fase 6a (provenance.ts) — bukan daftar baru.
 import { ASAL_DATA, adalahAsalData } from '../ai/provenance'
+// Fase 8c — kuota (K156).
+import { pastikanKuota } from '../saas/quota.service'
 
 const STATUSES: readonly VoyageStatus[] = [
   'PLANNED', 'CONFIRMED', 'ARRIVED', 'BERTHED', 'WORKING', 'COMPLETED', 'DEPARTED', 'CLOSED', 'CANCELLED',
@@ -157,6 +159,18 @@ export async function createVoyage(ctx: TenantContext, body: Record<string, unkn
   requireRole(ctx, 'ADMIN', 'OPERATOR')
   const db = forTenant(ctx)
   const data = bacaInput(body)
+
+  // Fase 8c / K156 — kuota `voyagePerBulan`. Nol query selama P49 belum dijawab
+  // (adaBatasTerpasang() konstanta). Hanya menahan PEMBUATAN; voyage yang sudah
+  // ada tetap terbaca, tersunting, tercetak, tertagih (K156/1).
+  //
+  // ⚠️ CATATAN: berbeda dari createDisbursement/createInvoice, jalur ini TIDAK
+  // memanggil `pastikanLanggananAktif()` — dan itu keadaan yang SUDAH berlaku
+  // sejak Fase 2, bukan sesuatu yang 8c hilangkan. Menambahkannya di sini akan
+  // mengubah perilaku komersial (tenant yang trialnya habis mendadak tak bisa
+  // membuat voyage), dan itu keputusan Marlon, bukan efek samping increment
+  // kuota. Dicatat supaya terlihat, tidak ditambal diam-diam.
+  await pastikanKuota(ctx, 'VOYAGE')
 
   await pastikanRelasiMilikTenant(ctx, data)
   const voyageNumber = await nextVoyageNumber(ctx)

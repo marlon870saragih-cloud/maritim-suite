@@ -14,6 +14,8 @@ import { requireRole } from './context'
 import { conflict, notFound, validation } from './errors'
 import { str, wajib } from './input'
 import { forTenant } from './tenant-db'
+// Fase 8c — kuota `penggunaAktif` (K156). Nonaktifkan seseorang → kursinya bebas.
+import { pastikanKuota } from './saas/quota.service'
 
 const ROLES: readonly Role[] = [
   'ADMIN', 'OPERATOR', 'FINANCE', 'VIEWER', 'MANAJER_OPERASI', 'PENYUSUN_BIAYA', 'DIREKTUR',
@@ -56,6 +58,12 @@ export async function createTeamMember(
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw validation('Format email tidak sah.')
   if (!password || password.length < 8) throw validation('Password minimal 8 karakter.')
   if (!role || !ROLES.includes(role as Role)) throw validation(`Peran tidak sah. Pilihan: ${ROLES.join(', ')}.`)
+
+  // Fase 8c / K156 — kuota kursi. Diperiksa SESUDAH validasi bentuk (masukan yang
+  // memang salah tetap dijawab 400, bukan 403 yang menyesatkan) dan SEBELUM
+  // bcrypt.hash: menghitung hash mahal untuk permintaan yang sudah pasti ditolak
+  // adalah kerja sia-sia yang bisa dipakai membebani server.
+  await pastikanKuota(ctx, 'PENGGUNA')
 
   // email unik GLOBAL (schema: User.email @unique lintas-tenant, bukan per-tenant).
   const existing = await forTenant(ctx).user.findFirst({ where: { email } })

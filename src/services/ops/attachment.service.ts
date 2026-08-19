@@ -11,6 +11,8 @@ import { forTenant } from '../tenant-db'
 import { notFound, validation } from '../errors'
 import { bool, str, tanggal } from '../input'
 import { pastikanEntitasMilikTenant } from './ownership.service'
+// Fase 8c — kuota `penyimpananMB` (K156).
+import { pastikanKuota } from '../saas/quota.service'
 import {
   buatStorageKey,
   buatTokenBerkas,
@@ -265,6 +267,13 @@ export async function uploadAttachment(
   // 2 — bentuk berkas.
   const { fileName, ext, mimeType } = periksaBerkas(input.fileName, input.mimeType, input.isi.length)
   const hash = sha256(input.isi)
+
+  // 2b — Fase 8c / K156, kuota penyimpanan. SESUDAH periksaBerkas (berkas yang
+  // memang cacat tetap dijawab 400) dan SEBELUM berkas ditulis ke penyimpanan.
+  // Yang dinilai adalah pemakaian SEKARANG, bukan pemakaian + berkas ini:
+  // menahan unggahan yang justru akan MELEWATI batas berarti menolak berkas
+  // pertama yang kebetulan besar pada tenant yang masih 0% terpakai.
+  await pastikanKuota(ctx, 'PENYIMPANAN')
 
   const kind = str(input.kind)
   if (kind && !JENIS_LAMPIRAN.includes(kind as (typeof JENIS_LAMPIRAN)[number])) {

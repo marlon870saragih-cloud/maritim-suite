@@ -2,6 +2,13 @@
 // JANGAN pernah percaya angka (gross_amount) yang dikirim dari browser;
 // checkout hanya menerima `planId` + pilihan modul, harga & modul final dihitung di sini.
 import type { Plan } from '@prisma/client'
+// Fase 8c / K155 — `kuota` DIBACA dari commercial-policy.ts, tidak diketik ulang
+// di sini. Arah impornya satu: plans.ts → commercial-policy.ts (yang tetap murni
+// dan tak pernah mengimpor balik). Menyalin angkanya ke sini akan membuat P48/P49
+// punya dua titik sentuh, dan K146 ada persis untuk mencegah itu.
+import { kuotaUntukPaket, type Kuota } from '@/services/saas/commercial-policy'
+
+export type { Kuota }
 
 export type BillingModule = 'finance' | 'dokumen' | 'portcall' | 'tracker'
 
@@ -32,15 +39,17 @@ export interface BillingPlan {
   choiceCount: number // jumlah modul PILIHAN (di luar yang wajib) yang boleh dipilih
   labelId: string
   labelEn: string
+  /** K155/K156 — batas paket. Semua `null` hari ini (P49 belum dijawab). */
+  kuota: Kuota
 }
 
 export const BILLING_PLANS: Record<string, BillingPlan> = {
   // Port Call (wajib) + 1 pilihan = 2 modul total.
-  m1: { id: 'm1', plan: 'STARTER', priceIDR: 250_000, choiceCount: 1, labelId: '2 Modul', labelEn: '2 Modules' },
+  m1: { id: 'm1', plan: 'STARTER', priceIDR: 250_000, choiceCount: 1, labelId: '2 Modul', labelEn: '2 Modules', kuota: kuotaUntukPaket('m1') },
   // Port Call (wajib) + 2 pilihan = 3 modul total.
-  m2: { id: 'm2', plan: 'PRO', priceIDR: 450_000, choiceCount: 2, labelId: '3 Modul', labelEn: '3 Modules' },
+  m2: { id: 'm2', plan: 'PRO', priceIDR: 450_000, choiceCount: 2, labelId: '3 Modul', labelEn: '3 Modules', kuota: kuotaUntukPaket('m2') },
   // Semua modul aktif.
-  all: { id: 'all', plan: 'FULL_SUITE', priceIDR: 600_000, choiceCount: CHOOSABLE_MODULES.length, labelId: 'Semua Modul', labelEn: 'All Modules' },
+  all: { id: 'all', plan: 'FULL_SUITE', priceIDR: 600_000, choiceCount: CHOOSABLE_MODULES.length, labelId: 'Semua Modul', labelEn: 'All Modules', kuota: kuotaUntukPaket('all') },
 }
 
 // Jumlah modul total (wajib + pilihan) — untuk tampilan.

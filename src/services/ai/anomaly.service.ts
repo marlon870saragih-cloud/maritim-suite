@@ -35,6 +35,7 @@ import type { TenantContext } from '../context'
 import { ServiceError } from '../errors'
 import { forTenant } from '../tenant-db'
 import { pastikanLanggananAktif } from '../subscription'
+import { pastikanKuota } from '../saas/quota.service'
 import { getLatestRate } from '../master/exchange-rate.service'
 import { tanggalJasa, type VoyageUntukAutofill } from '../finance/autofill.service'
 import { getDisbursement, getDisbursementDetail, muatVoyage } from '../finance/disbursement.service'
@@ -231,6 +232,10 @@ export async function anomaliUntukDisbursement(
 ): Promise<HasilAnomali> {
   // K54/K33 — sama seperti prediction.service.ts: fitur AI, gerbang di awal.
   await pastikanLanggananAktif(ctx)
+  // Fase 8c / K156 — kuota panggilan AI, BERSEBELAHAN dengan gerbang langganan
+  // di atas (K33). Dua pagar berdiri sendiri: langganan habis tetap menolak
+  // meski kuota longgar, dan sebaliknya.
+  await pastikanKuota(ctx, 'PANGGILAN_AI')
   const bahasa = opsi.bahasa ?? 'id'
 
   const disb = await getDisbursement(ctx, disbursementId)
