@@ -1,6 +1,8 @@
-// K168 — SATU-SATUNYA route portal yang berjalan TANPA sesi apa pun (penerima
-// undangan belum jadi siapa-siapa). Sengaja BUKAN withTenant ataupun
-// withPortal — keduanya mewajibkan sesi yang belum bisa ada di sini.
+// K168 — route portal yang berjalan TANPA sesi apa pun (penerima undangan
+// belum jadi siapa-siapa). Sengaja BUKAN withTenant ataupun withPortal —
+// keduanya mewajibkan sesi yang belum bisa ada di sini. (Sejak 8i/K182 ada
+// satu lagi jalur tanpa sesi: `GET /api/portal/branding/[slug]` — merek
+// portal ber-slug yang dibaca SEBELUM login, lihat public-branding.ts.)
 
 import { jsonBody, toResponse } from '@/services/http'
 import { acceptPortalInvitation } from '@/services/portal/access.service'

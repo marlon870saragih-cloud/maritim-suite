@@ -13,12 +13,17 @@
 // endpoint yang SUDAH ADA (`/api/portal/profile`) untuk tahu pihak mana yang
 // login — bukan endpoint baru — dan endpoint itu sendiri sudah melewati
 // pemeriksaan requirePortal() yang sesungguhnya.
+//
+// Fase 8i / K180 — `merek` (nama tampilan, logo, warna aksen) juga datang
+// dari `/api/portal/profile` (diperluas 8i), bukan endpoint baru: tenant
+// SUNGGUHAN sesi ini, dibaca ulang tiap kali, sama prinsipnya dengan `pihak`.
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { FileText, Home, Ship, FolderOpen, User, LogOut, Loader2, Package, Wrench, Receipt } from 'lucide-react'
 import { useT, type Lang, useLang, LangToggle } from '@/lib/i18n'
+import type { MerekPortalSesi } from '@/services/portal/profile.service'
 
 const NAV_CUSTOMER = [
   { href: '/portal', labelId: 'Beranda', labelEn: 'Home', icon: Home },
@@ -48,12 +53,18 @@ export function PortalNav({ name }: { name: string }) {
   const router = useRouter()
   const [keluar, setKeluar] = useState(false)
   const [pihak, setPihak] = useState<'CUSTOMER' | 'VENDOR' | null>(null)
+  const [merek, setMerek] = useState<MerekPortalSesi | null>(null)
+  const [logoNonce] = useState(() => Date.now())
 
   useEffect(() => {
     let hidup = true
     fetch('/api/portal/profile')
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { pihak?: 'CUSTOMER' | 'VENDOR' } | null) => hidup && d?.pihak && setPihak(d.pihak))
+      .then((d: { pihak?: 'CUSTOMER' | 'VENDOR'; merek?: MerekPortalSesi } | null) => {
+        if (!hidup || !d) return
+        if (d.pihak) setPihak(d.pihak)
+        if (d.merek) setMerek(d.merek)
+      })
     return () => {
       hidup = false
     }
@@ -61,6 +72,12 @@ export function PortalNav({ name }: { name: string }) {
 
   const NAV = pihak === 'VENDOR' ? NAV_VENDOR : NAV_CUSTOMER
   const brand = pihak === 'VENDOR' ? t.brandVendor : t.brandCustomer
+  const aksen = merek?.accentColor ?? undefined
+  const logoSrc = merek
+    ? merek.logoViaAttachment
+      ? `/api/portal/branding/logo?v=${logoNonce}`
+      : merek.logoDataUrl
+    : null
 
   async function signOutPortal() {
     setKeluar(true)
@@ -81,9 +98,15 @@ export function PortalNav({ name }: { name: string }) {
     <header className="border-b border-card-border bg-card-bg">
       <div className="max-w-[1000px] mx-auto px-4 py-3 flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-6 flex-wrap">
-          <div>
-            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest">{brand}</p>
-            <p className="text-white font-display text-sm">{name}</p>
+          <div className="flex items-center gap-2.5">
+            {logoSrc && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={logoSrc} alt={merek?.companyName ?? ''} className="h-8 w-8 object-contain rounded" />
+            )}
+            <div>
+              <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest">{brand}</p>
+              <p className="text-white font-display text-sm">{merek?.companyName ?? name}</p>
+            </div>
           </div>
           <nav className="flex items-center gap-1 flex-wrap">
             {NAV.map((n) => {
@@ -93,8 +116,9 @@ export function PortalNav({ name }: { name: string }) {
                 <Link
                   key={n.href}
                   href={n.href}
+                  style={aktif && aksen ? { backgroundColor: `${aksen}26`, color: aksen } : undefined}
                   className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs transition-colors ${
-                    aktif ? 'bg-accent-blue/15 text-accent-blue' : 'text-text-secondary hover:text-white'
+                    aktif ? (aksen ? '' : 'bg-accent-blue/15 text-accent-blue') : 'text-text-secondary hover:text-white'
                   }`}
                 >
                   <Icon className="h-3.5 w-3.5" />
@@ -105,6 +129,7 @@ export function PortalNav({ name }: { name: string }) {
           </nav>
         </div>
         <div className="flex items-center gap-3">
+          <span className="text-text-secondary text-xs hidden sm:inline">{name}</span>
           <LangToggle tone="ink" />
           <button
             type="button"

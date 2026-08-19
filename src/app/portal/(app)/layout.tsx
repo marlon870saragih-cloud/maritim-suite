@@ -14,15 +14,23 @@ import { redirect } from 'next/navigation'
 import { getServerSession } from 'next-auth'
 import { portalAuthOptions } from '@/lib/portal-auth'
 import { PortalNav } from '@/components/portal/PortalNav'
+import { getLang } from '@/lib/i18n-server'
+
+const POWERED_BY = { id: 'Ditenagai Maritime Suite', en: 'Powered by Maritime Suite' }
 
 export default async function PortalLayout({ children }: { children: ReactNode }) {
   const session = await getServerSession(portalAuthOptions)
   if (!session?.user) redirect('/portal/login')
+  const lang = getLang()
 
   return (
-    <div className="min-h-screen bg-background text-text-primary">
+    <div className="min-h-screen bg-background text-text-primary flex flex-col">
       <PortalNav name={session.user.name ?? ''} />
-      <main className="max-w-[1000px] mx-auto p-margin-page">{children}</main>
+      <main className="max-w-[1000px] mx-auto p-margin-page flex-1 w-full">{children}</main>
+      {/* K179 lapis 1 — Maritime Suite tetap terlihat sebagai produk, meski merek tenant dipakai di nav. */}
+      <footer className="border-t border-card-border py-3 text-center text-[10px] text-text-secondary/60">
+        {POWERED_BY[lang]}
+      </footer>
     </div>
   )
 }

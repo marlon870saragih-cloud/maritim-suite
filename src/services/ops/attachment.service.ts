@@ -66,6 +66,10 @@ export const JENIS_LAMPIRAN = [
   'VENDOR_DOC',
   'CONTRACT',
   'GENERAL',
+  // Fase 8i / K181 — logo tenant. Ditulis HANYA lewat branding.service.ts
+  // (entityType='TENANT', entityId=ctx.tenantId selalu — lihat catatan di
+  // sana), tak pernah lewat uploadAttachment() generik di berkas ini.
+  'BRANDING',
 ] as const
 
 // ------------------------------------------------------------- normalisasi
