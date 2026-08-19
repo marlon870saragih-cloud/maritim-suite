@@ -29,7 +29,9 @@
     "test:sub-invoice": "node prisma/check-sub-invoice.mjs",
     "test:customer-portal": "node prisma/check-customer-portal.mjs",
     "test:vendor-portal": "node prisma/check-vendor-portal.mjs",
-    "test:branding": "node prisma/check-branding.mjs"
+    "test:branding": "node prisma/check-branding.mjs",
+    "test:logo-migration": "node prisma/check-logo-migration.mjs",
+    "db:migrate-logo": "node prisma/migrate-logo-to-attachment.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

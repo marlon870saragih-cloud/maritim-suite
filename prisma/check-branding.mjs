@@ -311,6 +311,6 @@ main()
     await prisma.$disconnect()
     console.log(`\n${'='.repeat(46)}`)
     console.log(gagal === 0 ? `✅ SEMUA LULUS (${lulus} pemeriksaan)` : `❌ ${gagal} GAGAL, ${lulus} lulus`)
-    console.log('⚠️  Ingat: migrate-logo-to-attachment.mjs (K181) BELUM diuji — menunggu giliran Opus.')
+    console.log('ℹ️  Migrasi logo (K181) diuji terpisah: `npm run test:logo-migration`.')
     process.exitCode = gagal === 0 ? 0 : 1
   })
