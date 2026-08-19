@@ -157,11 +157,14 @@ async function main() {
 
   const custX = await prisma.customer.create({ data: { tenantId: tenantA.id, name: `${TAG}Customer-X` } })
   const custY = await prisma.customer.create({ data: { tenantId: tenantA.id, name: `${TAG}Customer-Y` } })
+  // status: 'ISSUED' — sejak 8f, listInvoicesPortal menyaring DRAFT/CANCELLED
+  // (K167/P52); default schema-nya DRAFT jadi harus disetel eksplisit di sini
+  // supaya uji isolasi tenant/pelanggan di bawah tetap melihat baris ini.
   const invX = await prisma.invoice.create({
-    data: { tenantId: tenantA.id, invoiceNumber: `${TAG}INV-X`, customerId: custX.id, grandTotal: 1_000_000 },
+    data: { tenantId: tenantA.id, invoiceNumber: `${TAG}INV-X`, customerId: custX.id, grandTotal: 1_000_000, status: 'ISSUED' },
   })
   const invY = await prisma.invoice.create({
-    data: { tenantId: tenantA.id, invoiceNumber: `${TAG}INV-Y`, customerId: custY.id, grandTotal: 2_000_000 },
+    data: { tenantId: tenantA.id, invoiceNumber: `${TAG}INV-Y`, customerId: custY.id, grandTotal: 2_000_000, status: 'ISSUED' },
   })
   const custB = await prisma.customer.create({ data: { tenantId: tenantB.id, name: `${TAG}Customer-B` } })
   const invB = await prisma.invoice.create({

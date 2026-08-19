@@ -67,6 +67,8 @@ export type NewNotification = {
     | 'CREW_CHANGE_UPCOMING'
     // --- Fase 8c (K156) — kuota paket mendekati/habis ---
     | 'QUOTA_WARNING'
+    // --- Fase 8f (K169) — pelanggan mengonfirmasi pembayaran lewat portal ---
+    | 'PORTAL_PAYMENT_CONFIRMED'
   title: string
   message?: string
   entityType?:

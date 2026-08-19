@@ -166,6 +166,9 @@ const KOLOM_AMAN = {
   expiresAt: true,
   uploadedByUserId: true,
   createdAt: true,
+  // Fase 8f / K170 — perlu tampil di UI supaya tombol "Bagikan ke portal" tahu keadaannya sekarang.
+  sharedToPortal: true,
+  sharedAt: true,
 } as const
 
 export type AttachmentRingkas = {
@@ -327,6 +330,44 @@ export async function uploadAttachment(
         `(${sudahAda.entityType}). Lampiran ini tetap disimpan.`
       : null,
   }
+}
+
+/**
+ * K170 — bagikan/tarik satu lampiran dari Customer Portal.
+ *
+ * Dua pagar, dan keduanya WAJIB berdiri di kode, bukan disiplin operator:
+ *   1. Peran: ADMIN/OPERATOR/MANAJER_OPERASI/FINANCE. Bukan PENYUSUN_BIAYA
+ *      (K112 pola yang sama), bukan VIEWER/DIREKTUR (lihat-saja bukan berarti
+ *      boleh mengekspos data ke luar tenant).
+ *   2. `sensitive = true` → membagikan (`share = true`) DITOLAK dengan galat
+ *      yang menyebut alasannya (K170/2, "pagar mesin, bukan disiplin"). Tak
+ *      seorang pun — termasuk ADMIN — bisa memaksanya lewat jalur ini; kalau
+ *      memang perlu, tandanya dicabut dulu secara SADAR di layar lampiran,
+ *      dua tindakan bercatat, bukan satu (K170 tabel peran, catatan penutup).
+ *      Menarik kembali (`share = false`) selalu diizinkan, termasuk untuk
+ *      lampiran sensitif — itu arah yang MENUTUP akses, bukan membukanya.
+ */
+export async function shareAttachmentToPortal(
+  ctx: TenantContext,
+  id: string,
+  share: boolean,
+): Promise<AttachmentRingkas> {
+  requireRole(ctx, 'ADMIN', 'OPERATOR', 'MANAJER_OPERASI', 'FINANCE')
+
+  const row = await getAttachment(ctx, id)
+  if (share && row.sensitive) {
+    throw validation('Lampiran sensitif tidak bisa dibagikan ke portal. Cabut tanda "sensitif" terlebih dulu bila memang perlu dibagikan.')
+  }
+
+  const hasil = await forTenant(ctx).attachment.updateMany({
+    where: { id, deletedAt: null },
+    data: share
+      ? { sharedToPortal: true, sharedAt: new Date(), sharedByUserId: ctx.userId }
+      : { sharedToPortal: false, sharedAt: null, sharedByUserId: null },
+  })
+  if (hasil.count === 0) throw notFound('Lampiran')
+
+  return forTenant(ctx).attachment.findFirstOrThrow({ where: { id }, select: KOLOM_AMAN })
 }
 
 /**

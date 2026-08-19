@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Pencil, Trash2, Loader2, Users, FileUp } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2, Users, FileUp, Globe } from 'lucide-react'
+import { PortalAccessPanel } from './PortalAccessPanel'
 import { cn } from '@/lib/utils'
 import { useT, type Lang } from '@/lib/i18n'
 import {
@@ -24,7 +25,7 @@ const STR: Record<Lang, Record<string, string>> = {
     editTitle: 'Ubah Customer', dialogDesc: 'Data ini dipakai untuk mengisi otomatis voyage & invoice.',
     fName: 'Nama Customer', fType: 'Tipe', fAddress: 'Alamat', fNpwp: 'NPWP', fEmail: 'Email', fPhone: 'Telepon',
     fContact: 'Kontak Person', fCurrency: 'Mata Uang', fCreditLimit: 'Limit Kredit', fPaymentTerm: 'Termin Bayar (hari)', fActive: 'Aktif',
-    tipEdit: 'Ubah', tipDelete: 'Hapus', cancel: 'Batal', saveChanges: 'Simpan Perubahan',
+    tipEdit: 'Ubah', tipDelete: 'Hapus', tipPortal: 'Akses portal', cancel: 'Batal', saveChanges: 'Simpan Perubahan',
   },
   en: {
     addBtn: 'Add Customer',
@@ -35,7 +36,7 @@ const STR: Record<Lang, Record<string, string>> = {
     editTitle: 'Edit Customer', dialogDesc: 'This data auto-fills voyages & invoices.',
     fName: 'Customer Name', fType: 'Type', fAddress: 'Address', fNpwp: 'NPWP', fEmail: 'Email', fPhone: 'Phone',
     fContact: 'Contact Person', fCurrency: 'Currency', fCreditLimit: 'Credit Limit', fPaymentTerm: 'Payment Term (days)', fActive: 'Active',
-    tipEdit: 'Edit', tipDelete: 'Delete', cancel: 'Cancel', saveChanges: 'Save changes',
+    tipEdit: 'Edit', tipDelete: 'Delete', tipPortal: 'Portal access', cancel: 'Cancel', saveChanges: 'Save changes',
   },
 }
 
@@ -136,6 +137,7 @@ export function CustomersManager({ customers }: { customers: Customer[] }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [portalCustomer, setPortalCustomer] = useState<Customer | null>(null)
 
   const set = (k: string, v: string) => setForm((p) => ({ ...p, [k]: v }))
 
@@ -262,6 +264,14 @@ export function CustomersManager({ customers }: { customers: Customer[] }) {
                       <div className="flex items-center justify-end gap-1.5">
                         <button
                           type="button"
+                          onClick={() => setPortalCustomer(c)}
+                          title={t.tipPortal}
+                          className="p-1.5 rounded text-text-secondary hover:text-accent-teal hover:bg-surface-tertiary transition-colors"
+                        >
+                          <Globe className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => openEdit(c)}
                           title={t.tipEdit}
                           className="p-1.5 rounded text-text-secondary hover:text-accent-blue hover:bg-surface-tertiary transition-colors"
@@ -356,6 +366,18 @@ export function CustomersManager({ customers }: { customers: Customer[] }) {
         onOpenChange={setImportOpen}
         onSaved={() => router.refresh()}
       />
+
+      <Dialog open={!!portalCustomer} onOpenChange={(o) => !o && setPortalCustomer(null)}>
+        <DialogContent className="bg-surface-secondary border-card-border text-text-primary max-w-md max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-display text-white">{portalCustomer?.name}</DialogTitle>
+            <DialogDescription className="text-text-secondary">{t.tipPortal}</DialogDescription>
+          </DialogHeader>
+          {portalCustomer && (
+            <PortalAccessPanel pihak="CUSTOMER" id={portalCustomer.id} onClose={() => setPortalCustomer(null)} />
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

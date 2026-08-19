@@ -6,7 +6,7 @@
 // sudah ada dari 7a.
 
 import { useEffect, useState } from 'react'
-import { AlertTriangle, Download, FileText, Loader2, Paperclip, Trash2, Upload } from 'lucide-react'
+import { AlertTriangle, Download, FileText, Globe, Loader2, Paperclip, Trash2, Upload } from 'lucide-react'
 import { useT, type Lang } from '@/lib/i18n'
 import type { EntityType } from '@/services/ops/owner-guard'
 
@@ -24,6 +24,8 @@ const STR: Record<Lang, Record<string, string>> = {
     errLoad: 'Gagal memuat lampiran.', errUpload: 'Gagal mengunggah.', errDelete: 'Gagal menghapus.',
     errConn: 'Gagal terhubung ke server.', errNoFile: 'Pilih berkas dulu.',
     duplicateNote: 'Berkas serupa sudah pernah dilampirkan sebelumnya.',
+    shared: 'Dibagikan ke portal', notShared: 'Belum dibagikan', share: 'Bagikan ke portal', unshare: 'Tarik dari portal',
+    sensitiveBlocked: 'Lampiran sensitif tidak bisa dibagikan ke portal.',
   },
   en: {
     title: 'Attachments',
@@ -38,6 +40,8 @@ const STR: Record<Lang, Record<string, string>> = {
     errLoad: 'Failed to load attachments.', errUpload: 'Failed to upload.', errDelete: 'Failed to delete.',
     errConn: 'Failed to connect to server.', errNoFile: 'Choose a file first.',
     duplicateNote: 'A matching file was already attached before.',
+    shared: 'Shared to portal', notShared: 'Not shared', share: 'Share to portal', unshare: 'Unshare from portal',
+    sensitiveBlocked: 'Sensitive attachments cannot be shared to the portal.',
   },
 }
 
@@ -52,7 +56,13 @@ type AttachmentRow = {
   note: string | null
   sensitive: boolean
   createdAt: string
+  sharedToPortal: boolean
 }
+
+/** K170 — hanya entitas yang benar-benar diproyeksikan ke Customer Portal (K167). Menampilkan
+ * toggle di entitas lain (mis. Disbursement/Task) akan membuat janji yang tak pernah ditepati:
+ * tak ada consumer yang membaca sharedToPortal di luar dua entityType ini (document.service.ts). */
+const ENTITAS_BISA_DIBAGIKAN: readonly EntityType[] = ['INVOICE', 'VOYAGE']
 
 const fmtSize = (b: number) => (b < 1024 * 1024 ? `${Math.round(b / 1024)} KB` : `${(b / 1024 / 1024).toFixed(1)} MB`)
 
@@ -117,6 +127,29 @@ export function AttachmentPanel({ entityType, entityId }: { entityType: EntityTy
     }
   }
 
+  const [sharingId, setSharingId] = useState<string | null>(null)
+
+  async function toggleShare(id: string, share: boolean) {
+    setSharingId(id)
+    try {
+      const res = await fetch(`/api/attachments/${id}/share`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ share }),
+      })
+      const body = await res.json().catch(() => null)
+      if (!res.ok) {
+        alert(body?.error?.message ?? t.errConn)
+        return
+      }
+      await load()
+    } catch {
+      alert(t.errConn)
+    } finally {
+      setSharingId(null)
+    }
+  }
+
   async function remove(id: string) {
     if (!confirm(t.confirmDelete)) return
     setDeletingId(id)
@@ -162,9 +195,29 @@ export function AttachmentPanel({ entityType, entityId }: { entityType: EntityTy
                     {a.sensitive && <span className="text-accent-amber"> · 🔒</span>}
                   </p>
                   {a.note && <p className="text-text-secondary text-[11px] mt-0.5 italic">{a.note}</p>}
+                  {ENTITAS_BISA_DIBAGIKAN.includes(entityType) && (
+                    <p className={`text-[11px] mt-0.5 ${a.sharedToPortal ? 'text-accent-teal' : 'text-text-secondary/60'}`}>
+                      {a.sharedToPortal ? t.shared : t.notShared}
+                    </p>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-1 shrink-0">
+                {ENTITAS_BISA_DIBAGIKAN.includes(entityType) && (
+                  <button
+                    type="button"
+                    onClick={() => toggleShare(a.id, !a.sharedToPortal)}
+                    disabled={sharingId === a.id || (!a.sharedToPortal && a.sensitive)}
+                    title={a.sensitive && !a.sharedToPortal ? t.sensitiveBlocked : a.sharedToPortal ? t.unshare : t.share}
+                    className={`p-1.5 rounded transition-colors disabled:opacity-30 ${
+                      a.sharedToPortal
+                        ? 'text-accent-teal hover:text-status-danger hover:bg-surface-tertiary'
+                        : 'text-text-secondary hover:text-accent-teal hover:bg-surface-tertiary'
+                    }`}
+                  >
+                    {sharingId === a.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
+                  </button>
+                )}
                 <a
                   href={`/api/attachments/${a.id}/content`}
                   title={t.tipDownload}

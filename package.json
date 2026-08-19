@@ -26,7 +26,8 @@
     "test:onboarding": "node prisma/check-onboarding.mjs",
     "test:quota": "node prisma/check-quota.mjs",
     "test:billing": "node prisma/check-billing.mjs",
-    "test:sub-invoice": "node prisma/check-sub-invoice.mjs"
+    "test:sub-invoice": "node prisma/check-sub-invoice.mjs",
+    "test:customer-portal": "node prisma/check-customer-portal.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

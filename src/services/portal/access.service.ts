@@ -36,7 +36,7 @@ const PANJANG_SANDI_MIN = 8
 export async function acceptPortalInvitation(
   token: string,
   body: Record<string, unknown>,
-): Promise<{ portalUserId: string; accessId: string; pihak: Pihak }> {
+): Promise<{ portalUserId: string; accessId: string; pihak: Pihak; email: string }> {
   if (!token || typeof token !== 'string') throw validation('Token undangan wajib disertakan.')
   const tokenHash = createHash('sha256').update(token).digest('hex')
 
@@ -85,7 +85,7 @@ export async function acceptPortalInvitation(
     },
   })
 
-  return { portalUserId: portalUser.id, accessId: akses.id, pihak: invAwal.pihak as Pihak }
+  return { portalUserId: portalUser.id, accessId: akses.id, pihak: invAwal.pihak as Pihak, email: invAwal.email }
 }
 
 export type PortalAccessDetail = {
