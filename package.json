@@ -24,7 +24,8 @@
     "test:jobs": "node prisma/check-reminder-job.mjs",
     "test:portal": "node prisma/check-portal-guard.mjs",
     "test:onboarding": "node prisma/check-onboarding.mjs",
-    "test:quota": "node prisma/check-quota.mjs"
+    "test:quota": "node prisma/check-quota.mjs",
+    "test:billing": "node prisma/check-billing.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

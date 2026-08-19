@@ -7,7 +7,10 @@ import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { BillingPanel } from '@/components/billing/BillingPanel'
 import { QuotaMeter } from '@/components/billing/QuotaMeter'
-import { midtransIsProduction } from '@/lib/billing/midtrans'
+import { midtransIsProduction, midtransConfigured } from '@/lib/billing/midtrans'
+import { duitkuConfigured } from '@/lib/billing/duitku'
+import { pilihGerbang, type Gerbang } from '@/lib/billing/gateway'
+import { GERBANG_BAWAAN } from '@/services/saas/commercial-policy'
 import { isSuperadmin } from '@/lib/billing/superadmin'
 import { getLang, type Lang } from '@/lib/i18n-server'
 
@@ -94,6 +97,15 @@ export default async function SettingsPage() {
     : 'https://app.sandbox.midtrans.com/snap/snap.js'
   const clientKey = process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY ?? ''
 
+  // K163 — gerbang yang kredensialnya KOSONG tidak muncul di layar sama sekali.
+  // Aplikasi tak pernah menampilkan tombol yang pasti gagal. Dihitung di server:
+  // kunci gerbang tak boleh bocor ke browser, hanya kesimpulan tersedia/tidak.
+  const gerbangTersedia: Gerbang[] = [
+    ...(midtransConfigured() ? (['MIDTRANS'] as const) : []),
+    ...(duitkuConfigured() ? (['DUITKU'] as const) : []),
+  ]
+  const gerbangAwal = pilihGerbang(tenant?.preferredGateway, gerbangTersedia, GERBANG_BAWAAN)
+
   return (
     <div className="p-margin-page max-w-[1600px] mx-auto space-y-8">
       {clientKey && <Script src={snapUrl} data-client-key={clientKey} strategy="afterInteractive" />}
@@ -152,7 +164,7 @@ export default async function SettingsPage() {
           terbaca sebelum harga. Tak tampil sama sekali selama batasnya null. */}
       <QuotaMeter lang={lang} />
 
-      <BillingPanel lang={lang} />
+      <BillingPanel lang={lang} gerbangTersedia={gerbangTersedia} gerbangAwal={gerbangAwal} />
 
       {superadmin && (
         <Link

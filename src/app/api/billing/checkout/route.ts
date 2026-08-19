@@ -3,6 +3,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getBillingPlan, resolveModules } from '@/lib/billing/plans'
 import { snap, midtransConfigured } from '@/lib/billing/midtrans'
+import { buatOrderId } from '@/lib/billing/gateway'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -30,9 +31,13 @@ export async function POST(req: Request) {
   }
 
   const tenantId = session.user.tenantId
-  const orderId = `SUB-${plan.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+  // Fase 8d / K159 — awalan gerbang (`SUB-MT-`) kini WAJIB. Bentuk lainnya sama
+  // persis dengan sebelumnya; baris lama ber-`SUB-<planId>-…` tetap sah dan
+  // tetap dilayani handler ini (lihat billing-activation.ts).
+  const orderId = buatOrderId('MIDTRANS', plan.id, Date.now(), Math.random().toString(36).slice(2, 6))
 
-  // Catat transaksi PENDING lebih dulu (sumber kebenaran; webhook mencocokkan orderId).
+  // Catat transaksi PENDING lebih dulu (sumber kebenaran; webhook mencocokkan
+  // orderId DAN gateway — K159/2).
   await prisma.payment.create({
     data: {
       orderId,
@@ -42,6 +47,7 @@ export async function POST(req: Request) {
       amount: plan.priceIDR,
       modules,
       status: 'PENDING',
+      gateway: 'MIDTRANS',
     },
   })
 

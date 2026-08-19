@@ -2,8 +2,11 @@
 
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Check, Lock, Loader2, Copy, MessageCircle } from 'lucide-react'
+import { Check, Lock, Loader2, Copy, MessageCircle, RefreshCw } from 'lucide-react'
 import { BILLING_PLANS, BILLING_MODULES, planNeedsChoice, type BillingModule } from '@/lib/billing/plans'
+// Fase 8d — dua gerbang (K158/K162).
+import { GatewayPicker } from './GatewayPicker'
+import { LABEL_GERBANG, gerbangAlternatif, type Gerbang } from '@/lib/billing/gateway'
 
 // Snap.js menyuntik window.snap saat script termuat.
 declare global {
@@ -57,6 +60,16 @@ const T = {
     waMsg: (plan: string, price: string) =>
       `Halo Maritime Suite, saya sudah transfer untuk paket ${plan} (${price}/bulan) via Bank Mandiri. Berikut bukti pembayaran saya.`,
     waMsgGeneric: 'Halo Maritime Suite, saya ingin berlangganan via transfer bank manual. Mohon informasinya.',
+    // --- Fase 8d ---
+    coba: (g: string) => `Pembayaran tidak berhasil? Coba lewat ${g}.`,
+    cobaBtn: (g: string) => `Bayar lewat ${g}`,
+    periksa: 'Periksa status pembayaran',
+    memeriksa: 'Memeriksa…',
+    periksaLunas: 'Pembayaran sudah lunas — langganan aktif.',
+    periksaBelum: 'Belum ada perubahan status. Coba lagi beberapa saat lagi.',
+    periksaGagal: 'Gagal memeriksa status ke gerbang pembayaran.',
+    duitkuGagal: 'Gagal membuat transaksi Duitku.',
+    tanpaGerbang: 'Belum ada gerbang pembayaran yang aktif. Gunakan transfer bank manual di bawah.',
   },
   en: {
     heading: 'Subscribe',
@@ -88,6 +101,16 @@ const T = {
     waMsg: (plan: string, price: string) =>
       `Hello Maritime Suite, I have transferred for the ${plan} plan (${price}/month) via Bank Mandiri. Here is my payment proof.`,
     waMsgGeneric: 'Hello Maritime Suite, I would like to subscribe via manual bank transfer. Please advise.',
+    // --- Fase 8d ---
+    coba: (g: string) => `Payment did not go through? Try via ${g}.`,
+    cobaBtn: (g: string) => `Pay via ${g}`,
+    periksa: 'Check payment status',
+    memeriksa: 'Checking…',
+    periksaLunas: 'Payment confirmed — subscription active.',
+    periksaBelum: 'No status change yet. Try again shortly.',
+    periksaGagal: 'Failed to check status with the payment gateway.',
+    duitkuGagal: 'Failed to create the Duitku transaction.',
+    tanpaGerbang: 'No payment gateway is active. Use the manual bank transfer below.',
   },
 } as const
 
@@ -101,7 +124,16 @@ const BANK_ACCOUNT = '148-00-68812000'
 const BANK_HOLDER = 'PT Tribuana Solusi Maritim'
 const WA_NUMBER = '6282154950193' // 0821-5495-0193
 
-export function BillingPanel({ lang }: { lang: Lang }) {
+export function BillingPanel({
+  lang,
+  gerbangTersedia = [],
+  gerbangAwal = null,
+}: {
+  lang: Lang
+  /** K163 — hanya gerbang yang kredensialnya terisi. Dihitung di server. */
+  gerbangTersedia?: readonly Gerbang[]
+  gerbangAwal?: Gerbang | null
+}) {
   const t = T[lang]
   const router = useRouter()
   const [planId, setPlanId] = useState<string | null>(null)
@@ -109,6 +141,12 @@ export function BillingPanel({ lang }: { lang: Lang }) {
   const [loading, setLoading] = useState(false)
   const [notice, setNotice] = useState<{ kind: 'ok' | 'pending' | 'err'; text: string } | null>(null)
   const [copied, setCopied] = useState(false)
+  const [gerbang, setGerbang] = useState<Gerbang | null>(gerbangAwal)
+  /** orderId terakhir yang dibuat — bahan tombol "Periksa status pembayaran" (K163). */
+  const [orderTerakhir, setOrderTerakhir] = useState<string | null>(null)
+  const [memeriksa, setMemeriksa] = useState(false)
+
+  const alternatif = gerbang ? gerbangAlternatif(gerbang, gerbangTersedia) : null
 
   function copyAccount() {
     navigator.clipboard?.writeText(BANK_ACCOUNT).then(
@@ -151,40 +189,105 @@ export function BillingPanel({ lang }: { lang: Lang }) {
     })
   }
 
-  async function pay() {
-    if (!plan || !canPay || loading) return
-    if (typeof window === 'undefined' || !window.snap) {
-      setNotice({ kind: 'err', text: t.notReady })
-      return
-    }
+  /**
+   * K162 — satu pesanan = satu gerbang. Setiap panggilan di sini membuat baris
+   * `Payment` BARU dengan `orderId` baru; tak ada jalur yang memindahkan pesanan
+   * antar-gerbang (itu cara termurah membuat dua callback sah untuk satu
+   * langganan). Karena itu "coba gerbang lain" cukup memanggil `pay()` lagi.
+   */
+  async function pay(pakai?: Gerbang) {
+    const g = pakai ?? gerbang
+    if (!plan || !canPay || loading || !g) return
     setLoading(true)
     setNotice(null)
+    if (pakai) setGerbang(pakai)
     try {
-      const res = await fetch('/api/billing/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planId: plan.id, modules: needsChoice ? modules : undefined }),
-      })
-      if (!res.ok) {
-        const msg = await res.text().catch(() => '')
-        setNotice({ kind: 'err', text: msg || t.errorBody })
-        setLoading(false)
-        return
-      }
-      const { token } = (await res.json()) as { token: string }
-      window.snap.pay(token, {
-        onSuccess: () => {
-          setNotice({ kind: 'ok', text: t.successBody })
-          setTimeout(() => router.refresh(), 1500)
-        },
-        onPending: () => setNotice({ kind: 'pending', text: t.pendingBody }),
-        onError: () => setNotice({ kind: 'err', text: t.errorBody }),
-        onClose: () => setLoading(false),
-      })
+      if (g === 'DUITKU') return await payDuitku()
+      return await payMidtrans()
     } catch {
       setNotice({ kind: 'err', text: t.errorBody })
-    } finally {
       setLoading(false)
+    }
+  }
+
+  async function payMidtrans() {
+    if (!plan) return
+    if (typeof window === 'undefined' || !window.snap) {
+      setNotice({ kind: 'err', text: t.notReady })
+      setLoading(false)
+      return
+    }
+    const res = await fetch('/api/billing/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ planId: plan.id, modules: needsChoice ? modules : undefined }),
+    })
+    if (!res.ok) {
+      const msg = await res.text().catch(() => '')
+      setNotice({ kind: 'err', text: msg || t.errorBody })
+      setLoading(false)
+      return
+    }
+    const { token, orderId } = (await res.json()) as { token: string; orderId?: string }
+    if (orderId) setOrderTerakhir(orderId)
+    window.snap!.pay(token, {
+      onSuccess: () => {
+        setNotice({ kind: 'ok', text: t.successBody })
+        setTimeout(() => router.refresh(), 1500)
+      },
+      onPending: () => setNotice({ kind: 'pending', text: t.pendingBody }),
+      onError: () => setNotice({ kind: 'err', text: t.errorBody }),
+      onClose: () => setLoading(false),
+    })
+    setLoading(false)
+  }
+
+  async function payDuitku() {
+    if (!plan) return
+    const res = await fetch('/api/billing/duitku/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ planId: plan.id, modules: needsChoice ? modules : undefined }),
+    })
+    if (!res.ok) {
+      const msg = await res.text().catch(() => '')
+      setNotice({ kind: 'err', text: msg || t.duitkuGagal })
+      setLoading(false)
+      return
+    }
+    const { paymentUrl, orderId } = (await res.json()) as { paymentUrl: string; orderId?: string }
+    if (orderId) setOrderTerakhir(orderId)
+    // Duitku Pop adalah halaman miliknya sendiri — pembeli diarahkan ke sana.
+    // Aktivasi TIDAK PERNAH datang dari kepulangan browser, hanya dari callback
+    // server-ke-server (K158/3); returnUrl cuma kenyamanan.
+    window.location.href = paymentUrl
+  }
+
+  /** K163 — jaring pengaman kalau webhook meleset. Jalurnya sama dengan callback. */
+  async function periksaStatus() {
+    if (!orderTerakhir || memeriksa) return
+    setMemeriksa(true)
+    try {
+      const res = await fetch('/api/billing/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: orderTerakhir }),
+      })
+      if (!res.ok) {
+        setNotice({ kind: 'err', text: t.periksaGagal })
+        return
+      }
+      const { status } = (await res.json()) as { status: string }
+      if (status === 'PAID') {
+        setNotice({ kind: 'ok', text: t.periksaLunas })
+        setTimeout(() => router.refresh(), 1200)
+      } else {
+        setNotice({ kind: 'pending', text: t.periksaBelum })
+      }
+    } catch {
+      setNotice({ kind: 'err', text: t.periksaGagal })
+    } finally {
+      setMemeriksa(false)
     }
   }
 
@@ -306,16 +409,70 @@ export function BillingPanel({ lang }: { lang: Lang }) {
         </p>
       )}
 
-      <button
-        type="button"
-        onClick={pay}
-        disabled={!canPay || loading}
-        className="inline-flex items-center gap-2 rounded-lg bg-accent-blue px-5 py-2.5 text-sm font-medium text-white
-                   transition-colors hover:bg-accent-blue/90 disabled:opacity-40 disabled:cursor-not-allowed"
-      >
-        {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-        {!plan ? t.chooseFirst : loading ? t.processing : `${t.pay} · ${formatIDR(plan.priceIDR)}`}
-      </button>
+      {/* K162 — pemilih gerbang. Tak tampil bila hanya satu gerbang tersedia. */}
+      <GatewayPicker
+        lang={lang}
+        tersedia={gerbangTersedia}
+        terpilih={gerbang}
+        onPilih={setGerbang}
+        disabled={loading}
+      />
+
+      {gerbangTersedia.length === 0 && (
+        <p className="text-sm rounded-md px-3 py-2 bg-status-warning/10 text-status-warning">
+          {t.tanpaGerbang}
+        </p>
+      )}
+
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={() => pay()}
+          disabled={!canPay || loading || !gerbang}
+          className="inline-flex items-center gap-2 rounded-lg bg-accent-blue px-5 py-2.5 text-sm font-medium text-white
+                     transition-colors hover:bg-accent-blue/90 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+          {!plan
+            ? t.chooseFirst
+            : loading
+              ? t.processing
+              : `${t.pay} · ${formatIDR(plan.priceIDR)}${gerbang ? ` · ${LABEL_GERBANG[gerbang]}` : ''}`}
+        </button>
+
+        {/* K163 — jaring pengaman kalau callback meleset. Muncul hanya sesudah
+            ada pesanan yang benar-benar dibuat. */}
+        {orderTerakhir && (
+          <button
+            type="button"
+            onClick={periksaStatus}
+            disabled={memeriksa}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-card-border px-3 py-2 text-xs
+                       text-text-secondary hover:text-white hover:border-accent-teal/50 transition-colors disabled:opacity-40"
+          >
+            {memeriksa ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            {memeriksa ? t.memeriksa : t.periksa}
+          </button>
+        )}
+      </div>
+
+      {/* K158/K162 — SELURUH alasan dua gerbang dibangun: pembeli yang ditolak
+          satu gerbang harus TAHU ada jalan kedua. Karena itu tawarannya terang,
+          bukan tersembunyi di menu. */}
+      {alternatif && plan && (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
+          <span>{t.coba(LABEL_GERBANG[alternatif])}</span>
+          <button
+            type="button"
+            onClick={() => pay(alternatif)}
+            disabled={!canPay || loading}
+            className="inline-flex items-center gap-1 rounded-md border border-card-border px-2.5 py-1
+                       text-text-secondary hover:text-white hover:border-accent-blue/50 transition-colors disabled:opacity-40"
+          >
+            {t.cobaBtn(LABEL_GERBANG[alternatif])}
+          </button>
+        </div>
+      )}
 
       {/* Pembayaran manual (transfer bank) */}
       <div className="flex items-center gap-3 pt-1">
