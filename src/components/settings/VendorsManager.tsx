@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Plus, Pencil, Trash2, Loader2, Truck, FileUp } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2, Truck, FileUp, Globe } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useT, type Lang } from '@/lib/i18n'
 import {
@@ -14,6 +14,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import { MasterImportDialog, useMasterImportLabel } from '@/components/ai/MasterImportDialog'
+import { PortalAccessPanel } from './PortalAccessPanel'
 
 const STR: Record<Lang, Record<string, string>> = {
   id: {
@@ -25,7 +26,7 @@ const STR: Record<Lang, Record<string, string>> = {
     editTitle: 'Ubah Vendor', dialogDesc: 'Data ini dipakai untuk mengisi otomatis katalog jasa & disbursement.',
     fName: 'Nama Vendor', fType: 'Tipe', fAddress: 'Alamat', fNpwp: 'NPWP', fEmail: 'Email', fPhone: 'Telepon',
     fContact: 'Kontak Person', fBankName: 'Nama Bank', fBankAccount: 'No. Rekening', fPaymentTerm: 'Termin Bayar (hari)', fActive: 'Aktif',
-    tipEdit: 'Ubah', tipDelete: 'Hapus', cancel: 'Batal', saveChanges: 'Simpan Perubahan',
+    tipEdit: 'Ubah', tipDelete: 'Hapus', tipPortal: 'Akses portal', cancel: 'Batal', saveChanges: 'Simpan Perubahan',
   },
   en: {
     addBtn: 'Add Vendor',
@@ -36,7 +37,7 @@ const STR: Record<Lang, Record<string, string>> = {
     editTitle: 'Edit Vendor', dialogDesc: 'This data auto-fills service catalog & disbursements.',
     fName: 'Vendor Name', fType: 'Type', fAddress: 'Address', fNpwp: 'NPWP', fEmail: 'Email', fPhone: 'Phone',
     fContact: 'Contact Person', fBankName: 'Bank Name', fBankAccount: 'Account No.', fPaymentTerm: 'Payment Term (days)', fActive: 'Active',
-    tipEdit: 'Edit', tipDelete: 'Delete', cancel: 'Cancel', saveChanges: 'Save changes',
+    tipEdit: 'Edit', tipDelete: 'Delete', tipPortal: 'Portal access', cancel: 'Cancel', saveChanges: 'Save changes',
   },
 }
 
@@ -137,6 +138,7 @@ export function VendorsManager({ vendors }: { vendors: Vendor[] }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [portalVendor, setPortalVendor] = useState<Vendor | null>(null)
 
   const set = (k: string, v: string) => setForm((p) => ({ ...p, [k]: v }))
 
@@ -267,6 +269,14 @@ export function VendorsManager({ vendors }: { vendors: Vendor[] }) {
                       <div className="flex items-center justify-end gap-1.5">
                         <button
                           type="button"
+                          onClick={() => setPortalVendor(v)}
+                          title={t.tipPortal}
+                          className="p-1.5 rounded text-text-secondary hover:text-accent-teal hover:bg-surface-tertiary transition-colors"
+                        >
+                          <Globe className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => openEdit(v)}
                           title={t.tipEdit}
                           className="p-1.5 rounded text-text-secondary hover:text-accent-blue hover:bg-surface-tertiary transition-colors"
@@ -361,6 +371,18 @@ export function VendorsManager({ vendors }: { vendors: Vendor[] }) {
         onOpenChange={setImportOpen}
         onSaved={() => router.refresh()}
       />
+
+      <Dialog open={!!portalVendor} onOpenChange={(o) => !o && setPortalVendor(null)}>
+        <DialogContent className="bg-surface-secondary border-card-border text-text-primary max-w-md max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-display text-white">{portalVendor?.name}</DialogTitle>
+            <DialogDescription className="text-text-secondary">{t.tipPortal}</DialogDescription>
+          </DialogHeader>
+          {portalVendor && (
+            <PortalAccessPanel pihak="VENDOR" id={portalVendor.id} onClose={() => setPortalVendor(null)} />
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

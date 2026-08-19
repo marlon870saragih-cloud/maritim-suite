@@ -13,12 +13,12 @@ import { useT, type Lang } from '@/lib/i18n'
 
 const T: Record<Lang, Record<string, string>> = {
   id: {
-    title: 'Portal Pelanggan', subtitle: 'Maritime Suite', desc: 'Masuk untuk melihat tagihan, kunjungan kapal, dan dokumen Anda.',
+    title: 'Portal Mitra', subtitle: 'Maritime Suite', desc: 'Masuk untuk melihat tagihan, kunjungan kapal, pesanan, atau perintah kerja Anda.',
     email: 'Email', password: 'Kata sandi', submit: 'Masuk', submitting: 'Memeriksa…',
     err: 'Email atau kata sandi salah, atau akses portal Anda belum/tidak aktif.',
   },
   en: {
-    title: 'Customer Portal', subtitle: 'Maritime Suite', desc: 'Sign in to view your invoices, vessel visits, and documents.',
+    title: 'Partner Portal', subtitle: 'Maritime Suite', desc: 'Sign in to view your invoices, vessel visits, purchase orders, or work orders.',
     email: 'Email', password: 'Password', submit: 'Sign in', submitting: 'Checking…',
     err: 'Wrong email or password, or your portal access is not active.',
   },

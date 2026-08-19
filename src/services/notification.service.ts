@@ -69,6 +69,8 @@ export type NewNotification = {
     | 'QUOTA_WARNING'
     // --- Fase 8f (K169) — pelanggan mengonfirmasi pembayaran lewat portal ---
     | 'PORTAL_PAYMENT_CONFIRMED'
+    // --- Fase 8g (K173) — vendor mengonfirmasi pekerjaan selesai lewat portal ---
+    | 'VENDOR_WORK_CONFIRMED'
   title: string
   message?: string
   entityType?:
@@ -85,6 +87,8 @@ export type NewNotification = {
     | 'PORT_PLAYBOOK'
     | 'VESSEL'
     | 'PORT'
+    // --- Fase 8g (K172) ---
+    | 'VENDOR_INVOICE_SUBMISSION'
   entityId?: string
   href?: string
   /**

@@ -13,15 +13,21 @@ import type { PortalContext } from './context'
 const PANJANG_SANDI_MIN = 8
 const PANJANG_NAMA_MAKS = 120
 
-export type ProfilPortal = { name: string; email: string; phone: string | null }
+export type ProfilPortal = { name: string; email: string; phone: string | null; pihak: 'CUSTOMER' | 'VENDOR' }
 
+/**
+ * `pihak` diambil dari `pctx` (sudah dibaca ulang PortalAccess tiap
+ * permintaan lewat requirePortal(), K168), BUKAN query baru — dipakai
+ * PortalNav.tsx (Fase 8g) untuk memutuskan navigasi mana yang ditampilkan
+ * tanpa endpoint baru.
+ */
 export async function getProfilPortal(pctx: PortalContext): Promise<ProfilPortal> {
   const u = await prisma.portalUser.findFirst({
     where: { id: pctx.portalUserId, tenantId: pctx.tenantId },
     select: { name: true, email: true, phone: true },
   })
   if (!u) throw validation('Profil tidak ditemukan.')
-  return u
+  return { ...u, pihak: pctx.pihak }
 }
 
 export async function updateProfilPortal(

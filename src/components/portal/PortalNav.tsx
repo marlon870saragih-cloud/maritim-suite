@@ -1,18 +1,26 @@
 'use client'
 
-// Navigasi Customer Portal. ⚠️ TIDAK memakai `useSession()`/`signOut()` dari
-// 'next-auth/react' — `SessionProvider` bawaan app (components/providers.tsx)
-// menargetkan `/api/auth/*` INTERNAL, bukan `/api/portal/auth/*`. Keduanya
-// kebetulan sama-sama NextAuth tapi sesinya terpisah total (K144/3); memakai
-// helper bawaan di sini akan diam-diam membaca/menulis sesi yang salah.
+// Navigasi portal (pelanggan & vendor, Fase 8f/8g). ⚠️ TIDAK memakai
+// `useSession()`/`signOut()` dari 'next-auth/react' — `SessionProvider`
+// bawaan app (components/providers.tsx) menargetkan `/api/auth/*` INTERNAL,
+// bukan `/api/portal/auth/*`. Keduanya kebetulan sama-sama NextAuth tapi
+// sesinya terpisah total (K144/3); memakai helper bawaan di sini akan diam-
+// diam membaca/menulis sesi yang salah.
+//
+// `pihak` TIDAK ada di sesi (K168 — lihat catatan lib/portal-auth.ts): sesi
+// hanya menyimpan portalUserId, `pihak` selalu dibaca ulang dari DB tiap
+// permintaan supaya pencabutan akses berlaku seketika. Nav ini memakai
+// endpoint yang SUDAH ADA (`/api/portal/profile`) untuk tahu pihak mana yang
+// login — bukan endpoint baru — dan endpoint itu sendiri sudah melewati
+// pemeriksaan requirePortal() yang sesungguhnya.
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { FileText, Home, Ship, FolderOpen, User, LogOut, Loader2 } from 'lucide-react'
+import { FileText, Home, Ship, FolderOpen, User, LogOut, Loader2, Package, Wrench, Receipt } from 'lucide-react'
 import { useT, type Lang, useLang, LangToggle } from '@/lib/i18n'
 
-const NAV = [
+const NAV_CUSTOMER = [
   { href: '/portal', labelId: 'Beranda', labelEn: 'Home', icon: Home },
   { href: '/portal/invoices', labelId: 'Tagihan', labelEn: 'Invoices', icon: FileText },
   { href: '/portal/voyages', labelId: 'Kunjungan Kapal', labelEn: 'Vessel Visits', icon: Ship },
@@ -20,9 +28,17 @@ const NAV = [
   { href: '/portal/profile', labelId: 'Profil', labelEn: 'Profile', icon: User },
 ] as const
 
+const NAV_VENDOR = [
+  { href: '/portal', labelId: 'Beranda', labelEn: 'Home', icon: Home },
+  { href: '/portal/purchase-orders', labelId: 'Pesanan', labelEn: 'Purchase Orders', icon: Package },
+  { href: '/portal/work-orders', labelId: 'Perintah Kerja', labelEn: 'Work Orders', icon: Wrench },
+  { href: '/portal/submissions', labelId: 'Tagihan Saya', labelEn: 'My Invoices', icon: Receipt },
+  { href: '/portal/profile', labelId: 'Profil', labelEn: 'Profile', icon: User },
+] as const
+
 const T: Record<Lang, Record<string, string>> = {
-  id: { signOut: 'Keluar', brand: 'Portal Pelanggan' },
-  en: { signOut: 'Sign out', brand: 'Customer Portal' },
+  id: { signOut: 'Keluar', brandCustomer: 'Portal Pelanggan', brandVendor: 'Portal Vendor' },
+  en: { signOut: 'Sign out', brandCustomer: 'Customer Portal', brandVendor: 'Vendor Portal' },
 }
 
 export function PortalNav({ name }: { name: string }) {
@@ -31,6 +47,20 @@ export function PortalNav({ name }: { name: string }) {
   const pathname = usePathname()
   const router = useRouter()
   const [keluar, setKeluar] = useState(false)
+  const [pihak, setPihak] = useState<'CUSTOMER' | 'VENDOR' | null>(null)
+
+  useEffect(() => {
+    let hidup = true
+    fetch('/api/portal/profile')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { pihak?: 'CUSTOMER' | 'VENDOR' } | null) => hidup && d?.pihak && setPihak(d.pihak))
+    return () => {
+      hidup = false
+    }
+  }, [])
+
+  const NAV = pihak === 'VENDOR' ? NAV_VENDOR : NAV_CUSTOMER
+  const brand = pihak === 'VENDOR' ? t.brandVendor : t.brandCustomer
 
   async function signOutPortal() {
     setKeluar(true)
@@ -52,7 +82,7 @@ export function PortalNav({ name }: { name: string }) {
       <div className="max-w-[1000px] mx-auto px-4 py-3 flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-6 flex-wrap">
           <div>
-            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest">{t.brand}</p>
+            <p className="font-mono text-[10px] text-text-secondary uppercase tracking-widest">{brand}</p>
             <p className="text-white font-display text-sm">{name}</p>
           </div>
           <nav className="flex items-center gap-1 flex-wrap">

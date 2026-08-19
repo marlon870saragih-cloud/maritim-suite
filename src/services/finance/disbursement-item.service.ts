@@ -43,6 +43,7 @@ import {
   type DisbursementWithItems,
 } from './disbursement.service'
 import { catatAudit, type Jejak } from './audit'
+import { tautkanKeDisbursementItem } from '../ops/vendor-submission.service'
 
 const CALC_METHODS: readonly CalcMethod[] = [
   'FLAT',
@@ -265,12 +266,25 @@ export async function addItem(
   // menyentuh usulan/pastikanBarisSah sama sekali: operator sudah mengonfirmasi
   // isi baris (harga/qty dari sini tetap yang ia ketik/setujui di form, bukan
   // ditulis otomatis oleh PO/WO — K52). Dua field ini murni jejak asal-usul.
-  const item = await forTenant(ctx).disbursementItem.create({
-    data: {
-      ...dataBaris(usulan, disbursementId),
-      sourcePurchaseOrderId: str(body.sourcePurchaseOrderId),
-      sourceWorkOrderId: str(body.sourceWorkOrderId),
-    },
+  //
+  // K172/1 (Fase 8g) — penanda ketiga (vendorInvoiceSubmissionId) BEDA sifat
+  // dari dua di atas: menautkannya bisa GAGAL (submission sudah dipakai baris
+  // lain, K172/1). Pembuatan item + penautan karena itu SATU transaksi — kalau
+  // tautannya gagal, item yang baru dibuat WAJIB ikut batal (bukan tertinggal
+  // sebagai baris biaya yatim tanpa penanda asal).
+  const vendorInvoiceSubmissionId = str(body.vendorInvoiceSubmissionId)
+  const item = await forTenant(ctx).$transaction(async (tx) => {
+    const baru = await tx.disbursementItem.create({
+      data: {
+        ...dataBaris(usulan, disbursementId),
+        sourcePurchaseOrderId: str(body.sourcePurchaseOrderId),
+        sourceWorkOrderId: str(body.sourceWorkOrderId),
+      },
+    })
+    if (vendorInvoiceSubmissionId) {
+      await tautkanKeDisbursementItem(ctx, tx, vendorInvoiceSubmissionId, baru.id)
+    }
+    return baru
   })
 
   await catatAudit(

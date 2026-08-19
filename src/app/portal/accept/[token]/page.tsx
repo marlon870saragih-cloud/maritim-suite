@@ -11,14 +11,14 @@ import { useT, type Lang } from '@/lib/i18n'
 
 const T: Record<Lang, Record<string, string>> = {
   id: {
-    title: 'Aktifkan Akun Portal', desc: 'Anda diundang untuk mengakses Portal Pelanggan Maritime Suite. Buat kata sandi untuk melanjutkan.',
+    title: 'Aktifkan Akun Portal', desc: 'Anda diundang untuk mengakses Portal Mitra Maritime Suite. Buat kata sandi untuk melanjutkan.',
     name: 'Nama (opsional)', password: 'Kata sandi baru', passwordHint: 'Minimal 8 karakter.',
     submit: 'Aktifkan & Masuk', submitting: 'Memproses…',
     err: 'Undangan tidak valid, sudah kedaluwarsa, atau sudah pernah dipakai. Minta undangan baru dari keagenan Anda.',
     errShort: 'Kata sandi minimal 8 karakter.',
   },
   en: {
-    title: 'Activate Portal Account', desc: 'You have been invited to Maritime Suite\'s Customer Portal. Set a password to continue.',
+    title: 'Activate Portal Account', desc: 'You have been invited to Maritime Suite\'s Partner Portal. Set a password to continue.',
     name: 'Name (optional)', password: 'New password', passwordHint: 'At least 8 characters.',
     submit: 'Activate & Sign in', submitting: 'Processing…',
     err: 'Invitation invalid, expired, or already used. Ask your agency for a new invitation.',

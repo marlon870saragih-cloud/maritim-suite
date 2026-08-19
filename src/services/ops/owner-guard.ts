@@ -45,6 +45,10 @@ export const ENTITAS_DIDUKUNG = {
   // daripada ke satu baris ServiceRate — dan ServiceRate sendiri tak pernah
   // jadi tempat orang membuka lampiran.
   PORT: { model: 'port', lewat: 'langsung' },
+  // Fase 8g / K172 — tagihan vendor wajib berkas; entityType-nya harus di
+  // daftar putih ini seperti entitas lain (uploadAttachment() memanggil
+  // pastikanEntitasMilikTenant() SEBELUM menulis apa pun).
+  VENDOR_INVOICE_SUBMISSION: { model: 'vendorInvoiceSubmission', lewat: 'langsung' },
 } as const
 
 export type EntityType = keyof typeof ENTITAS_DIDUKUNG

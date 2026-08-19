@@ -10,6 +10,7 @@ export type ServiceErrorCode =
   | 'NOT_FOUND' // tidak ada — ATAU milik tenant lain (sengaja disamarkan, lihat catatan)
   | 'VALIDATION' // input tidak sah
   | 'CONFLICT' // bentrok dengan data lain (mis. kode ganda, masih dipakai)
+  | 'RATE_LIMITED' // batas laju terlampaui (K172/4, Fase 8g) — coba lagi nanti
 
 const STATUS: Record<ServiceErrorCode, number> = {
   UNAUTHORIZED: 401,
@@ -17,6 +18,7 @@ const STATUS: Record<ServiceErrorCode, number> = {
   NOT_FOUND: 404,
   VALIDATION: 400,
   CONFLICT: 409,
+  RATE_LIMITED: 429,
 }
 
 export class ServiceError extends Error {
@@ -51,3 +53,5 @@ export const validation = (pesan: string, details?: unknown) =>
   new ServiceError('VALIDATION', pesan, details)
 
 export const conflict = (pesan: string) => new ServiceError('CONFLICT', pesan)
+
+export const rateLimited = (pesan: string) => new ServiceError('RATE_LIMITED', pesan)
