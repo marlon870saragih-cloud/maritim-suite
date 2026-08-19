@@ -21,10 +21,9 @@
 // pengingat kemarin. Lihat OpsiJalanPengingat.
 
 import crypto from 'node:crypto'
-import {
-  jalankanPengingatUntukSemuaTenant,
-  type HasilJalanPengingat,
-} from '@/services/ops/reminder-job'
+import { jalankanPengingatUntukSemuaTenant } from '@/services/ops/reminder-job'
+// Fase 8k / K186 — skrip backup di server melapor ke sini setiap selesai.
+import { catatHasilBackup } from '@/services/saas/backup-status.service'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -39,9 +38,39 @@ const PANJANG_TOKEN_MINIMUM = 16
  *
  * Tiap job wajib idempoten (K88) — endpoint ini tidak punya kunci antrean, dan
  * dua penjadwal yang kelewat rajin harus tetap menghasilkan data yang sama.
+ *
+ * Fase 8k: kembaliannya dilonggarkan ke `unknown` karena `backup-status`
+ * memang berbentuk lain dari `reminders` (satu ringkasan, bukan larik per
+ * tenant). Yang HILANG dengan pelonggaran ini cuma pengetikan bentuk balasan
+ * JSON — bukan keamanan; yang dijaga endpoint ini adalah TOKEN-nya.
  */
-const JOB: Readonly<Record<string, () => Promise<HasilJalanPengingat[]>>> = {
+const JOB: Readonly<Record<string, (req: Request) => Promise<unknown>>> = {
   reminders: () => jalankanPengingatUntukSemuaTenant(),
+
+  /**
+   * K186 — dipanggil skrip backup di server SESUDAH `pg_dump` selesai,
+   * berhasil maupun gagal. Gagal justru yang paling penting sampai: itulah
+   * satu-satunya cara kartu merah muncul sebelum ada yang benar-benar
+   * membutuhkan backup-nya.
+   *
+   * Idempoten (K88): upsert pada satu baris — dipanggil 1× atau 50× sehari
+   * tetap menghasilkan satu baris keadaan terakhir.
+   */
+  'backup-status': async (req: Request) => {
+    const url = new URL(req.url)
+    const p = url.searchParams
+    // Dibaca dari query, bukan body: pemanggilnya skrip shell (`curl`), dan
+    // menyusun JSON di bash adalah cara termurah membuat laporan gagal
+    // TIDAK terkirim justru saat ia paling dibutuhkan.
+    const ukuran = Number(p.get('ukuranBytes'))
+    return catatHasilBackup({
+      // Bawaannya GAGAL: pemanggil yang lupa/salah menulis parameter harus
+      // menghasilkan kartu merah, bukan kartu hijau palsu.
+      berhasil: p.get('berhasil') === 'true' || p.get('ok') === '1',
+      ukuranBytes: Number.isFinite(ukuran) && ukuran > 0 ? ukuran : null,
+      pesan: p.get('pesan'),
+    })
+  },
 }
 
 const JOB_BAWAAN = 'reminders'
@@ -84,18 +113,31 @@ export async function POST(req: Request): Promise<Response> {
 
   const mulai = Date.now()
   try {
-    const hasil = await jalankan()
+    const hasil = await jalankan(req)
+
+    // Ringkasan per-tenant hanya berarti untuk job yang MEMANG berbentuk
+    // larik hasil per tenant (reminders). Job lain (backup-status) membalas
+    // satu objek keadaan; memaksakan `total` padanya akan menghasilkan angka
+    // nol yang terlihat sah — lebih buruk daripada tak ada field sama sekali.
+    const berbentukPerTenant =
+      Array.isArray(hasil) && hasil.every((h) => h && typeof h === 'object' && 'dibuat' in h)
+
     return Response.json({
       job,
       dijalankanPada: new Date().toISOString(),
       durasiMs: Date.now() - mulai,
-      // Ringkasan seluruh tenant, supaya kartu hasil di layar tidak perlu
-      // menjumlah sendiri. Rinciannya tetap per tenant di `hasil`.
-      total: {
-        dibuat: hasil.reduce((s, h) => s + h.dibuat, 0),
-        dilewati: hasil.reduce((s, h) => s + h.dilewati, 0),
-        dibatasi: hasil.reduce((s, h) => s + h.dibatasi, 0),
-      },
+      ...(berbentukPerTenant
+        ? {
+            total: (hasil as { dibuat: number; dilewati: number; dibatasi: number }[]).reduce(
+              (s, h) => ({
+                dibuat: s.dibuat + h.dibuat,
+                dilewati: s.dilewati + h.dilewati,
+                dibatasi: s.dibatasi + h.dibatasi,
+              }),
+              { dibuat: 0, dilewati: 0, dibatasi: 0 },
+            ),
+          }
+        : {}),
       hasil,
     })
   } catch (e) {

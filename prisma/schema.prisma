@@ -118,6 +118,7 @@ model Tenant {
   marineDataCaches          MarineDataCache[]
   usageEvents               UsageEvent[]
   dataRequests              DataRequest[]
+  exportJobs                ExportJob[]
 }
 
 model Payment {
@@ -1796,4 +1797,49 @@ model DataRequest {
   createdAt       DateTime  @default(now())
 
   @@index([tenantId, status, createdAt])
+}
+
+/// Fase 8k / K186 — satu permintaan ekspor seluruh data tenant. ADA supaya
+/// aturan "satu ekspor aktif per tenant" punya tempat bertanya, dan supaya
+/// tugas yang berjalan lama tidak hidup hanya di memori satu proses (mati saat
+/// deploy ulang = tenant menunggu berkas yang tak akan pernah datang).
+model ExportJob {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  status String @default("BERJALAN") // BERJALAN | SELESAI | GAGAL
+
+  /// Attachment hasil (kind='EXPORT'). String polos TANPA relasi — sama alasan
+  /// dengan AuditLog.userId: berkasnya bisa di-soft-delete (K110) atau
+  /// kedaluwarsa, dan riwayat ekspor harus tetap terbaca sesudahnya.
+  attachmentId String?
+  galat        String?
+  jumlahTabel  Int?
+  /// Float, bukan BigInt: JSON-safe tanpa konversi khusus, dan presisi byte
+  /// tidak menentukan apa pun di sini (dipakai untuk menampilkan "12,4 MB").
+  ukuranBytes Float?
+
+  dimintaUserId String
+  createdAt     DateTime  @default(now())
+  selesaiPada   DateTime?
+
+  @@index([tenantId, status, createdAt])
+}
+
+/// Fase 8k / K186 — SATU baris konfigurasi/keadaan sistem. SENGAJA BUKAN model
+/// bertenant (tak ada tenantId, tak didaftarkan di TENANT_MODELS): status
+/// backup adalah urusan operator aplikasi (Marlon), bukan data tenant mana pun.
+/// Backup yang tak pernah dilihat siapa pun adalah backup yang tak pernah
+/// ketahuan rusak — kolom-kolom ini yang membuatnya terlihat.
+model SystemConfig {
+  /// Selalu 'singleton' — satu baris, dijaga oleh primary key-nya sendiri.
+  id String @id @default("singleton")
+
+  backupTerakhirPada DateTime?
+  backupBerhasil     Boolean?
+  backupUkuranBytes  Float?
+  backupPesan        String?
+
+  updatedAt DateTime @updatedAt
 }

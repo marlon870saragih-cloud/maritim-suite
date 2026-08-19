@@ -71,6 +71,8 @@ export type NewNotification = {
     | 'PORTAL_PAYMENT_CONFIRMED'
     // --- Fase 8g (K173) — vendor mengonfirmasi pekerjaan selesai lewat portal ---
     | 'VENDOR_WORK_CONFIRMED'
+    // --- Fase 8k (K186) — bundel ekspor mandiri siap (atau gagal) ---
+    | 'EXPORT_READY'
   title: string
   message?: string
   entityType?:

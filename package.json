@@ -33,7 +33,9 @@
     "test:logo-migration": "node prisma/check-logo-migration.mjs",
     "db:migrate-logo": "node prisma/migrate-logo-to-attachment.mjs",
     "test:usage": "node prisma/check-usage.mjs",
-    "usage:report": "node prisma/usage-report.mjs"
+    "usage:report": "node prisma/usage-report.mjs",
+    "test:compliance": "node prisma/check-compliance.mjs",
+    "db:delete-tenant": "node prisma/delete-tenant.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
@@ -57,6 +59,7 @@
     "exceljs": "^4.4.0",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
+    "jszip": "^3.10.1",
     "lucide-react": "^1.21.0",
     "midtrans-client": "^1.4.3",
     "next": "14.2.35",

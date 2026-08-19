@@ -70,6 +70,13 @@ export const JENIS_LAMPIRAN = [
   // (entityType='TENANT', entityId=ctx.tenantId selalu — lihat catatan di
   // sana), tak pernah lewat uploadAttachment() generik di berkas ini.
   'BRANDING',
+  // Fase 8k / K186 — bundel ekspor mandiri (.zip). Ditulis HANYA lewat
+  // export.service.ts, pola & alasan sama seperti 'BRANDING': pemiliknya
+  // TENANT itu sendiri. Perhatikan .zip SENGAJA tetap di luar TIPE_DITERIMA
+  // di atas — daftar putih itu menjaga jalur UNGGAH pihak luar, sedangkan
+  // bundel ini dihasilkan sistem sendiri (lihat catatan panjang "KENAPA ZIP"
+  // di export.service.ts).
+  'EXPORT',
 ] as const
 
 // ------------------------------------------------------------- normalisasi

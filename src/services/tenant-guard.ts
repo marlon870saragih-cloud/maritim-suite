@@ -74,6 +74,11 @@ export const TENANT_MODELS: ReadonlySet<string> = new Set([
   'MarineDataCache',
   'UsageEvent',
   'DataRequest',
+
+  // --- Fase 8k / K186 — ekspor mandiri. `SystemConfig` SENGAJA TIDAK di sini:
+  // ia tidak punya kolom tenantId sama sekali (status backup = urusan operator
+  // aplikasi, bukan data tenant mana pun) — lihat catatannya di schema.prisma.
+  'ExportJob',
 ])
 
 /** Operasi yang aman disaring lewat `where`. */

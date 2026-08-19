@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { getServerSession } from 'next-auth'
-import { Building2, Database, Users, ChevronRight, Anchor, Truck, Coins, TrendingUp, ListChecks, ShieldAlert, UsersRound, Sparkles, Clock3, CreditCard, Palette, Activity } from 'lucide-react'
+import { Building2, Database, Users, ChevronRight, Anchor, Truck, Coins, TrendingUp, ListChecks, ShieldAlert, UsersRound, Sparkles, Clock3, CreditCard, Palette, Activity, ShieldCheck } from 'lucide-react'
 import { authOptions } from '@/lib/auth'
 import { isSuperadmin } from '@/lib/billing/superadmin'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -28,6 +28,7 @@ const TR: Record<Lang, {
       { href: '/settings/billing', title: 'Langganan & Billing', desc: 'Paket, kuota, gerbang bayar, kuitansi (ADMIN/FINANCE)', icon: CreditCard },
       { href: '/settings/branding', title: 'Merek', desc: 'Logo, warna aksen, dan alamat portal (ADMIN)', icon: Palette },
       { href: '/settings/usage', title: 'Pemakaian', desc: 'Fitur mana yang tim Anda pakai 30 hari terakhir', icon: Activity },
+      { href: '/settings/compliance', title: 'Kepatuhan & Data', desc: 'Status backup, ekspor seluruh data, hak subjek data (UU PDP)', icon: ShieldCheck },
       { href: '/settings/audit', title: 'Jejak Audit', desc: 'Riwayat perubahan dokumen — siapa mengubah apa (ADMIN)', icon: ShieldAlert },
       { href: '/settings/jobs', title: 'Pekerjaan Terjadwal', desc: 'Jalankan pengingat manual & lihat hasil jalan terakhir (ADMIN)', icon: Clock3 },
       { href: '/settings/data-ai', title: 'Data & AI', desc: 'Asal data (nyata/uji/contoh) — dasar keyakinan prediksi', icon: Sparkles },
@@ -49,6 +50,7 @@ const TR: Record<Lang, {
       { href: '/settings/billing', title: 'Subscription & Billing', desc: 'Plan, quota, payment gateway, receipts (ADMIN/FINANCE)', icon: CreditCard },
       { href: '/settings/branding', title: 'Branding', desc: 'Logo, accent color, and portal address (ADMIN)', icon: Palette },
       { href: '/settings/usage', title: 'Usage', desc: 'Which features your team used in the last 30 days', icon: Activity },
+      { href: '/settings/compliance', title: 'Compliance & Data', desc: 'Backup status, full data export, data subject requests', icon: ShieldCheck },
       { href: '/settings/audit', title: 'Audit Log', desc: 'Document change history — who changed what (ADMIN)', icon: ShieldAlert },
       { href: '/settings/jobs', title: 'Scheduled Jobs', desc: 'Manually run reminders & view last run result (ADMIN)', icon: Clock3 },
       { href: '/settings/data-ai', title: 'Data & AI', desc: 'Data origin (real/test/sample) — basis of prediction confidence', icon: Sparkles },
