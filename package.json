@@ -22,7 +22,8 @@
     "db:seed-task-template": "node prisma/seed-task-template.mjs",
     "test:ops-api": "node prisma/check-ops-api.mjs",
     "test:jobs": "node prisma/check-reminder-job.mjs",
-    "test:portal": "node prisma/check-portal-guard.mjs"
+    "test:portal": "node prisma/check-portal-guard.mjs",
+    "test:onboarding": "node prisma/check-onboarding.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
+import { seedTenantOnboarding } from '@/services/saas/onboarding.service'
 
 const schema = z.object({
   // Akun admin
@@ -70,6 +71,18 @@ export async function POST(req: Request) {
       },
     },
   })
+
+  // K151/2 — penyemaian awal berjalan SEKALI, otomatis, segera setelah
+  // tenant lahir (bukan menunggu operator memicu langkah wizard manapun).
+  // Kegagalan di sini TIDAK BOLEH membatalkan pendaftaran yang sudah
+  // berhasil — ditelan & dicatat, sejalan pola K95 pintu 1 (checklist
+  // otomatis voyage): tenant yang sudah lahir tidak dibatalkan gara-gara
+  // langkah pendukung yang bisa diulang manual nanti dari wizard.
+  try {
+    await seedTenantOnboarding(tenant.id)
+  } catch (e) {
+    console.error('[register] penyemaian awal gagal, tenant tetap dibuat:', e)
+  }
 
   return NextResponse.json({ ok: true, tenantId: tenant.id }, { status: 201 })
 }
