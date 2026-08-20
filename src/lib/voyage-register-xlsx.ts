@@ -6,7 +6,6 @@ import ExcelJS from 'exceljs'
 import type { VoyageRegisterRow } from '@/services/reports.service'
 
 const NAVY = 'FF0E2238'
-const BRASS = 'FFC79A3E'
 const WHITE = 'FFFFFFFF'
 const GRAY = 'FF6B7A8D'
 const RED = 'FFC0432E'

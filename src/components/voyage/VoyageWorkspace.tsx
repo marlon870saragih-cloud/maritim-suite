@@ -28,8 +28,8 @@ import {
   type VoyageStatusStr,
   type WorkspaceVoyage,
 } from './voyage-status'
-import { VoyageCargoPanel, type CargoRow } from './VoyageCargoPanel'
-import { VoyagePortCallPanel, type VoyagePortCallRow } from './VoyagePortCallPanel'
+import { VoyageCargoPanel } from './VoyageCargoPanel'
+import { VoyagePortCallPanel } from './VoyagePortCallPanel'
 import { VoyageFinancePanel, type VoyageFinanceCounts } from './VoyageFinancePanel'
 import { VoyageTaskPanel } from '@/components/ops/VoyageTaskPanel'
 import type { TaskRow, UserOption } from '@/components/ops/task-shared'

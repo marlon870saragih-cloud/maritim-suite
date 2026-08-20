@@ -46,7 +46,6 @@ const T: Record<Lang, Record<string, string>> = {
 
 const inputCls =
   'w-full h-10 px-3 rounded-md border border-card-border bg-surface-tertiary/40 text-white text-sm focus:outline-none focus:border-accent-blue'
-const labelCls = 'text-[11px] font-mono uppercase tracking-wider text-text-secondary'
 
 export function BrandingSettings() {
   const t = useT(T)

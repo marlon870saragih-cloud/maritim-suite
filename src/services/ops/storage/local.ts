@@ -11,7 +11,7 @@
 
 import { createHash, randomBytes } from 'node:crypto'
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
-import { dirname, isAbsolute, join, normalize, resolve, sep } from 'node:path'
+import { dirname, isAbsolute, normalize, resolve, sep } from 'node:path'
 
 export type PenyimpananBerkas = {
   simpan(kunci: string, isi: Buffer, mime: string): Promise<void>

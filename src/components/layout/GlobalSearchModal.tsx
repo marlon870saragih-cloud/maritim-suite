@@ -152,7 +152,7 @@ export function GlobalSearchModal() {
               {query.trim().length < 2 ? (
                 <p className="text-text-secondary text-xs px-4 py-6 text-center">{t.empty}</p>
               ) : !busy && results.length === 0 ? (
-                <p className="text-text-secondary text-xs px-4 py-6 text-center">{t.noResult} "{query}"</p>
+                <p className="text-text-secondary text-xs px-4 py-6 text-center">{t.noResult} &quot;{query}&quot;</p>
               ) : (
                 <ul>
                   {results.map((r, i) => {
