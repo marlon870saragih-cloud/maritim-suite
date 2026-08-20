@@ -4,6 +4,7 @@
 // tangkap FORBIDDEN, tampilkan layar tertutup.
 
 import Script from 'next/script'
+import { headers } from 'next/headers'
 import { ShieldAlert } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { getLang, type Lang } from '@/lib/i18n-server'
@@ -71,6 +72,10 @@ export default async function BillingPage() {
       ? 'https://app.midtrans.com/snap/snap.js'
       : 'https://app.sandbox.midtrans.com/snap/snap.js'
     const clientKey = process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY ?? ''
+    // Checklist go-live / K185 — script-src kini nonce-ketat (middleware.ts).
+    // Snap.js satu-satunya <Script> pihak ketiga di app ini; tanpa nonce ini
+    // CSP akan menolaknya memuat sama sekali.
+    const nonce = headers().get('x-nonce') ?? undefined
 
     // K163 — gerbang tanpa kredensial tak muncul di layar sama sekali.
     const gerbangTersedia: Gerbang[] = [
@@ -81,7 +86,7 @@ export default async function BillingPage() {
 
     return (
       <div className="p-margin-page max-w-[1200px] mx-auto space-y-6">
-        {clientKey && <Script src={snapUrl} data-client-key={clientKey} strategy="afterInteractive" />}
+        {clientKey && <Script src={snapUrl} data-client-key={clientKey} strategy="afterInteractive" nonce={nonce} />}
 
         <PageHeader kicker={t.kicker} title={t.title} description={t.desc} />
 
