@@ -29,6 +29,7 @@ const T: Record<Lang, Record<string, string>> = {
     save: 'Simpan', saving: 'Menyimpan…', saved: 'Tersimpan.',
     errGeneric: 'Gagal menyimpan.', errConn: 'Gagal terhubung ke server.', errUpload: 'Gagal mengunggah logo.',
     errFileType: 'Format tidak didukung — gunakan PNG, JPG, atau WebP.',
+    logoHint: 'Format: PNG, JPG, atau WebP — maksimal 20 MB. Berkas SVG tidak diterima demi keamanan.',
   },
   en: {
     title: 'Branding', desc: 'Logo, accent color, and portal address seen by your customers & vendors when signing in to the portal.',
@@ -41,6 +42,7 @@ const T: Record<Lang, Record<string, string>> = {
     save: 'Save', saving: 'Saving…', saved: 'Saved.',
     errGeneric: 'Failed to save.', errConn: 'Failed to connect to server.', errUpload: 'Failed to upload logo.',
     errFileType: 'Unsupported format — use PNG, JPG, or WebP.',
+    logoHint: 'Format: PNG, JPG, or WebP — max 20 MB. SVG files are rejected for security reasons.',
   },
 }
 
@@ -96,7 +98,17 @@ export function BrandingSettings() {
     }
   }
 
+  /** Daftar putih ini SENGAJA cerminan `TIPE_DITERIMA` untuk gambar di
+   *  services/ops/attachment.service.ts — server tetap penentu akhir; ini hanya
+   *  agar pengguna dapat pesan jelas alih-alih unggahan yang gagal diam-diam
+   *  (mis. saat berkas dipilih lewat "All files" atau di-seret ke halaman). */
+  const TIPE_LOGO_DITERIMA = ['image/png', 'image/jpeg', 'image/webp']
+
   async function unggahLogo(file: File) {
+    if (file.type && !TIPE_LOGO_DITERIMA.includes(file.type.toLowerCase())) {
+      setNotice({ ok: false, text: t.errFileType })
+      return
+    }
     setUploadingLogo(true)
     setNotice(null)
     try {
@@ -135,6 +147,9 @@ export function BrandingSettings() {
           <h2 className="font-display text-white text-base">{t.logoTitle}</h2>
         </div>
         <p className="text-text-secondary text-xs">{t.logoDesc}</p>
+        {/* Format yang diterima ditulis di depan — sebelumnya pengguna hanya
+            menemukan berkasnya "tak bisa dipilih" tanpa penjelasan apa pun. */}
+        <p className="text-text-secondary/70 text-[11px]">{t.logoHint}</p>
 
         <div className="flex items-center gap-4">
           <div className="h-16 w-16 rounded-md border border-card-border bg-surface-tertiary/40 flex items-center justify-center overflow-hidden shrink-0">
