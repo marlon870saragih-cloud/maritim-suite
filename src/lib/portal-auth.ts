@@ -25,6 +25,9 @@ import { systemContext } from '@/services/context'
 import { catatPemakaian } from '@/services/saas/usage.service'
 // Checklist go-live / K185 — kunci sementara sesudah percobaan gagal beruntun.
 import { cekBolehLogin, catatLoginGagal, ipDariHeaderNextAuth } from '@/services/security/rate-limit'
+// C1.4 — satu-satunya aturan identitas surel portal, dipakai bersama oleh
+// undangan, penerimaan undangan, dan pintu masuk ini.
+import { normalisasiEmailPortal } from '@/services/portal/email'
 
 const COOKIE_PORTAL_SESSION =
   process.env.NODE_ENV === 'production' ? '__Host-portal-session' : 'portal-session-dev'
@@ -42,10 +45,22 @@ export const portalAuthOptions: NextAuthOptions = {
       async authorize(credentials, req) {
         if (!credentials?.email || !credentials.password) return null
 
+        // C1.4 — dikanonikkan dengan helper yang SAMA yang dipakai saat
+        // mengundang & menerima undangan (services/portal/email.ts). Tanpa ini
+        // baris dibuat dalam bentuk kanonik tapi dicari apa adanya: orang yang
+        // mengetik `Ops@Samudra.co.id`, atau menempel alamatnya berikut satu
+        // spasi di ujung, tak akan pernah cocok dengan barisnya sendiri.
+        const email = normalisasiEmailPortal(credentials.email)
+
         // Diperiksa SEBELUM query — pola sama persis lib/auth.ts, kunci
         // terpisah dari sesi internal ('LOGIN_FAIL_PORTAL') supaya percobaan
         // di satu pintu tak pernah mengunci pintu yang lain.
-        const kunci = await cekBolehLogin('LOGIN_FAIL_PORTAL', credentials.email)
+        //
+        // Kuncinya memakai bentuk kanonik juga: kalau tidak, mengubah-ubah
+        // huruf besar-kecil pada alamat yang sama menghasilkan jendela hitung
+        // yang berbeda-beda — penebak sandi tinggal berganti pola kapital
+        // untuk melewati batas percobaan.
+        const kunci = await cekBolehLogin('LOGIN_FAIL_PORTAL', email)
         if (kunci.diblokir) return null
         const ip = ipDariHeaderNextAuth(req?.headers)
 
@@ -56,7 +71,7 @@ export const portalAuthOptions: NextAuthOptions = {
         // tenant eksplisit bila ini jadi masalah nyata (belum ada layar
         // portal sejak 8a — lihat catatan §17/8a).
         const kandidat = await prisma.portalUser.findMany({
-          where: { email: credentials.email, isActive: true, deletedAt: null },
+          where: { email, isActive: true, deletedAt: null },
           orderBy: { createdAt: 'desc' },
         })
         for (const u of kandidat) {
@@ -81,7 +96,7 @@ export const portalAuthOptions: NextAuthOptions = {
         // cocok — keduanya "gagal", dicatat ke jendela yang sama. Tak
         // membedakan "email tak terdaftar" dari "kata sandi salah" (sengaja,
         // sama alasan lib/auth.ts: tak membocorkan status akun).
-        await catatLoginGagal('LOGIN_FAIL_PORTAL', credentials.email, ip)
+        await catatLoginGagal('LOGIN_FAIL_PORTAL', email, ip)
         return null
       },
     }),
