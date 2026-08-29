@@ -6,6 +6,7 @@ import { requireRole } from '../context'
 import { forTenant } from '../tenant-db'
 import { conflict, notFound } from '../errors'
 import { bool, int, num, str, wajib } from '../input'
+import { catatAudit } from '../finance/audit'
 
 export type CustomerInput = ReturnType<typeof bacaInput>
 
@@ -100,4 +101,32 @@ export async function removeCustomer(ctx: TenantContext, id: string): Promise<vo
     data: { deletedAt: new Date(), isActive: false },
   })
   if (hasil.count === 0) throw notFound('Customer')
+
+  // C1.3 — cabut setiap PortalAccess yang menunjuk customer ini.
+  //
+  // Ini LAPIS KEDUA, bukan pengaman utama: `cariAksesPortalAktif()` sudah
+  // menolak akses ke customer yang dihapus/nonaktif pada permintaan berikutnya,
+  // bahkan seandainya baris di bawah tidak pernah jalan. Gunanya di sini adalah
+  // konsistensi data — supaya tidak tertinggal baris PortalAccess "aktif" yang
+  // menunjuk pihak yang sudah tidak ada, yang menyesatkan siapa pun yang kelak
+  // membaca tabel itu.
+  //
+  // Dijalankan SESUDAH penghapusan berhasil, bukan sebelum: kalau urutannya
+  // dibalik dan penghapusan ternyata gagal (mis. customer sudah terhapus lebih
+  // dulu), kita akan mencabut akses tanpa alasan.
+  //
+  // Soft-revoke (`revokedAt`), BUKAN hard-delete — model ini memang menyimpan
+  // pencabutan sebagai riwayat yang bisa diaudit.
+  const dicabut = await db.portalAccess.updateMany({
+    where: { customerId: id, revokedAt: null },
+    data: { revokedAt: new Date() },
+  })
+  if (dicabut.count > 0) {
+    await catatAudit(ctx, {
+      tableName: 'PortalAccess',
+      recordId: id,
+      action: 'DELETE',
+      newValue: { revokedBecause: 'customerDeleted', count: dicabut.count },
+    })
+  }
 }

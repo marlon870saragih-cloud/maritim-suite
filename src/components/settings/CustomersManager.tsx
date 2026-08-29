@@ -19,7 +19,7 @@ const STR: Record<Lang, Record<string, string>> = {
   id: {
     addBtn: 'Tambah Customer',
     errNameReq: 'Nama customer wajib diisi.', errSave: 'Gagal menyimpan.', errConn: 'Gagal terhubung ke server.', errDelete: 'Gagal menghapus.',
-    confirmPre: 'Hapus customer "', confirmPost: '"? Tindakan ini tidak bisa dibatalkan.',
+    confirmPre: 'Hapus customer "', confirmPost: '"? Akses portal aktif milik pelanggan ini juga akan dicabut. Tindakan ini tidak bisa dibatalkan.',
     emptyTitle: 'Belum ada customer', emptyDesc: 'Tambah data customer sekali — dipakai otomatis untuk voyage & invoice.',
     thName: 'Nama Customer', thType: 'Tipe', thCurrency: 'Mata Uang', thAction: 'Aksi',
     editTitle: 'Ubah Customer', dialogDesc: 'Data ini dipakai untuk mengisi otomatis voyage & invoice.',
@@ -30,7 +30,7 @@ const STR: Record<Lang, Record<string, string>> = {
   en: {
     addBtn: 'Add Customer',
     errNameReq: 'Customer name is required.', errSave: 'Failed to save.', errConn: 'Failed to connect to server.', errDelete: 'Failed to delete.',
-    confirmPre: 'Delete customer "', confirmPost: '"? This action cannot be undone.',
+    confirmPre: 'Delete customer "', confirmPost: '"? Any active portal access for this customer will also be revoked. This action cannot be undone.',
     emptyTitle: 'No customers yet', emptyDesc: 'Add a customer once — auto-used for voyages & invoices.',
     thName: 'Customer Name', thType: 'Type', thCurrency: 'Currency', thAction: 'Action',
     editTitle: 'Edit Customer', dialogDesc: 'This data auto-fills voyages & invoices.',

@@ -21,6 +21,57 @@ export type PortalContext = {
 export type SesiPortal = Omit<PortalContext, 'db'>
 
 /**
+ * C1.3 — SATU query otoritatif untuk "apakah pihak ini masih berhak SEKARANG?".
+ *
+ * Dipisah dari `requirePortal()` supaya bisa diuji langsung tanpa konteks HTTP
+ * (lihat prisma/check-portal-revocation.mjs) — `requirePortal()` sendiri butuh
+ * `getServerSession()` yang hanya hidup di dalam permintaan.
+ *
+ * Seluruh syarat berada di dalam SATU klausa `where`, bukan pemeriksaan
+ * berantai sesudah query. Konsekuensinya dua:
+ *   - fail-closed otomatis: satu syarat tak terpenuhi → tak ada baris → tolak;
+ *     tidak ada cabang kode yang bisa lupa memeriksa sesuatu.
+ *   - nol query tambahan: relasi diperiksa lewat JOIN pada query yang memang
+ *     sudah dijalankan tiap permintaan, bukan lewat perjalanan ke DB berikutnya.
+ *
+ * Yang diperiksa (C1.3 R-1/R-2/R-3):
+ *   1. PortalAccess milik portalUserId itu, BELUM dicabut (`revokedAt`).
+ *   2. PortalAccess berada di tenant yang sama dengan sesi.
+ *   3. PortalUser-nya masih ada, aktif, dan tidak dihapus.
+ *   4. Pihak yang diwakili (Customer/Vendor) masih ada, aktif, tidak dihapus.
+ *   5. Ikatan pihak konsisten: CUSTOMER wajib punya customerId; VENDOR wajib
+ *      punya vendorId. Tak ada baris yang boleh bersandar pada kolom seberang.
+ *
+ * K166 dipertahankan: bila seseorang punya >1 akses sah, dipilih yang paling
+ * baru dibuat. Karena pemilihan terjadi ULANG setiap permintaan, mencabut satu
+ * akses TIDAK PERNAH menjatuhkan akses lain yang masih sah — sifat inilah yang
+ * hilang seandainya memakai sessionVersion (yang melekat pada user, bukan akses).
+ */
+export async function cariAksesPortalAktif(portalUserId: string, tenantId: string) {
+  return prisma.portalAccess.findFirst({
+    where: {
+      portalUserId,
+      tenantId,
+      revokedAt: null,
+      portalUser: { isActive: true, deletedAt: null },
+      OR: [
+        {
+          pihak: 'CUSTOMER',
+          customerId: { not: null },
+          customer: { isActive: true, deletedAt: null },
+        },
+        {
+          pihak: 'VENDOR',
+          vendorId: { not: null },
+          vendor: { isActive: true, deletedAt: null },
+        },
+      ],
+    },
+    orderBy: { createdAt: 'desc' },
+  })
+}
+
+/**
  * Ambil sesi portal + PortalAccess AKTIF-nya. MELEMPAR UNAUTHORIZED bila
  * belum login atau tak punya akses aktif.
  *
@@ -35,22 +86,22 @@ export type SesiPortal = Omit<PortalContext, 'db'>
  * K168 — PortalAccess dibaca ULANG setiap permintaan (bukan dipercaya dari
  * isi token), supaya pencabutan akses (`revokedAt`) berlaku SEKETIKA pada
  * permintaan berikutnya, bukan menunggu token kedaluwarsa.
+ *
+ * C1.3 — K168 diperluas: BUKAN HANYA `revokedAt`. Sebelum perbaikan ini,
+ * PortalUser yang dinonaktifkan dan Customer yang dihapus tetap lolos, karena
+ * keduanya hanya pernah diperiksa saat login. Satu-satunya nilai yang masih
+ * berasal dari token adalah `portalUserId` dan `tenantId` — keduanya sekadar
+ * kunci pencarian, bukan keputusan otorisasi. Cookie basi karenanya tidak
+ * pernah cukup untuk mempertahankan akses.
  */
 export async function requirePortal(): Promise<SesiPortal> {
   const session = await getServerSession(portalAuthOptions)
   const portalUserId = session?.user?.portalUserId
-  if (!portalUserId) throw unauthorized()
+  const tenantId = session?.user?.tenantId
+  if (!portalUserId || !tenantId) throw unauthorized()
 
-  // K166 — kalau seseorang punya >1 PortalAccess aktif (mewakili dua pihak
-  // pada tenant yang sama), interim 8a memilih yang paling baru dibuat.
-  // Layar "pilih pihak" (K166 penjelasan) belum ada — "Belum ada layar
-  // portal" adalah cakupan 8a yang eksplisit (§17); menyusul di 8f/8g.
-  const akses = await prisma.portalAccess.findFirst({
-    where: { portalUserId, revokedAt: null },
-    orderBy: { createdAt: 'desc' },
-  })
+  const akses = await cariAksesPortalAktif(portalUserId, tenantId)
   if (!akses) throw unauthorized('Akses portal tidak aktif. Hubungi keagenan Anda.')
-  if (!akses.customerId && !akses.vendorId) throw unauthorized()
 
   const pihak = akses.pihak === 'VENDOR' ? 'VENDOR' : 'CUSTOMER'
   const pihakId = pihak === 'VENDOR' ? akses.vendorId : akses.customerId

@@ -6,6 +6,7 @@ import { requireRole } from '../context'
 import { forTenant } from '../tenant-db'
 import { conflict, notFound } from '../errors'
 import { bool, int, str, wajib } from '../input'
+import { catatAudit } from '../finance/audit'
 
 export type VendorInput = ReturnType<typeof bacaInput>
 
@@ -100,4 +101,22 @@ export async function removeVendor(ctx: TenantContext, id: string): Promise<void
     data: { deletedAt: new Date(), isActive: false },
   })
   if (hasil.count === 0) throw notFound('Vendor')
+
+  // C1.3 — perlakuan SETARA dengan removeCustomer (semantik hapusnya memang
+  // identik: penjagaan pemakaian lalu soft-delete). Lihat catatan lengkap di
+  // customer.service.ts; ringkasnya: ini lapis kedua untuk konsistensi data,
+  // pengaman utamanya tetap `cariAksesPortalAktif()` yang memeriksa vendor
+  // masih aktif/tidak dihapus pada setiap permintaan.
+  const dicabut = await db.portalAccess.updateMany({
+    where: { vendorId: id, revokedAt: null },
+    data: { revokedAt: new Date() },
+  })
+  if (dicabut.count > 0) {
+    await catatAudit(ctx, {
+      tableName: 'PortalAccess',
+      recordId: id,
+      action: 'DELETE',
+      newValue: { revokedBecause: 'vendorDeleted', count: dicabut.count },
+    })
+  }
 }
