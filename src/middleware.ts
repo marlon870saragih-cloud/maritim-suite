@@ -14,11 +14,23 @@
 // hanyalah `<Script>` pihak ketiga (Midtrans Snap.js) — nonce-nya diteruskan
 // eksplisit lewat prop `nonce` di halaman billing.
 //
-// Konsekuensinya: SELURUH halaman jadi rendering DINAMIS (nonce beda tiap
-// permintaan → tak bisa di-cache statis/ISR). Ini BUKAN kompromi bagi app
-// ini: setiap halaman sudah butuh sesi (baca cookie lewat getServerSession)
-// sehingga sudah dinamis secara efektif — nonce tidak mengubah apa pun yang
-// sebelumnya bisa statis.
+// Konsekuensinya: SELURUH halaman WAJIB dirender DINAMIS (nonce beda tiap
+// permintaan → tak boleh di-cache statis/ISR).
+//
+// ⚠️ Dulu di sini tertulis bahwa hal itu "otomatis terpenuhi karena setiap
+// halaman sudah butuh sesi". KLAIM ITU SALAH dan sempat melumpuhkan produksi
+// (20 Ags 2026): `/`, `/login`, `/register`, dan `/portal/login` tidak membaca
+// sesi, jadi Next MEM-PRERENDER-nya saat build dan menyajikannya dari Full
+// Route Cache — HTML lama tanpa nonce + header nonce baru = seluruh script
+// diblokir 'strict-dynamic' (yang membuat 'self' diabaikan), React tak pernah
+// hidup, semua tombol mati. Penegakannya kini EKSPLISIT lewat
+// `export const dynamic = 'force-dynamic'` di `src/app/layout.tsx` — jangan
+// dihapus tanpa mengganti mekanisme nonce ini lebih dulu.
+//
+// Cara memverifikasi (header saja TIDAK CUKUP — itu kesalahan uji sebelumnya):
+// bandingkan nonce di header `Content-Security-Policy` dengan atribut
+// `nonce="..."` pada tag <script> di HTML. Kalau jumlah script bernonce 0,
+// halaman itu lumpuh meski headernya terlihat benar.
 //
 // ---------------------------------------------------------------------------
 // KENAPA `style-src` TETAP 'unsafe-inline', SENGAJA TAK IKUT DIPERKETAT
