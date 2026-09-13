@@ -4,7 +4,7 @@
 // menyatukan semuanya) dibangun terpisah di atas service ini.
 
 import type {
-  Cargo, Customer, Port, PortCall, Principal, Vessel, Voyage, VoyageStatus,
+  Cargo, Customer, Port, PortCall, Principal, Vessel, Voyage, VoyageStatus, VoyageVessel,
 } from '@prisma/client'
 import type { TenantContext } from '../context'
 import { requireRole } from '../context'
@@ -30,6 +30,9 @@ import { ASAL_DATA, adalahAsalData } from '../ai/provenance'
 import { pastikanKuota } from '../saas/quota.service'
 // Fase 8j — pemakaian (K183/K184).
 import { catatPemakaian } from '../saas/usage.service'
+// PRD-002 Step 2 — kapal-kapal voyage (tug + barge) & jejak perubahan tanggal.
+import { KOLOM_KAPAL_VOYAGE, URUTAN_KAPAL_VOYAGE, sinkronkanKapalUtama } from './voyage-vessel.service'
+import { perubahanTanggalVoyage } from './voyage-dates'
 
 const STATUSES: readonly VoyageStatus[] = [
   'PLANNED', 'CONFIRMED', 'ARRIVED', 'BERTHED', 'WORKING', 'COMPLETED', 'DEPARTED', 'CLOSED', 'CANCELLED',
@@ -51,6 +54,16 @@ export type VoyageDetail = Voyage & {
   portCalls: PortCall[]
   /** Cuma jumlah: panel finansial Workspace masih placeholder sampai Fase 3/4. */
   _count: { disbursements: number; invoices: number; documents: number }
+  /**
+   * PRD-002 Step 2 — ADITIF. `vessel`/`vesselId` di atas tetap kapal utama untuk
+   * semua pemakai lama. Bisa kosong untuk voyage lama; pakai kapalVoyage()
+   * (voyage-vessel.service.ts) untuk daftar yang selalu memuat kapal utama.
+   */
+  vessels: Array<
+    Pick<VoyageVessel, 'id' | 'vesselId' | 'role' | 'sortOrder'> & {
+      vessel: Pick<Vessel, 'id' | 'name' | 'imoNumber' | 'mmsi' | 'callSign' | 'vesselType'>
+    }
+  >
 }
 
 export type VoyageInput = ReturnType<typeof bacaInput>
@@ -151,6 +164,10 @@ export async function getVoyage(ctx: TenantContext, id: string): Promise<VoyageD
       cargoes: { orderBy: { createdAt: 'asc' } },
       portCalls: { orderBy: [{ eta: 'asc' }, { createdAt: 'asc' }] },
       _count: { select: { disbursements: true, invoices: true, documents: true } },
+      vessels: {
+        orderBy: URUTAN_KAPAL_VOYAGE,
+        select: { id: true, vesselId: true, role: true, sortOrder: true, vessel: { select: KOLOM_KAPAL_VOYAGE } },
+      },
     },
   })
   if (!voyage) throw notFound('Voyage')
@@ -181,8 +198,16 @@ export async function createVoyage(ctx: TenantContext, body: Record<string, unkn
   // disimpulkan saat query. Satu baris; artinya seluruhnya di ai/provenance.ts.
   const dataOrigin = await stempelAsal(ctx)
 
+  // PRD-002 Step 2 — kapal utama langsung jadi baris VoyageVessel pertama, dalam
+  // SATU create yang sama (atomik): voyage baru tak pernah lahir tanpa barisnya.
   const voyage = await db.voyage.create({
-    data: { ...data, dataOrigin, voyageNumber, tenantId: ctx.tenantId },
+    data: {
+      ...data,
+      dataOrigin,
+      voyageNumber,
+      tenantId: ctx.tenantId,
+      vessels: { create: [{ vesselId: data.vesselId, sortOrder: 0 }] },
+    },
   })
 
   // Fase 8j / K183 — SESUDAH create berhasil, sebelum efek samping lain
@@ -217,7 +242,8 @@ export async function updateVoyage(
   // customer akan menerbitkan baris audit "jadwal tugas digeser" yang bohong.
   const sebelum = await db.voyage.findFirst({
     where: { id, deletedAt: null },
-    select: { eta: true, etb: true, etc: true, etd: true, ata: true },
+    // PRD-002 Step 2 — `atb`/`atd` & `vesselId` ikut dibaca untuk jejak tanggal & sinkron kapal utama.
+    select: { eta: true, etb: true, etc: true, etd: true, ata: true, atb: true, atd: true, vesselId: true },
   })
   if (!sebelum) throw notFound('Voyage')
 
@@ -239,6 +265,31 @@ export async function updateVoyage(
   // di PDF/rujukan lain), sejalan prinsip snapshot K5.
   const hasil = await db.voyage.updateMany({ where: { id, deletedAt: null }, data })
   if (hasil.count === 0) throw notFound('Voyage')
+
+  // PRD-002 Step 2 — jejak TERSTRUKTUR perubahan tanggal voyage, supaya pemicu
+  // otomasi nanti (ETA berubah) membaca data, bukan menebak dari prosa. Kunci
+  // "YYYY-MM-DD" (tanggal kalender, D4) & hanya medan yang BENAR berubah. Timeline
+  // (K131) mengabaikan baris ini karena newValue tak memuat `status`. Melempar
+  // bila gagal, sama dengan jejak perubahan status di setVoyageStatus().
+  const ubahTanggal = perubahanTanggalVoyage(sebelum, data)
+  if (ubahTanggal) {
+    await catatAudit(ctx, {
+      tableName: 'Voyage',
+      recordId: id,
+      action: 'UPDATE',
+      oldValue: { peristiwa: 'UBAH_TANGGAL', ...ubahTanggal.lama },
+      newValue: { peristiwa: 'UBAH_TANGGAL', medan: ubahTanggal.medan, ...ubahTanggal.baru },
+    })
+  }
+
+  // PRD-002 Step 2 — invarian "kapal utama selalu punya baris VoyageVessel".
+  // Sengaja tidak menggagalkan penyuntingan (semangat K96): pembaca daftar kapal
+  // toleran terhadap baris yang belum ada, jadi kegagalan di sini tidak merusak tampilan.
+  try {
+    await sinkronkanKapalUtama(ctx, id, sebelum.vesselId, data.vesselId)
+  } catch (e) {
+    console.error('[voyage] sinkronisasi kapal utama gagal:', e)
+  }
 
   // K94 — SATU tempat yang menggerakkan tenggat tugas: di sini, sesudah
   // perubahan tanggal tersimpan. Bukan trigger database, bukan job terjadwal.

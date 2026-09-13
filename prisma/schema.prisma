@@ -194,6 +194,19 @@ model Vessel {
   beam       Float?
   maxDraft   Float?
   yearBuilt  Int?
+
+  /// PRD-002 Step 2 (D2) — identitas AIS. Opsional: tongkang & kapal tanpa
+  /// transponder sah tanpa MMSI. Tepat 9 digit bila ada (dinormalisasi di
+  /// lib/vessels.ts). Unik PER TENANT — tiap tenant memiliki baris kapalnya
+  /// sendiri; dua NULL tidak pernah bertabrakan di PostgreSQL (pola K89).
+  mmsi           String?
+  /// Asal nomor MMSI: PUBLIC_TRACKING (belum terverifikasi) | COMPANY_DOCUMENT |
+  /// PRINCIPAL_CONFIRMATION | OTHER_VERIFIED. String, bukan enum (pola K55).
+  mmsiSource     String?
+  /// Diisi server saat MMSI dikonfirmasi dari sumber terverifikasi; selalu null
+  /// untuk PUBLIC_TRACKING. Siapa yang mengonfirmasi tercatat di AuditLog.
+  mmsiVerifiedAt DateTime?
+
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -201,6 +214,10 @@ model Vessel {
   documents MaritimeDocument[]
   voyages   Voyage[]
 
+  // --- PRD-002 Step 2 ---
+  voyageVessels VoyageVessel[]
+
+  @@unique([tenantId, mmsi])
   @@index([tenantId])
 }
 
@@ -714,6 +731,10 @@ model Voyage {
   crewChanges    CrewChange[]
   events         VoyageEvent[]
 
+  // --- PRD-002 Step 2 — kapal-kapal voyage ini (tug + barge, dst). `vesselId`
+  // di atas TETAP satu-satunya penentu kapal utama; lihat model VoyageVessel.
+  vessels VoyageVessel[]
+
   @@unique([tenantId, voyageNumber])
   @@index([tenantId, status])
   @@index([tenantId, eta])
@@ -734,6 +755,38 @@ model Cargo {
   updatedAt DateTime @updatedAt
 
   @@index([voyageId])
+}
+
+/// PRD-002 Step 2 — kapal-kapal yang terlibat dalam satu voyage (mis. tug + barge).
+///
+/// Model ANAK (pola Cargo, K44): tanpa tenantId, TIDAK didaftarkan di
+/// TENANT_MODELS; akses wajib lewat voyage induk yang sudah terbukti milik
+/// tenant (services/master/voyage-vessel.service.ts).
+///
+/// INVARIAN TUNGGAL: `Voyage.vesselId` adalah SATU-SATUNYA penentu kapal utama.
+/// Tabel ini tidak punya kolom/role "PRIMARY" — sehingga dua sumber kebenaran
+/// untuk kapal utama mustahil terjadi. Kapal utama selalu ikut menjadi salah
+/// satu baris di sini (dijaga createVoyage/updateVoyage); pembaca yang
+/// menemukan nol baris (voyage lama/skrip) memakai `Voyage.vesselId`.
+model VoyageVessel {
+  id        String   @id @default(cuid())
+  voyageId  String
+  voyage    Voyage   @relation(fields: [voyageId], references: [id], onDelete: Cascade)
+  vesselId  String
+  /// CASCADE, BUKAN RESTRICT/NO ACTION: keduanya menggagalkan penghapusan tenant yang punya
+  /// voyage (cascade satu tingkat Tenant→Vessel selesai sebelum Tenant→Voyage→VoyageVessel —
+  /// dibuktikan eksperimen ber-ROLLBACK, lihat migrasi 20260914130000). Penolakan "kapal masih
+  /// dipakai voyage" DITEGAKKAN APLIKASI di DELETE /api/vessels/:id (→ 409); kapal utama juga
+  /// tetap dijaga FK Voyage.vessel (RESTRICT).
+  vessel    Vessel   @relation(fields: [vesselId], references: [id], onDelete: Cascade)
+  /// TUG | BARGE | null (tanpa peran khusus, mis. tanker tunggal). String, bukan enum (pola K55).
+  role      String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([voyageId, vesselId])
+  @@index([vesselId])
 }
 
 // ----------------------------------------------------------------- DISBURSEMENT

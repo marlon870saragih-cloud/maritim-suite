@@ -340,7 +340,15 @@ async function jalankan(d) {
     )
 
     const etaBaru = new Date(new Date(ETA_AWAL).getTime() + 2 * 24 * 3_600_000).toISOString()
-    const auditSebelum = await prisma.auditLog.count({ where: { recordId: voyageManual.id } })
+    // PRD-002 Step 2 — perubahan tanggal voyage kini JUGA menulis baris audit
+    // `UBAH_TANGGAL` tersendiri (jejak untuk pemicu otomasi). Yang dijaga uji K94
+    // tetap sama persis: pergeseran massal tugas = TEPAT SATU baris SINKRON_JADWAL_TUGAS.
+    const saringSinkron = {
+      recordId: voyageManual.id,
+      tableName: 'Voyage',
+      newValue: { path: ['peristiwa'], equals: 'SINKRON_JADWAL_TUGAS' },
+    }
+    const auditSebelum = await prisma.auditLog.count({ where: saringSinkron })
     const rp = await PATCH(sAdmin, `/api/voyages/${voyageManual.id}`, {
       vesselId: d.kapalA.id,
       portId: d.balikpapanA.id,
@@ -348,7 +356,7 @@ async function jalankan(d) {
       etd: '2026-09-04T08:00:00.000Z',
       baseCurrency: 'IDR',
     })
-    const auditSesudah = await prisma.auditLog.count({ where: { recordId: voyageManual.id } })
+    const auditSesudah = await prisma.auditLog.count({ where: saringSinkron })
 
     const sesudah = Object.fromEntries(
       (
@@ -381,7 +389,7 @@ async function jalankan(d) {
     )
 
     const audit = await prisma.auditLog.findFirst({
-      where: { recordId: voyageManual.id, tableName: 'Voyage' },
+      where: saringSinkron,
       orderBy: { createdAt: 'desc' },
     })
     cek(

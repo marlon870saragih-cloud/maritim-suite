@@ -11,6 +11,7 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { getLang, type Lang } from '@/lib/i18n-server'
 import { requireTenant } from '@/services/context'
 import { getVoyage } from '@/services/master/voyage.service'
+import { kapalVoyage } from '@/services/master/voyage-vessel.service'
 import { listCustomers } from '@/services/master/customer.service'
 import { listPorts } from '@/services/master/port.service'
 import { listTasks } from '@/services/ops/task.service'
@@ -98,6 +99,7 @@ export default async function VoyageDetailPage({ params }: { params: { id: strin
         role={session!.user.role}
         currentUserId={session!.user.id}
         voyageAnchors={voyageAnchors}
+        voyageVessels={kapalVoyage(voyage, voyage.vessels)}
       />
     </div>
   )
