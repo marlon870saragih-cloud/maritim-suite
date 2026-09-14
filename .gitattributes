@@ -1,0 +1,3 @@
+# PRD-002 Step 3 — skrip & unit untuk server Linux wajib LF, walau di-commit dari Windows.
+*.sh text eol=lf
+deploy/systemd/** text eol=lf

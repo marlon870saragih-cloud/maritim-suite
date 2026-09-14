@@ -52,7 +52,13 @@ export const POST = withTenant(async (ctx) => {
     )
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+  // PRD-002 Step 3 — alamat INTERNAL lebih dulu. Di produksi app ini berada di
+  // belakang nginx (127.0.0.1:3001); memanggil diri sendiri lewat URL publik
+  // berarti keluar-masuk DNS/TLS/nginx hanya untuk kembali ke proses yang sama,
+  // dan akan patah begitu /api/jobs/ ditutup dari internet. NEXT_PUBLIC_APP_URL
+  // tetap jadi cadangan supaya lingkungan yang belum mengisi variabel baru tak berubah.
+  const baseUrl =
+    process.env.JOB_RUNNER_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
   let upstream: Response
   try {

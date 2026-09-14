@@ -82,7 +82,9 @@ type JobRunResponse = {
   job: string
   dijalankanPada: string
   durasiMs: number
-  total: { dibuat: number; dilewati: number; dibatasi: number }
+  /** PRD-002 Step 3 — false bila ada tenant atau notifikasi yang gagal ditulis. */
+  ok?: boolean
+  total: { dibuat: number; dilewati: number; dibatasi: number; gagal?: number }
   hasil: HasilJalanPengingat[]
 }
 

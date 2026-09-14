@@ -122,28 +122,71 @@ export async function POST(req: Request): Promise<Response> {
     const berbentukPerTenant =
       Array.isArray(hasil) && hasil.every((h) => h && typeof h === 'object' && 'dibuat' in h)
 
+    const perTenant = berbentukPerTenant ? (hasil as BarisTenant[]) : []
+    const total = perTenant.reduce(
+      (s, h) => ({
+        dibuat: s.dibuat + h.dibuat,
+        dilewati: s.dilewati + h.dilewati,
+        dibatasi: s.dibatasi + h.dibatasi,
+        gagal: s.gagal + (h.gagal ?? 0),
+      }),
+      { dibuat: 0, dilewati: 0, dibatasi: 0, gagal: 0 },
+    )
+    const tenantGagal = perTenant.filter((h) => h.galat).map((h) => h.tenant)
+
+    // PRD-002 Step 3 — SATU bendera yang bisa dibaca penjadwal tanpa parser
+    // JSON (deploy/scripts/maritime-job-run.sh). HTTP tetap 200 untuk jalan
+    // yang sebagian gagal — tenant lain memang sudah diproses, dan tombol
+    // Settings tetap perlu melihat rinciannya — tapi `ok:false` membuat unit
+    // systemd berakhir GAGAL, sehingga terlihat di `systemctl --failed`.
+    const ok = tenantGagal.length === 0 && total.gagal === 0
+    const durasiMs = Date.now() - mulai
+
+    catatJalan({
+      job,
+      ok,
+      durasiMs,
+      ...(berbentukPerTenant ? { tenantDiproses: perTenant.length, tenantGagal, total } : {}),
+    })
+
     return Response.json({
       job,
+      ok,
       dijalankanPada: new Date().toISOString(),
-      durasiMs: Date.now() - mulai,
-      ...(berbentukPerTenant
-        ? {
-            total: (hasil as { dibuat: number; dilewati: number; dibatasi: number }[]).reduce(
-              (s, h) => ({
-                dibuat: s.dibuat + h.dibuat,
-                dilewati: s.dilewati + h.dilewati,
-                dibatasi: s.dibatasi + h.dibatasi,
-              }),
-              { dibuat: 0, dilewati: 0, dibatasi: 0 },
-            ),
-          }
-        : {}),
+      durasiMs,
+      ...(berbentukPerTenant ? { total } : {}),
       hasil,
     })
   } catch (e) {
     // Job berjalan tanpa manusia: galatnya dicatat lengkap di server, dan
     // klien hanya menerima kabar bahwa ia gagal (pola http.ts).
     console.error('[api/jobs/run] job gagal:', e)
+    catatJalan({ job, ok: false, durasiMs: Date.now() - mulai, galat: e instanceof Error ? e.name : 'Error' })
     return galat('INTERNAL', 'Job gagal dijalankan. Periksa log server.', 500)
   }
+}
+
+/** Bentuk minimum satu baris hasil per tenant yang dibaca ringkasan di atas. */
+type BarisTenant = {
+  tenant: string
+  dibuat: number
+  dilewati: number
+  dibatasi: number
+  gagal?: number
+  galat?: string
+}
+
+/**
+ * PRD-002 Step 3 — jejak jalan job yang TERBACA MESIN di log server (PM2 /
+ * journal): job apa, berhasil atau tidak, berapa lama, tenant mana yang gagal,
+ * dan berapa notifikasi dibuat/dilewati/dibatasi/gagal. Satu baris JSON per
+ * jalan, diawali `[jobs/run]` supaya mudah di-grep.
+ *
+ * SENGAJA hanya id & angka: tanpa nama tenant, judul tugas, isi pesan, header,
+ * atau token. Tabel riwayat (JobHeartbeat) butuh migrasi dan ditunda sampai
+ * benar-benar diperlukan — log + status unit systemd sudah cukup membuktikan
+ * "job jalan / berhasil / gagal / tenant mana".
+ */
+function catatJalan(ringkasan: Record<string, unknown>): void {
+  console.log(`[jobs/run] ${JSON.stringify({ pada: new Date().toISOString(), ...ringkasan })}`)
 }

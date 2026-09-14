@@ -42,6 +42,8 @@ import { AMBANG_MENDEKATI_JAM, BATAS_NOTIFIKASI_PER_JALAN, PERAN_ESKALASI_SLA } 
 // pernah memutuskan sendiri apa arti "mendekati batas".
 import { KEADAAN_PERLU_PERINGATAN } from '../saas/quota'
 import { LABEL_KUOTA, ringkasanKuota } from '../saas/quota.service'
+// PRD-002 Step 3 — tanggal/bulan BISNIS (Asia/Makassar), bukan jam mesin/UTC.
+import { bulanBisnis, tanggalBisnis, waktuBisnis } from '@/lib/business-time'
 
 // ------------------------------------------------------------------ kebijakan
 
@@ -91,9 +93,13 @@ const JAM = 3_600_000
 
 // -------------------------------------------------------------- bentuk kunci
 
-// Ketiganya deterministik dan bisa dibaca manusia (K101). Semua komponen waktu
-// memakai UTC lewat toISOString() — bukan zona waktu server — supaya kuncinya
-// tidak berubah kalau job dipindah ke mesin lain.
+// Semuanya deterministik dan bisa dibaca manusia (K101). Tak satu pun memakai
+// zona waktu MESIN, supaya kuncinya tidak berubah kalau job dipindah ke mesin
+// lain. Dua jenis waktu dipisahkan dengan sengaja (PRD-002 Step 3):
+//   • INSTAN mutlak (`dueAt` pada TASK_DUE) — komponen UTC lewat toISOString().
+//   • TANGGAL/BULAN BISNIS (TASK_OVERDUE, VENDOR_DOC_EXPIRING, KUOTA) — kalender
+//     Samarinda `Asia/Makassar` lewat lib/business-time.ts. Dulu tanggal UTC,
+//     yang berarti "hari baru" bergulir pukul 08:00 WITA, bukan tengah malam.
 
 /**
  * `TASK_DUE:<taskId>:<dueAt-ISO-jam>` — satu pengingat "mendekati" per TENGGAT.
@@ -112,9 +118,12 @@ export function kunciTaskDue(taskId: string, dueAt: Date): string {
  * selama tugas masih terlambat. Tanggalnya diambil dari waktu JALANNYA JOB
  * (bukan dari `dueAt`): tugas yang terlambat lima hari berbunyi lima kali, satu
  * kali per hari, bukan lima kali dalam sehari.
+ *
+ * "Hari" = TANGGAL BISNIS Asia/Makassar (PRD-002 Step 3), jadi hari baru dimulai
+ * tengah malam WITA — bukan 08:00 WITA seperti saat kuncinya masih tanggal UTC.
  */
 export function kunciTaskOverdue(taskId: string, sekarang: Date): string {
-  return `TASK_OVERDUE:${taskId}:${sekarang.toISOString().slice(0, 10)}`
+  return `TASK_OVERDUE:${taskId}:${tanggalBisnis(sekarang)}`
 }
 
 /**
@@ -141,7 +150,8 @@ export function kunciSlaBreach(taskId: string, penerimaUserId: string): string {
  * boleh mengingatkan lagi, tapi dalam bulan yang sama cukup sekali.
  */
 export function kunciVendorDocExpiring(attachmentId: string, sekarang: Date): string {
-  return `VENDOR_DOC_EXPIRING:${attachmentId}:${sekarang.toISOString().slice(0, 7)}`
+  // Bulan BISNIS Asia/Makassar (PRD-002 Step 3), pola sama kunciTaskOverdue.
+  return `VENDOR_DOC_EXPIRING:${attachmentId}:${bulanBisnis(sekarang)}`
 }
 
 /**
@@ -162,7 +172,8 @@ export function kunciVendorDocExpiring(attachmentId: string, sekarang: Date): st
  *
  * Bulannya diambil dari waktu JALANNYA JOB (pola `kunciTaskOverdue`/
  * `kunciVendorDocExpiring`), bukan dari data — kuota `voyagePerBulan` memang
- * disetel ulang tiap bulan kalender, jadi peringatannya pun demikian.
+ * disetel ulang tiap bulan kalender, jadi peringatannya pun demikian. Bulan
+ * BISNIS Asia/Makassar (PRD-002 Step 3), bukan bulan UTC.
  */
 export function kunciKuota(
   jenis: string,
@@ -170,7 +181,7 @@ export function kunciKuota(
   penerimaUserId: string,
   sekarang: Date,
 ): string {
-  return `KUOTA:${jenis}:${keadaan}:${penerimaUserId}:${sekarang.toISOString().slice(0, 7)}`
+  return `KUOTA:${jenis}:${keadaan}:${penerimaUserId}:${bulanBisnis(sekarang)}`
 }
 
 // -------------------------------------------------------------- bentuk hasil
@@ -183,6 +194,12 @@ export type HasilJalanPengingat = {
   dibuat: number
   dilewati: number
   dibatasi: number
+  /**
+   * PRD-002 Step 3 — notifikasi yang GAGAL ditulis (bukan tabrakan kunci).
+   * Kuncinya belum ada, jadi jalan berikutnya mencoba lagi; `> 0` membuat
+   * `/api/jobs/run` membalas `ok:false`.
+   */
+  gagal: number
   /** Rincian `dibuat` per jenis — untuk kartu hasil di layar, bukan untuk logika. */
   perJenis: Record<JenisPengingat, number>
   /** Terisi hanya bila tenant ini gagal; tenant lain tetap diproses. */
@@ -222,7 +239,8 @@ function tautanTugas(t: Task): string {
   return t.voyageId ? `/tasks?assignee=all&voyageId=${t.voyageId}` : '/tasks?assignee=all'
 }
 
-const waktuLokal = (d: Date) => d.toISOString().replace('T', ' ').slice(0, 16) + ' UTC'
+/** Teks waktu untuk manusia — WITA (Asia/Makassar), bukan UTC (PRD-002 Step 3). */
+const waktuLokal = (d: Date) => waktuBisnis(d)
 
 /** Pecah daftar kunci jadi potongan supaya `IN (...)` tidak jadi raksasa. */
 function berkelompok<T>(xs: readonly T[], n: number): T[][] {
@@ -580,6 +598,7 @@ export async function jalankanPengingatUntukTenant(
     dibuat: 0,
     dilewati: 0,
     dibatasi: 0,
+    gagal: 0,
     perJenis: { TASK_DUE: 0, TASK_OVERDUE: 0, SLA_BREACH: 0, VENDOR_DOC_EXPIRING: 0, KUOTA_MENDEKATI: 0 },
   }
 
@@ -608,26 +627,25 @@ export async function jalankanPengingatUntukTenant(
   const akanDibuat = belumAda.slice(0, BATAS_NOTIFIKASI_PER_JALAN)
   hasil.dibatasi = belumAda.length - akanDibuat.length
 
+  // PRD-002 Step 3 — hitungan diambil dari HASIL notify(), bukan dibaca ulang
+  // dari database. Baca-ulang tidak bisa membedakan "lahir oleh jalan ini" dari
+  // "lahir oleh jalan lain yang tumpang-tindih di detik yang sama" (timer +
+  // tombol Settings), sehingga dua jalan bersamaan dulu sama-sama melaporkan
+  // baris yang sama sebagai `dibuat`. Kini:
+  //   DIBUAT   → baris ini milik jalan ini
+  //   DUPLIKAT → kunci sudah dipakai jalan lain (K101) → `dilewati`
+  //   GAGAL    → penulisan gagal; dilaporkan `gagal` (dulu tersamar `dilewati`),
+  //              dan kuncinya belum ada, jadi jalan berikutnya mencoba lagi.
+  // Database tetap satu-satunya penjamin "tanpa duplikat": @@unique([tenantId, dedupeKey]).
   for (const c of akanDibuat) {
-    // notify() menelan galatnya sendiri (Fase 5d) — termasuk P2002 dari kunci
-    // yang lahir di sela-sela jalan ini. Karena itu `dibuat` TIDAK dihitung dari
-    // banyaknya panggilan, melainkan dibaca ulang dari database di bawah.
-    await notify(ctx, c.data)
-  }
-
-  const lahir = await kunciYangSudahAda(
-    ctx,
-    akanDibuat.map((c) => c.dedupeKey),
-  )
-  for (const c of akanDibuat) {
-    if (lahir.has(c.dedupeKey)) {
+    const r = await notify(ctx, c.data)
+    if (r === 'DIBUAT') {
       hasil.dibuat++
       hasil.perJenis[c.jenis]++
-    } else {
-      // Tidak lahir = tabrakan kunci (hasil normal job yang dijalankan ulang,
-      // K101) ATAU kegagalan tulis yang sudah dicatat notify() ke log server.
-      // Keduanya sama-sama "tidak jadi baris baru" bagi pemanggil.
+    } else if (r === 'DUPLIKAT') {
       hasil.dilewati++
+    } else {
+      hasil.gagal++
     }
   }
 
@@ -671,6 +689,7 @@ export async function jalankanPengingatUntukSemuaTenant(
         dibuat: 0,
         dilewati: 0,
         dibatasi: 0,
+        gagal: 0,
         perJenis: { TASK_DUE: 0, TASK_OVERDUE: 0, SLA_BREACH: 0, VENDOR_DOC_EXPIRING: 0, KUOTA_MENDEKATI: 0 },
         galat: e instanceof Error ? e.message : String(e),
       })

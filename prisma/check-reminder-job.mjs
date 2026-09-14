@@ -31,6 +31,8 @@
 import { readFileSync } from 'node:fs'
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+// PRD-002 Step 3 — kunci harian/bulanan memakai tanggal bisnis Asia/Makassar.
+import { tanggalBisnis } from '../src/lib/business-time.ts'
 
 for (const f of ['.env.local', '.env']) {
   try {
@@ -65,7 +67,6 @@ function cek(nama, kondisi, detail = '') {
 
 const info = (t) => console.log(`     · ${t}`)
 const iso = (d) => (d ? new Date(d).toISOString() : null)
-const hariUtc = (d) => new Date(d).toISOString().slice(0, 10)
 const jamUtc = (d) => new Date(d).toISOString().slice(0, 13)
 
 // ------------------------------------------------------------- sesi HTTP (butir 3 & 7)
@@ -243,7 +244,11 @@ async function butir1() {
     `status=${samaPanjang.status}`,
   )
 
-  const benar = await panggilJob()
+  // PRD-002 Step 3 — lewat jalankanDanUkur(), bukan panggilJob() mentah: jalan
+  // ini ikut menyapu tugas NYATA yang terlambat di DB dev, dan notifikasi yang
+  // lahir di sini dulu tak pernah tercatat untuk dibersihkan (butir 11). Itulah
+  // sumber residu TASK_OVERDUE yang menumpuk tiap kali suite ini dijalankan.
+  const benar = await jalankanDanUkur()
   const h = benar.json.hasil?.[0] ?? {}
   cek('token benar → 200', benar.status === 200, `status=${benar.status}`)
   cek(
@@ -335,9 +340,13 @@ async function butir4() {
 
   const r1 = await jalankanDanUkur()
   const milik = untukTugas(r1.baru, D.tLate.id)
-  const kunciHariIni = `TASK_OVERDUE:${D.tLate.id}:${hariUtc(new Date())}`
+  // PRD-002 Step 3 — komponen tanggal kunci kini TANGGAL BISNIS Asia/Makassar,
+  // bukan tanggal UTC (hari baru bergulir tengah malam WITA, bukan 08:00 WITA).
+  // Yang diuji butir ini TIDAK berubah: tanggal diambil dari waktu jalan, dan
+  // satu tanggal = satu baris. Hanya kalender acuannya yang dikoreksi.
+  const kunciHariIni = `TASK_OVERDUE:${D.tLate.id}:${tanggalBisnis(new Date())}`
   cek('jalan ke-1 → satu TASK_OVERDUE', milik.length === 1 && milik[0].type === 'TASK_OVERDUE', `lahir=${milik.length}`)
-  cek('kunci = TASK_OVERDUE:<taskId>:<YYYY-MM-DD>', milik[0]?.dedupeKey === kunciHariIni, `${milik[0]?.dedupeKey}`)
+  cek('kunci = TASK_OVERDUE:<taskId>:<YYYY-MM-DD WITA>', milik[0]?.dedupeKey === kunciHariIni, `${milik[0]?.dedupeKey}`)
 
   await jalankanDanUkur()
   await jalankanDanUkur()
@@ -347,7 +356,7 @@ async function butir4() {
   cek('3 jalan dalam satu hari → tetap 1 baris', jml3 === 1, `count=${jml3}`)
 
   // "Seolah-olah jalan tadi terjadi kemarin" — lihat catatan kepala berkas.
-  const kemarin = hariUtc(new Date(Date.now() - 24 * JAM))
+  const kemarin = tanggalBisnis(new Date(Date.now() - 24 * JAM))
   await prisma.notification.updateMany({
     where: { id: milik[0].id },
     data: { dedupeKey: `TASK_OVERDUE:${D.tLate.id}:${kemarin}` },

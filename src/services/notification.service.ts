@@ -112,13 +112,34 @@ export type NewNotification = {
 }
 
 /**
+ * Hasil satu panggilan notify() (PRD-002 Step 3).
+ *
+ * - `DIBUAT`   — baris baru lahir.
+ * - `DUPLIKAT` — `dedupeKey` sudah dipakai di tenant ini (P2002). Hasil NORMAL
+ *   job yang dijalankan ulang atau dua jalan yang tumpang-tindih (K101) —
+ *   bukan galat, jadi tidak dicatat ke log galat.
+ * - `GAGAL`    — penulisan gagal karena sebab lain; dicatat ke log server.
+ *
+ * Pemanggil peristiwa (finance/portal/komentar) boleh terus mengabaikannya.
+ * Job pengingat MEMAKAINYA untuk menghitung `dibuat`/`dilewati`/`gagal` secara
+ * eksak — membaca ulang database sesudah menulis tidak bisa membedakan "baris
+ * ini lahir oleh jalan saya" dari "lahir oleh jalan lain di detik yang sama".
+ */
+export type HasilNotify = 'DIBUAT' | 'DUPLIKAT' | 'GAGAL'
+
+/** Kode galat Prisma tanpa mengimpor `@prisma/client` ke jalur ini. */
+function kodeGalat(e: unknown): string | null {
+  return e && typeof e === 'object' && 'code' in e ? String((e as { code: unknown }).code) : null
+}
+
+/**
  * Dipanggil dari service lain (disbursement/invoice) di titik peristiwa
  * terjadi. SENGAJA menelan kegagalannya sendiri (log saja, tak melempar) —
  * beda dari catatAudit() yang wajib melempar (K42 butuh jejak lengkap untuk
  * ronde approval). Notifikasi murni kenyamanan UX; gagal menulisnya tak
  * boleh membatalkan transaksi keuangan yang memicunya.
  */
-export async function notify(ctx: TenantContext, data: NewNotification): Promise<void> {
+export async function notify(ctx: TenantContext, data: NewNotification): Promise<HasilNotify> {
   try {
     await forTenant(ctx).notification.create({
       data: {
@@ -135,7 +156,12 @@ export async function notify(ctx: TenantContext, data: NewNotification): Promise
         dedupeKey: data.dedupeKey ?? null,
       },
     })
+    return 'DIBUAT'
   } catch (e) {
+    // Tabrakan kunci idempotensi adalah hasil normal job yang dijalankan ulang
+    // atau dua jalan yang tumpang-tindih (K101) — bukan galat untuk dicatat.
+    if (data.dedupeKey && kodeGalat(e) === 'P2002') return 'DUPLIKAT'
     console.error('[notification] gagal menulis:', e)
+    return 'GAGAL'
   }
 }

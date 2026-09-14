@@ -38,7 +38,10 @@
     "db:delete-tenant": "node prisma/delete-tenant.mjs",
     "test:rate-limit": "node prisma/check-rate-limit.mjs",
     "test:vessel-identity": "node prisma/check-vessel-identity.mjs",
-    "test:voyage-vessels": "node prisma/check-voyage-vessels.mjs"
+    "test:voyage-vessels": "node prisma/check-voyage-vessels.mjs",
+    "test:business-time": "node prisma/check-business-time.mjs",
+    "test:infra-scripts": "node prisma/check-infra-scripts.mjs",
+    "test:reminder-safety": "node prisma/check-reminder-safety.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

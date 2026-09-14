@@ -1,0 +1,27 @@
+# Maritim Suite — job pengingat terjadwal (PRD-002 Step 3).
+#
+# Pasang: /etc/systemd/system/maritime-reminders.service
+# ⚠️ JANGAN `enable --now` timer-nya sebelum keputusan owner D3: menyalakan
+#    pengingat di produksi = notifikasi TASK_DUE/OVERDUE/SLA nyata untuk pengguna.
+#
+# Token dibaca systemd (root) dari berkas root:root 0600 dan diteruskan lewat
+# LoadCredential — tak pernah ada di unit, argumen, atau journal.
+
+[Unit]
+Description=Maritim Suite - job pengingat (reminders)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+DynamicUser=yes
+LoadCredential=job-token:/etc/tribuana/job-runner-token
+Environment=JOB_BASE_URL=http://127.0.0.1:3001
+ExecStart=/usr/local/sbin/maritime-job-run reminders
+TimeoutStartSec=360
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX

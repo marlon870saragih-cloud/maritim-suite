@@ -1,0 +1,20 @@
+# Maritim Suite — jadwal job pengingat (PRD-002 Step 3).
+#
+# Pasang: /etc/systemd/system/maritime-reminders.timer
+# Aktifkan HANYA setelah keputusan owner D3:  systemctl enable --now maritime-reminders.timer
+#
+# Jadwal memakai jam mesin (VM Etc/UTC). Itu aman: aplikasi memutuskan "hari
+# baru" dengan tanggal bisnis Asia/Makassar (src/lib/business-time.ts), bukan
+# dengan jam mesin, jadi jalan tiap jam menghasilkan kunci yang sama di zona apa pun.
+
+[Unit]
+Description=Maritim Suite - jadwal job pengingat (tiap jam)
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=120
+Persistent=true
+Unit=maritime-reminders.service
+
+[Install]
+WantedBy=timers.target
