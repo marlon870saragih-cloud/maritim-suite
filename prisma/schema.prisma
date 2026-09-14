@@ -119,6 +119,11 @@ model Tenant {
   usageEvents               UsageEvent[]
   dataRequests              DataRequest[]
   exportJobs                ExportJob[]
+
+  // --- PRD-002 Step 5B (Automation Hub — pemantauan voyage internal) ---
+  monitoredVoyages  MonitoredVoyage[]
+  monitoringRuns    MonitoringRun[]
+  monitoringSignals MonitoringSignal[]
 }
 
 model Payment {
@@ -735,6 +740,11 @@ model Voyage {
   // di atas TETAP satu-satunya penentu kapal utama; lihat model VoyageVessel.
   vessels VoyageVessel[]
 
+  // PRD-002 Step 5B — Automation Hub (pemantauan internal). Tak pernah ditulis
+  // balik ke kolom voyage mana pun.
+  monitoring        MonitoredVoyage[]
+  monitoringSignals MonitoringSignal[]
+
   @@unique([tenantId, voyageNumber])
   @@index([tenantId, status])
   @@index([tenantId, eta])
@@ -787,6 +797,104 @@ model VoyageVessel {
 
   @@unique([voyageId, vesselId])
   @@index([vesselId])
+}
+
+// ============================================================================
+// PRD-002 STEP 5B — AUTOMATION HUB: PEMANTAUAN VOYAGE INTERNAL
+// MONITOR → DETECT → EXPLAIN → RECOMMEND → HUMAN REVIEW. Ketiga model di bawah
+// adalah SATU-SATUNYA tabel yang ditulis pemantauan (selain Notification
+// internal). Tabel operasional (Voyage, Vessel, VoyageVessel, VoyageEvent,
+// Task, …) hanya dibaca. Semua bertenant → wajib di TENANT_MODELS. Tidak ada
+// GRANT ke peran maritime_portal → portal tak bisa membacanya.
+// FK ke Tenant/Voyage CASCADE: pelajaran Step 2 — RESTRICT/NO ACTION pada rantai
+// cascade dua tingkat mematahkan penghapusan tenant.
+// ============================================================================
+
+/// Voyage yang dipantau Automation Hub. Satu baris per voyage per tenant.
+model MonitoredVoyage {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  voyageId String
+  voyage   Voyage @relation(fields: [voyageId], references: [id], onDelete: Cascade)
+
+  enabled         Boolean   @default(true)
+  startedAt       DateTime  @default(now())
+  startedByUserId String
+  stoppedAt       DateTime?
+  stopReason      String? // MANUAL | VOYAGE_CLOSED | VOYAGE_CANCELLED | VOYAGE_DELETED
+  /// Jalan pemantauan terakhir yang memproses voyage ini tanpa galat.
+  lastCheckedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, voyageId])
+  @@index([tenantId, enabled])
+}
+
+/// Bukti tahan lama satu jalan pemantauan per tenant. Tanpa rahasia, tanpa log mentah.
+model MonitoringRun {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  agent          String
+  agentVersion   String
+  startedAt      DateTime  @default(now())
+  finishedAt     DateTime?
+  status         String    @default("RUNNING") // RUNNING | OK | PARTIAL | FAILED
+  voyagesChecked Int       @default(0)
+  voyagesFailed  Int       @default(0)
+  signalsCreated Int       @default(0)
+  signalsSkipped Int       @default(0)
+  errorCode      String?
+
+  signals MonitoringSignal[]
+
+  @@index([tenantId, startedAt])
+}
+
+/// Sinyal internal Automation Hub. MERUJUK sumbernya (AuditLog / VoyageEvent),
+/// tak pernah menyalinnya balik — sinyal bukan peristiwa SOF.
+model MonitoringSignal {
+  id       String         @id @default(cuid())
+  tenantId String
+  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  voyageId String
+  voyage   Voyage         @relation(fields: [voyageId], references: [id], onDelete: Cascade)
+  runId    String?
+  run      MonitoringRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+
+  kind      String // ETA_CHANGED | VOYAGE_STATUS_CHANGED | OPERATIONAL_EVENT_RECORDED | ACTUAL_DATE_MISSING | DATA_STALE | MONITORING_ERROR
+  severity  String // INFO | WARNING | ERROR
+  /// Satu perubahan sumber yang logis = satu sinyal. Penjaga terakhir terhadap duplikat.
+  dedupeKey String
+
+  sourceType String // AUDIT_LOG | VOYAGE_EVENT | VOYAGE | SYSTEM
+  sourceRef  String?
+  sourceAt   DateTime?
+  detectedAt DateTime  @default(now())
+
+  /// Sengaja kecil: hanya medan yang berubah (mis. { eta: "2026-10-01" }).
+  before Json?
+  after  Json?
+
+  explanation    String
+  recommendation String
+
+  reviewState      String    @default("OPEN") // OPEN | ACKNOWLEDGED | DISMISSED | EXPIRED
+  reviewedByUserId String?
+  reviewedByName   String?
+  reviewedAt       DateTime?
+  reviewNote       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, dedupeKey])
+  @@index([tenantId, reviewState, detectedAt])
+  @@index([tenantId, voyageId, detectedAt])
 }
 
 // ----------------------------------------------------------------- DISBURSEMENT

@@ -4,6 +4,8 @@ import { getLang, type Lang } from '@/lib/i18n-server'
 import { requireTenant, requireRole } from '@/services/context'
 import { ServiceError } from '@/services/errors'
 import { JobRunnerPanel } from '@/components/settings/JobRunnerPanel'
+import { bolehAksesAutomation } from '@/services/automation/access'
+import { MonitoringHealthCard } from '@/components/automation/MonitoringHealthCard'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,6 +18,9 @@ export const dynamic = 'force-dynamic'
 // Gerbang ADMIN karena itu dipanggil langsung (`requireRole`), bukan lewat
 // service — tapi pola try/catch ServiceError('FORBIDDEN') tetap sama persis
 // dengan audit/page.tsx supaya pesan "khusus ADMIN" konsisten se-aplikasi.
+//
+// PRD-002 Step 5B — kartu kesehatan pemantauan voyage hanya dirender bila
+// Automation Hub diizinkan untuk tenant & peran ini.
 
 const PH: Record<Lang, { kicker: string; title: string; desc: string; denied: string }> = {
   id: {
@@ -42,6 +47,7 @@ export default async function ScheduledJobsPage() {
       <div className="p-margin-page max-w-[1600px] mx-auto space-y-6">
         <PageHeader kicker={t.kicker} title={t.title} description={t.desc} />
         <JobRunnerPanel />
+        {bolehAksesAutomation(ctx) && <MonitoringHealthCard />}
       </div>
     )
   } catch (e) {

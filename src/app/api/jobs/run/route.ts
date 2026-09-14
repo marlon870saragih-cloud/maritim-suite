@@ -24,6 +24,8 @@ import crypto from 'node:crypto'
 import { jalankanPengingatUntukSemuaTenant } from '@/services/ops/reminder-job'
 // Fase 8k / K186 — skrip backup di server melapor ke sini setiap selesai.
 import { catatHasilBackup } from '@/services/saas/backup-status.service'
+// PRD-002 Step 5B — Automation Hub, pemantauan voyage internal (allowlist tenant).
+import { jalankanMonitoringSemuaTenant } from '@/services/automation/monitoring.service'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -71,6 +73,14 @@ const JOB: Readonly<Record<string, (req: Request) => Promise<unknown>>> = {
       pesan: p.get('pesan'),
     })
   },
+
+  /**
+   * PRD-002 Step 5B — pemantauan voyage internal Automation Hub. Hanya tenant
+   * di AUTOMATION_TENANT_IDS; fitur mati → `{ nonaktif: true }` tanpa kerja.
+   * Idempoten lewat @@unique([tenantId, dedupeKey]) MonitoringSignal.
+   * Menulis HANYA tabel pemantauan + notifikasi internal WARNING/ERROR.
+   */
+  'voyage-monitoring': () => jalankanMonitoringSemuaTenant(),
 }
 
 const JOB_BAWAAN = 'reminders'

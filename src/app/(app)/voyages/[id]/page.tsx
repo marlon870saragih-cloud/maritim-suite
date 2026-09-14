@@ -17,6 +17,8 @@ import { listPorts } from '@/services/master/port.service'
 import { listTasks } from '@/services/ops/task.service'
 import { ServiceError } from '@/services/errors'
 import { VoyageWorkspace } from '@/components/voyage/VoyageWorkspace'
+import { bolehAksesAutomation } from '@/services/automation/access'
+import { VoyageMonitoringSection } from '@/components/automation/VoyageMonitoringSection'
 
 export const dynamic = 'force-dynamic'
 
@@ -76,6 +78,11 @@ export default async function VoyageDetailPage({ params }: { params: { id: strin
     voyageCreatedAt: voyage.createdAt,
   }
 
+  // PRD-002 Step 5B — sinyal Automation Hub, di section TERPISAH dari tab
+  // Timeline/Peristiwa (sinyal otomasi ≠ fakta SOF). Hanya untuk tenant di
+  // allowlist + ADMIN/MANAJER_OPERASI.
+  const showMonitoring = bolehAksesAutomation(ctx)
+
   return (
     <div className="p-margin-page max-w-[1400px] mx-auto space-y-6">
       <Link
@@ -101,6 +108,8 @@ export default async function VoyageDetailPage({ params }: { params: { id: strin
         voyageAnchors={voyageAnchors}
         voyageVessels={kapalVoyage(voyage, voyage.vessels)}
       />
+
+      {showMonitoring && <VoyageMonitoringSection voyageId={voyage.id} />}
     </div>
   )
 }

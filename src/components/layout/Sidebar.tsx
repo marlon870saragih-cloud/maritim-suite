@@ -19,6 +19,7 @@ import {
   ListChecks,
   CalendarDays,
   ShoppingCart,
+  Radar,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/i18n'
@@ -69,11 +70,14 @@ export function Sidebar({
   vesselCount,
   principalCount,
   user,
+  showAutomation = false,
 }: {
   modulesEnabled: string[]
   vesselCount: number
   principalCount: number
   user: ChromeUser
+  /** PRD-002 Step 5B — ditentukan server (allowlist tenant + peran). */
+  showAutomation?: boolean
 }) {
   const pathname = usePathname()
   const t = useT(SB)
@@ -197,6 +201,33 @@ export function Sidebar({
             </Link>
           )
         })}
+
+        {/* PRD-002 Step 5B — Automation Hub (privat: allowlist tenant + ADMIN/MANAJER_OPERASI, diputus server) */}
+        {showAutomation && (
+          <Link
+            href="/automation"
+            className={cn(
+              'flex items-center gap-3 px-3 py-2.5 rounded relative border transition-all duration-200 group',
+              pathname.startsWith('/automation')
+                ? 'bg-surface-tertiary border-border-muted'
+                : 'border-transparent hover:bg-surface-tertiary/60 hover:border-border-muted'
+            )}
+          >
+            <Radar
+              className={cn(
+                'w-4 h-4 flex-shrink-0 transition-colors duration-200',
+                pathname.startsWith('/automation') ? 'text-accent-blue' : 'text-text-secondary/70 group-hover:text-accent-blue'
+              )}
+              aria-hidden="true"
+            />
+            <div className="flex-1 min-w-0">
+              <p className={cn('text-[12px] font-medium truncate', pathname.startsWith('/automation') ? 'text-text-primary' : 'text-text-secondary group-hover:text-text-primary')}>
+                Automation Hub
+              </p>
+              <p className="text-[10px] truncate font-mono text-text-secondary/55">Pemantauan · Alerts</p>
+            </div>
+          </Link>
+        )}
 
         {/* Master Data */}
         <p className="px-3 py-2 mt-4 text-[9px] text-text-secondary uppercase tracking-widest font-mono">

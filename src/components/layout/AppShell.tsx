@@ -8,6 +8,7 @@ export function AppShell({
   user,
   vesselCount,
   principalCount,
+  showAutomation = false,
   banner,
   children,
 }: {
@@ -15,6 +16,8 @@ export function AppShell({
   user: ChromeUser
   vesselCount: number
   principalCount: number
+  /** PRD-002 Step 5B — menu Automation Hub (fitur aktif + tenant diizinkan + peran). */
+  showAutomation?: boolean
   banner?: ReactNode
   children: ReactNode
 }) {
@@ -26,6 +29,7 @@ export function AppShell({
           user={user}
           vesselCount={vesselCount}
           principalCount={principalCount}
+          showAutomation={showAutomation}
         />
         <div className="md:ml-[240px] print:ml-0 min-h-screen flex flex-col">
           <TopBar user={user} />

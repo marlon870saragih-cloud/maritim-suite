@@ -73,6 +73,8 @@ export type NewNotification = {
     | 'VENDOR_WORK_CONFIRMED'
     // --- Fase 8k (K186) — bundel ekspor mandiri siap (atau gagal) ---
     | 'EXPORT_READY'
+    // --- PRD-002 Step 5B — sinyal WARNING/ERROR Automation Hub (internal saja) ---
+    | 'AUTOMATION_SIGNAL'
   title: string
   message?: string
   entityType?:

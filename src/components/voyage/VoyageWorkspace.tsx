@@ -510,7 +510,8 @@ export function VoyageWorkspace({
               />
             </div>
 
-            <div className="col-span-2 grid grid-cols-4 gap-3">
+            {/* 4 kolom di dialog max-w-2xl → tiap input date ±140px, tahun (yyyy) terpotong. */}
+            <div className="col-span-2 grid grid-cols-2 sm:grid-cols-3 gap-3">
               <div>
                 <label className={labelCls}>{t.fEta}</label>
                 <input type="date" value={form.eta} onChange={(e) => set('eta', e.target.value)} className={inputCls} />

@@ -19,6 +19,7 @@ import { VOYAGE_STATUS_COLOR, type VoyageStatusStr } from './voyage-status'
 const STR: Record<Lang, Record<string, string>> = {
   id: {
     addBtn: 'Buat Voyage',
+    noVesselHint: 'Tambahkan kapal terlebih dahulu — voyage wajib memilih kapal.', noVesselLink: 'Buka Master Kapal',
     errVesselReq: 'Kapal wajib dipilih.', errSave: 'Gagal menyimpan.', errConn: 'Gagal terhubung ke server.', errDelete: 'Gagal menghapus.',
     confirmPre: 'Hapus voyage "', confirmPost: '"? Tindakan ini tidak bisa dibatalkan.',
     emptyTitle: 'Belum ada voyage', emptyDesc: 'Voyage = folder digital 1 pelayaran (port call, cargo, EPDA/FDA, invoice terkumpul di sini).',
@@ -30,6 +31,7 @@ const STR: Record<Lang, Record<string, string>> = {
   },
   en: {
     addBtn: 'Create Voyage',
+    noVesselHint: 'Add a vessel first — a voyage requires a vessel.', noVesselLink: 'Open Vessel Master',
     errVesselReq: 'A vessel must be selected.', errSave: 'Failed to save.', errConn: 'Failed to connect to server.', errDelete: 'Failed to delete.',
     confirmPre: 'Delete voyage "', confirmPost: '"? This action cannot be undone.',
     emptyTitle: 'No voyages yet', emptyDesc: 'A voyage is a digital folder for one call — port call, cargo, EPDA/FDA, invoices all live here.',
@@ -150,17 +152,36 @@ export function VoyagesManager({
     }
   }
 
+  // Voyage wajib punya kapal (vesselId), jadi tombol tetap mati bila tenant belum
+  // punya kapal. Dulu mati DIAM-DIAM (hover tetap berubah warna, tanpa alasan) →
+  // tampak "diklik tapi tak terjadi apa-apa". Kini alasan + tautan ke Master Kapal
+  // ditampilkan, dan tombol yang mati tak lagi berlagak aktif.
+  const tanpaKapal = vessels.length === 0
+  const addBtnCls =
+    'inline-flex items-center gap-2 bg-accent-blue hover:bg-primary text-[#231a06] rounded px-4 py-2 text-sm font-medium transition-colors ' +
+    'disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-accent-blue'
+  const petunjukKapal = tanpaKapal ? (
+    <p id="voyage-need-vessel" className="text-xs text-text-secondary">
+      {t.noVesselHint}{' '}
+      <Link href="/settings/vessels" className="text-accent-blue underline hover:no-underline">
+        {t.noVesselLink}
+      </Link>
+    </p>
+  ) : null
+
   return (
     <>
-      <div className="flex justify-end">
+      <div className="flex flex-col items-end gap-2">
         <button
           type="button"
           onClick={openAdd}
-          disabled={vessels.length === 0}
-          className="inline-flex items-center gap-2 bg-accent-blue hover:bg-primary text-[#231a06] rounded px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50"
+          disabled={tanpaKapal}
+          aria-describedby={tanpaKapal ? 'voyage-need-vessel' : undefined}
+          className={addBtnCls}
         >
           <Plus className="w-4 h-4" /> {t.addBtn}
         </button>
+        {petunjukKapal}
       </div>
 
       <section className="bg-card-bg border border-card-border rounded-lg overflow-hidden">
@@ -176,8 +197,9 @@ export function VoyagesManager({
             <button
               type="button"
               onClick={openAdd}
-              disabled={vessels.length === 0}
-              className="inline-flex items-center gap-2 mt-1 bg-accent-blue hover:bg-primary text-[#231a06] rounded px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50"
+              disabled={tanpaKapal}
+              aria-describedby={tanpaKapal ? 'voyage-need-vessel' : undefined}
+              className={cn(addBtnCls, 'mt-1')}
             >
               <Plus className="w-4 h-4" /> {t.addBtn}
             </button>

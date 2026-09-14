@@ -41,7 +41,9 @@
     "test:voyage-vessels": "node prisma/check-voyage-vessels.mjs",
     "test:business-time": "node prisma/check-business-time.mjs",
     "test:infra-scripts": "node prisma/check-infra-scripts.mjs",
-    "test:reminder-safety": "node prisma/check-reminder-safety.mjs"
+    "test:reminder-safety": "node prisma/check-reminder-safety.mjs",
+    "test:automation-policy": "node prisma/check-automation-policy.mjs",
+    "test:automation-api": "node prisma/check-automation-api.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
