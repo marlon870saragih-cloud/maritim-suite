@@ -1,0 +1,29 @@
+# Maritim Suite — job pemantauan voyage internal (PRD-002 Step 5B).
+#
+# Pasang: /etc/systemd/system/maritime-monitoring.service
+# Pola sama dengan maritime-reminders.service: token dibaca systemd (root) dari
+# /etc/tribuana/job-runner-token (root:root 0600) lewat LoadCredential — tak pernah
+# ada di unit, argumen proses, atau journal.
+#
+# Cakupan dikunci aplikasi (fail-closed): AUTOMATION_MONITORING_ENABLED=true dan
+# AUTOMATION_TENANT_IDS. Tanpa AIS, tanpa penyedia eksternal, tanpa LLM, tanpa
+# pesan ke luar — sinyal internal saja.
+
+[Unit]
+Description=Maritim Suite - job pemantauan voyage internal (voyage-monitoring)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+DynamicUser=yes
+LoadCredential=job-token:/etc/tribuana/job-runner-token
+Environment=JOB_BASE_URL=http://127.0.0.1:3001
+ExecStart=/usr/local/sbin/maritime-job-run voyage-monitoring
+TimeoutStartSec=360
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
