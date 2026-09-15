@@ -84,6 +84,11 @@ export const TENANT_MODELS: ReadonlySet<string> = new Set([
   'MonitoredVoyage',
   'MonitoringRun',
   'MonitoringSignal',
+
+  // --- PRD-003 Step 4 — data posisi AIS (bukti mesin) ---
+  'AisObservation',
+  'AisPollRun',
+  'AisProviderState',
 ])
 
 /** Operasi yang aman disaring lewat `where`. */

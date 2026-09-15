@@ -42,6 +42,8 @@ import {
   type OpsiKebijakan,
 } from './monitoring-policy'
 import { statusPenyedia, type StatusPenyedia } from './provider'
+// PRD-003 Step 4 — HANYA membaca observasi AIS tersimpan; tak pernah memanggil penyedia.
+import { faktaAisUntukMonitoring, penyediaAisUntukTenant } from '../ais/read.service'
 
 /** Batas kerja per jalan per tenant (pola BATAS_NOTIFIKASI_PER_JALAN, K102). */
 const BATAS_VOYAGE_PER_JALAN = 200
@@ -57,6 +59,8 @@ const JUDUL_SINYAL: Record<JenisSinyal, string> = {
   ACTUAL_DATE_MISSING: 'Tanggal aktual belum lengkap',
   DATA_STALE: 'Voyage tanpa pembaruan',
   MONITORING_ERROR: 'Galat pemantauan',
+  AIS_STALE: 'Posisi AIS tidak diperbarui',
+  AIS_PROVIDER_DOWN: 'Penyedia posisi AIS gagal',
 }
 
 // ================================================================= penulisan
@@ -201,6 +205,21 @@ async function bacaFakta(ctx: TenantContext, m: { voyageId: string; startedAt: D
     })),
     aktivitasTerakhir: aktivitas === null ? null : new Date(aktivitas).toISOString(),
     mulaiPantau: m.startedAt.toISOString(),
+    ais: await bacaFaktaAis(ctx, v.id),
+  }
+}
+
+/**
+ * PRD-003 Step 4 — fakta AIS dibaca TERPISAH dan galatnya ditelan: masalah data
+ * AIS/penyedia tidak boleh membuat pemantauan internal voyage gagal. Tanpa AIS
+ * (null), deteksi internal berjalan persis seperti Step 5B.
+ */
+async function bacaFaktaAis(ctx: TenantContext, voyageId: string) {
+  try {
+    return await faktaAisUntukMonitoring(ctx, voyageId)
+  } catch (e) {
+    console.error(`[automation] fakta AIS voyage ${voyageId} tak terbaca: ${e instanceof Error ? e.name : 'Error'}`)
+    return null
   }
 }
 
@@ -697,6 +716,11 @@ export async function kesehatanAutomation(ctx: TenantContext): Promise<Kesehatan
     suksesTerakhirPada: ok?.startedAt.toISOString() ?? null,
     voyageDipantau: dipantau,
     sinyalTerbuka: terbuka,
-    penyedia: statusPenyedia(),
+    penyedia: statusPenyediaTenant(ctx.tenantId),
   }
+}
+
+function statusPenyediaTenant(tenantId: string): StatusPenyedia {
+  const p = penyediaAisUntukTenant(tenantId)
+  return p.terkonfigurasi && p.nama ? { terkonfigurasi: true, nama: p.nama, pesan: `Sumber posisi: ${p.nama}.` } : statusPenyedia()
 }

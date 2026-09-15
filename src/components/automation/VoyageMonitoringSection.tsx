@@ -6,6 +6,7 @@
 import { Radar } from 'lucide-react'
 import { useT, type Lang } from '@/lib/i18n'
 import { SignalList } from './SignalList'
+import { VoyageAisPosition } from './VoyageAisPosition'
 
 const STR: Record<Lang, { title: string; desc: string }> = {
   id: {
@@ -28,6 +29,7 @@ export function VoyageMonitoringSection({ voyageId }: { voyageId: string }) {
         </h2>
         <p className="mt-1 text-xs text-text-secondary">{t.desc}</p>
       </div>
+      <VoyageAisPosition voyageId={voyageId} />
       <SignalList voyageId={voyageId} showVoyage={false} />
     </section>
   )

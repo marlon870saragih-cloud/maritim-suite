@@ -1,10 +1,11 @@
 // Batas antarmuka sumber posisi kapal eksternal — logika murni, TANPA impor
 // (PRD-002 Step 5B; bentuk mengikuti K175 docs/FASE-8-SAAS-COMMERCIAL.md).
 //
-// Step 5B TIDAK memakai AIS. Satu-satunya implementasi adalah
 // `penyediaTidakAda`: tanpa panggilan jaringan, tanpa API key, tanpa data
 // posisi buatan. Ketiadaan penyedia adalah keadaan SAH dan TIDAK membuat
-// pemantauan internal dianggap tidak sehat. Integrasi penyedia = Step 5C.
+// pemantauan internal dianggap tidak sehat. Sejak PRD-003 Step 4 penyedia
+// sungguhan dipilih lewat services/ais (registry + AIS_PROVIDER); berkas ini
+// tetap menjadi bentuk status bawaan "tanpa penyedia".
 
 export type PosisiKapal = {
   mmsi: string | null
@@ -44,6 +45,6 @@ export function statusPenyedia(p: PenyediaPosisiKapal = penyediaTidakAda): Statu
     : {
         terkonfigurasi: false,
         nama: null,
-        pesan: 'Sumber posisi kapal eksternal belum dikonfigurasi (direncanakan Step 5C). Pemantauan internal tetap berjalan.',
+        pesan: 'Sumber posisi kapal eksternal belum dikonfigurasi. Pemantauan internal tetap berjalan.',
       }
 }

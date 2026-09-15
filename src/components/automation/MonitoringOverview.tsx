@@ -1,7 +1,8 @@
 'use client'
 
 // Active Monitoring — Automation Hub (PRD-002 Step 5B).
-// Tidak menampilkan posisi kapal atau peta: belum ada sumber posisi (Step 5C).
+// Tidak menampilkan posisi kapal atau peta. Posisi AIS terakhir (PRD-003 Step 4)
+// tampil di halaman voyage; kesehatan AIS di AisHealthCard.
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
@@ -25,7 +26,7 @@ const STR: Record<Lang, Record<string, string>> = {
     lastCheck: 'Cek terakhir berhasil', latest: 'Sinyal terakhir', none: '—', stop: 'Hentikan', confirmStop: 'Hentikan pemantauan voyage ini?',
     yes: 'Ya, hentikan', cancel: 'Batal', refresh: 'Muat ulang', loading: 'Memuat…', errLoad: 'Gagal memuat data pemantauan.',
     errAction: 'Tindakan gagal.', alerts: 'Lihat Alerts', since: 'sejak', reason: 'alasan',
-    sourceOff: 'Sumber posisi kapal eksternal belum dikonfigurasi (direncanakan Step 5C). Pemantauan internal tetap berjalan.',
+    sourceOff: 'Sumber posisi kapal eksternal belum dikonfigurasi. Pemantauan internal tetap berjalan.',
     sourceOn: 'Sumber posisi:',
   },
   en: {
@@ -37,7 +38,7 @@ const STR: Record<Lang, Record<string, string>> = {
     lastCheck: 'Last successful check', latest: 'Latest signal', none: '—', stop: 'Stop', confirmStop: 'Stop monitoring this voyage?',
     yes: 'Yes, stop', cancel: 'Cancel', refresh: 'Reload', loading: 'Loading…', errLoad: 'Failed to load monitoring data.',
     errAction: 'Action failed.', alerts: 'View Alerts', since: 'since', reason: 'reason',
-    sourceOff: 'No external vessel position source is configured yet (planned for Step 5C). Internal monitoring keeps running.',
+    sourceOff: 'No external vessel position source is configured yet. Internal monitoring keeps running.',
     sourceOn: 'Position source:',
   },
 }

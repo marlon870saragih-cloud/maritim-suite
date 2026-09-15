@@ -24,8 +24,11 @@ import {
   AMBANG_TANGGAL_AKTUAL_JAM,
   DataSumberTidakSah,
   KODE_PERISTIWA_BERNILAI,
+  JENIS_SINYAL,
+  JENIS_SUMBER,
   alasanBerhenti,
   deteksiSinyal,
+  deteksiSinyalAis,
   selisihHariKalender,
   sinyalGalatMonitoring,
 } from '../src/services/automation/monitoring-policy.ts'
@@ -226,6 +229,60 @@ console.log('\n[2f] Siklus hidup & galat')
   cek('semua kunci dedupe dalam satu jalan unik', (() => { const h = deteksiSinyal(f2, opsi()); return new Set(h.map((s) => s.dedupeKey)).size === h.length })())
 }
 
+console.log('\n[2g] AIS — PRD-003 Step 4 (+ regresi Step 5B)')
+{
+  const aisF = (ubah = {}) => ({
+    provider: 'FAKE',
+    ambangStaleJam: 6,
+    kapal: [{ vesselId: 'vTug', nama: 'TUG UJI', terverifikasi: true, terakhir: { id: 'o1', positionAt: iso(7 * JAM), fetchedAt: iso(7 * JAM) } }],
+    state: { id: 'st1', lastSuccessAt: iso(1 * JAM), consecutiveFailures: 0, outageStartedAt: null },
+    ...ubah,
+  })
+  const fInternal = fakta({
+    audit: [auditTanggal('r1', { eta: '2026-10-01' }, { eta: '2026-10-03' }, ['eta'])],
+    peristiwa: [{ id: 'r2', kode: 'SAILED', terjadi: iso(13 * JAM), dicatat: iso(1 * JAM) }],
+    aktivitasTerakhir: iso(25 * JAM),
+    mulaiPantau: iso(26 * JAM),
+  })
+  const tanpa = deteksiSinyal(fInternal, opsi())
+  cek('REGRESI: ais null / undefined → keluaran identik Step 5B', JSON.stringify(tanpa) === JSON.stringify(deteksiSinyal({ ...fInternal, ais: null }, opsi())) && JSON.stringify(tanpa) === JSON.stringify(deteksiSinyal({ ...fInternal, ais: undefined }, opsi())))
+  const dengan = deteksiSinyal({ ...fInternal, ais: aisF() }, opsi())
+  cek('REGRESI: fakta AIS tidak mengubah/menghapus sinyal internal', JSON.stringify(dengan.filter((s) => !s.kind.startsWith('AIS_'))) === JSON.stringify(tanpa))
+  cek('jenis sinyal & sumber AIS terdaftar', JENIS_SINYAL.includes('AIS_STALE') && JENIS_SINYAL.includes('AIS_PROVIDER_DOWN') && JENIS_SUMBER.includes('AIS_OBSERVATION') && JENIS_SUMBER.includes('AIS_PROVIDER'))
+
+  const basi = deteksiSinyalAis(fakta(), aisF(), opsi())
+  cek('posisi 7 jam > ambang 6 → tepat 1 AIS_STALE WARNING', basi.length === 1 && basi[0].kind === 'AIS_STALE' && basi[0].severity === 'WARNING', `n=${basi.length}`)
+  cek('AIS_STALE: dedupe per voyage+kapal+posisi (episode)', basi[0]?.dedupeKey === `AIS_STALE:vUji:vTug:${iso(7 * JAM)}`, basi[0]?.dedupeKey)
+  cek('AIS_STALE: sumber AIS_OBSERVATION merujuk id observasi', basi[0]?.sourceType === 'AIS_OBSERVATION' && basi[0]?.sourceRef === 'o1')
+  cek('AIS_STALE: teks menyebut ambang & tidak mengubah data voyage', /ambang 6 jam/.test(basi[0]?.explanation ?? '') && /tidak mengubah data voyage/.test(basi[0]?.recommendation ?? ''))
+  cek('posisi 5 jam → tanpa sinyal', deteksiSinyalAis(fakta(), aisF({ kapal: [{ vesselId: 'vTug', nama: 'T', terverifikasi: true, terakhir: { id: 'o2', positionAt: iso(5 * JAM), fetchedAt: iso(5 * JAM) } }] }), opsi()).length === 0)
+  cek('D7: ambang 12 jam → posisi 7 jam tidak basi (bukan hard-coded)', deteksiSinyalAis(fakta(), aisF({ ambangStaleJam: 12 }), opsi()).length === 0)
+  cek('D7: ambang 1.5 jam → posisi 2 jam basi', deteksiSinyalAis(fakta(), aisF({ ambangStaleJam: 1.5, kapal: [{ vesselId: 'vTug', nama: 'T', terverifikasi: true, terakhir: { id: 'o3', positionAt: iso(2 * JAM), fetchedAt: iso(2 * JAM) } }] }), opsi()).length === 1)
+  cek('D2: kapal MMSI belum terverifikasi → tak pernah dinilai basi', deteksiSinyalAis(fakta(), aisF({ kapal: [{ vesselId: 'vPub', nama: 'P', terverifikasi: false, terakhir: null }], state: { id: 's', lastSuccessAt: iso(0), consecutiveFailures: 0, outageStartedAt: null } }), opsi()).length === 0)
+  const k1 = deteksiSinyalAis(fakta(), aisF(), opsi())[0]?.dedupeKey
+  const k2 = deteksiSinyalAis(fakta(), aisF(), opsi(new Date(SEKARANG.getTime() + 2 * JAM)))[0]?.dedupeKey
+  cek('posisi sama di jalan berikutnya → kunci sama (tanpa duplikat)', k1 === k2)
+  const k3 = deteksiSinyalAis(fakta(), aisF({ kapal: [{ vesselId: 'vTug', nama: 'T', terverifikasi: true, terakhir: { id: 'o9', positionAt: iso(6.5 * JAM), fetchedAt: iso(6.5 * JAM) } }] }), opsi())[0]?.dedupeKey
+  cek('posisi baru lalu basi lagi → episode/kunci baru', !!k3 && k3 !== k1)
+  const tanpaObs = aisF({ kapal: [{ vesselId: 'vNo', nama: 'N', terverifikasi: true, terakhir: null }] })
+  cek('tanpa observasi, penyedia sukses < mulai+ambang → tanpa sinyal', deteksiSinyalAis(fakta({ mulaiPantau: iso(5 * JAM) }), tanpaObs, opsi()).length === 0)
+  const tanpaObsBasi = deteksiSinyalAis(fakta({ mulaiPantau: iso(10 * JAM) }), tanpaObs, opsi())
+  cek('tanpa observasi, penyedia sukses ≥ mulai+ambang → AIS_STALE sumber AIS_PROVIDER', tanpaObsBasi.length === 1 && tanpaObsBasi[0].sourceType === 'AIS_PROVIDER' && tanpaObsBasi[0].dedupeKey === `AIS_STALE:vUji:vNo:${iso(10 * JAM)}`)
+  cek('tanpa observasi & penyedia belum pernah sukses → tanpa sinyal (tak menyalak sebelum jalan pertama)', deteksiSinyalAis(fakta({ mulaiPantau: iso(10 * JAM) }), aisF({ kapal: tanpaObs.kapal, state: null }), opsi()).length === 0)
+
+  const down = (gagal, jamLalu) => aisF({ kapal: [], state: { id: 'st1', lastSuccessAt: null, consecutiveFailures: gagal, outageStartedAt: iso(jamLalu * JAM) } })
+  const d = deteksiSinyalAis(fakta(), down(3, 3), opsi())
+  cek('3 gagal ≥ 3 jam → AIS_PROVIDER_DOWN ERROR', d.length === 1 && d[0].kind === 'AIS_PROVIDER_DOWN' && d[0].severity === 'ERROR')
+  cek('AIS_PROVIDER_DOWN: satu per voyage per rentetan', d[0]?.dedupeKey === `AIS_PROVIDER_DOWN:vUji:FAKE:${iso(3 * JAM)}` && d[0]?.sourceType === 'AIS_PROVIDER')
+  cek('AIS_PROVIDER_DOWN: voyage lain → kunci berbeda', deteksiSinyalAis(fakta({ voyageId: 'vLain' }), down(3, 3), opsi())[0]?.dedupeKey !== d[0]?.dedupeKey)
+  cek('2 gagal / 3 gagal 2 jam → belum', deteksiSinyalAis(fakta(), down(2, 9), opsi()).length === 0 && deteksiSinyalAis(fakta(), down(3, 2), opsi()).length === 0)
+  cek('penjelasan PROVIDER_DOWN: pemantauan internal tetap berjalan, tanpa detail teknis', /tetap berjalan/.test(d[0]?.recommendation ?? '') && !/\bat\s|Error:|\n|https?:/.test(d[0]?.explanation ?? ''))
+  cek('voyage CLOSED → tanpa sinyal AIS', deteksiSinyalAis(fakta({ status: 'CLOSED' }), down(5, 9), opsi()).length === 0 && deteksiSinyal(fakta({ status: 'CLOSED', ais: aisF() }), opsi()).length === 0)
+  cek('before/after AIS kecil & tanpa koordinat/MMSI', [...basi, ...d, ...tanpaObsBasi].every((s) => s.before === null && JSON.stringify(s.after).length < 300 && !/lat|lon|mmsi/i.test(JSON.stringify(s.after))))
+  const semua = deteksiSinyal({ ...fInternal, ais: aisF({ state: { id: 'st1', lastSuccessAt: iso(1 * JAM), consecutiveFailures: 4, outageStartedAt: iso(5 * JAM) } }) }, opsi())
+  cek('internal + AIS dalam satu jalan: kunci unik & deterministik', new Set(semua.map((s) => s.dedupeKey)).size === semua.length && JSON.stringify(semua) === JSON.stringify(deteksiSinyal({ ...fInternal, ais: aisF({ state: { id: 'st1', lastSuccessAt: iso(1 * JAM), consecutiveFailures: 4, outageStartedAt: iso(5 * JAM) } }) }, opsi())))
+}
+
 // ====================================================================== 3. waktu
 
 console.log('\n[3] Waktu: kebal zona mesin, D4 tetap')
@@ -255,7 +312,8 @@ console.log('\n[4] Penyedia posisi: tidak ada, dan itu sah')
   cek('penyediaTidakAda tidak terkonfigurasi', penyediaTidakAda.terkonfigurasi === false && penyediaTidakAda.nama === 'NONE')
   cek('posisiKapal() → null (tanpa data buatan)', (await penyediaTidakAda.posisiKapal({ mmsi: '000000000' })) === null)
   const st = statusPenyedia()
-  cek('status penyedia menjelaskan Step 5C & pemantauan internal tetap berjalan', st.terkonfigurasi === false && /Step 5C/.test(st.pesan) && /tetap berjalan/.test(st.pesan))
+  // PRD-003 Step 4: teks "direncanakan Step 5C" basi → dihapus; makna yang dijaga tetap sama.
+  cek('status penyedia: belum dikonfigurasi & pemantauan internal tetap berjalan (tanpa rujukan tahap basi)', st.terkonfigurasi === false && /belum dikonfigurasi/.test(st.pesan) && /tetap berjalan/.test(st.pesan) && !/Step 5C/.test(st.pesan))
 }
 
 // =============================================================== 5. kunci sumber
@@ -274,6 +332,8 @@ cek('service hanya menulis monitoredVoyage/monitoringRun/monitoringSignal',
   [...svc.matchAll(/\.(\w+)\.(create|createMany|update|updateMany|upsert|delete|deleteMany)\(/g)].every((m) => ['monitoredVoyage', 'monitoringRun', 'monitoringSignal'].includes(m[1])),
   [...new Set([...svc.matchAll(/\.(\w+)\.(create|updateMany)\(/g)].map((m) => m[1]))].join(','))
 cek('tak ada $executeRaw / $queryRaw di service', !/\$executeRaw|\$queryRaw/.test(svc))
+cek('PRD-003: monitoring hanya MEMBACA AIS (tanpa poll.service/registry/fetchLatest)', /from '\.\.\/ais\/read\.service'/.test(svc) && !/poll\.service|ais\/registry|fetchLatest/.test(svc))
+cek('PRD-003: galat fakta AIS ditelan → pemantauan internal tak ikut gagal', /async function bacaFaktaAis\([\s\S]*?try \{[\s\S]*?faktaAisUntukMonitoring[\s\S]*?\} catch[\s\S]*?return null/.test(svc))
 cek('setiap fungsi API service memanggil requireAutomation', ['listPemantauan', 'mulaiPemantauan', 'hentikanPemantauan', 'listSinyal', 'reviewSinyal', 'kesehatanAutomation', 'jalankanMonitoringTenant'].every((fn) => {
   const i = svc.indexOf(`export async function ${fn}(`)
   return i >= 0 && svc.slice(i, i + 400).includes('requireAutomation(ctx)')

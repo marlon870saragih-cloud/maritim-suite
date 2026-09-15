@@ -20,6 +20,8 @@ export const LABEL_JENIS: Record<Lang, Record<string, string>> = {
     ACTUAL_DATE_MISSING: 'Tanggal aktual belum lengkap',
     DATA_STALE: 'Tanpa pembaruan',
     MONITORING_ERROR: 'Galat pemantauan',
+    AIS_STALE: 'Posisi AIS basi',
+    AIS_PROVIDER_DOWN: 'Penyedia AIS gagal',
   },
   en: {
     ETA_CHANGED: 'ETA/ETD changed',
@@ -28,6 +30,8 @@ export const LABEL_JENIS: Record<Lang, Record<string, string>> = {
     ACTUAL_DATE_MISSING: 'Actual date missing',
     DATA_STALE: 'No recent update',
     MONITORING_ERROR: 'Monitoring error',
+    AIS_STALE: 'AIS position stale',
+    AIS_PROVIDER_DOWN: 'AIS provider failing',
   },
 }
 

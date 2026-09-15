@@ -26,6 +26,8 @@ import { jalankanPengingatUntukSemuaTenant } from '@/services/ops/reminder-job'
 import { catatHasilBackup } from '@/services/saas/backup-status.service'
 // PRD-002 Step 5B — Automation Hub, pemantauan voyage internal (allowlist tenant).
 import { jalankanMonitoringSemuaTenant } from '@/services/automation/monitoring.service'
+// PRD-003 Step 4 — pengambilan posisi AIS terjadwal (AIS_ENABLED + AIS_TENANT_IDS).
+import { jalankanPollAisSemuaTenant } from '@/services/ais/poll.service'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -81,6 +83,15 @@ const JOB: Readonly<Record<string, (req: Request) => Promise<unknown>>> = {
    * Menulis HANYA tabel pemantauan + notifikasi internal WARNING/ERROR.
    */
   'voyage-monitoring': () => jalankanMonitoringSemuaTenant(),
+
+  /**
+   * PRD-003 Step 4 — posisi AIS untuk kapal sumber posisi (TUG) ber-MMSI
+   * terverifikasi di voyage yang dipantau. Gerbang mati / penyedia NONE →
+   * `{ nonaktif: true }` tanpa kerja. Kuota bulanan belum diisi → TANPA
+   * panggilan penyedia (D5). Idempoten lewat unique posisi + kunci sewa.
+   * Menulis HANYA AisObservation/AisPollRun/AisProviderState.
+   */
+  'ais-position-poll': () => jalankanPollAisSemuaTenant(),
 }
 
 const JOB_BAWAAN = 'reminders'

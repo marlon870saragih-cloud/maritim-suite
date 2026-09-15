@@ -124,6 +124,11 @@ model Tenant {
   monitoredVoyages  MonitoredVoyage[]
   monitoringRuns    MonitoringRun[]
   monitoringSignals MonitoringSignal[]
+
+  // --- PRD-003 Step 4 (data posisi AIS — bukti mesin, bukan data operasional) ---
+  aisObservations   AisObservation[]
+  aisPollRuns       AisPollRun[]
+  aisProviderStates AisProviderState[]
 }
 
 model Payment {
@@ -221,6 +226,9 @@ model Vessel {
 
   // --- PRD-002 Step 2 ---
   voyageVessels VoyageVessel[]
+
+  // --- PRD-003 Step 4 --- posisi AIS milik kapal ini (hanya dibaca/ditulis services/ais).
+  aisObservations AisObservation[]
 
   @@unique([tenantId, mmsi])
   @@index([tenantId])
@@ -895,6 +903,122 @@ model MonitoringSignal {
   @@unique([tenantId, dedupeKey])
   @@index([tenantId, reviewState, detectedAt])
   @@index([tenantId, voyageId, detectedAt])
+}
+
+// ============================================================================
+// PRD-003 STEP 4 — DATA POSISI AIS (desain: PRD-003 Step 3)
+// Bukti mesin saja. Ketiga model di bawah adalah SATU-SATUNYA tabel yang ditulis
+// services/ais (voyage-monitoring hanya MEMBACAnya dan menulis MonitoringSignal).
+// Voyage/Vessel/VoyageVessel/VoyageEvent tak pernah ditulis dari AIS (K176, K178).
+// Respons mentah vendor TIDAK disimpan. Semua bertenant → TENANT_MODELS. Tanpa
+// GRANT ke maritime_portal. FK ke Tenant CASCADE (pelajaran Step 2).
+// ============================================================================
+
+/// Satu posisi AIS yang DITERIMA untuk salah satu kapal KITA. Append-only; disapu sesudah 90 hari (D3).
+model AisObservation {
+  id       String      @id @default(cuid())
+  tenantId String
+  tenant   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vesselId String
+  /// CASCADE, bukan RESTRICT/NO ACTION: rantai Tenant→Vessel→AisObservation dua tingkat —
+  /// selain CASCADE mematahkan penghapusan tenant (pelajaran PRD-002 Step 2).
+  vessel   Vessel      @relation(fields: [vesselId], references: [id], onDelete: Cascade)
+  runId    String?
+  run      AisPollRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+
+  /// Id adapter (mis. FAKE). String, bukan enum (pola K55).
+  provider    String
+  /// 9 digit; sama dengan Vessel.mmsi saat diambil (selain itu ditolak MMSI_MISMATCH).
+  mmsi        String
+  providerRef String?
+
+  /// Waktu POSISI (K176/2) — wajib.
+  positionAt DateTime
+  /// Waktu kita menerimanya.
+  fetchedAt  DateTime
+
+  /// Derajat WGS84.
+  lat              Float
+  lon              Float
+  /// Knot; null = tidak tersedia.
+  sogKnots         Float?
+  /// Derajat benar 0..<360; null = tidak tersedia.
+  cogDeg           Float?
+  /// 0..359; null = tidak tersedia (511).
+  headingDeg       Int?
+  /// Kode status navigasi AIS mentah 0..15.
+  navStatus        Int?
+  positionAccuracy Boolean?
+  /// TERRESTRIAL | SATELLITE | UNKNOWN — tak pernah ditebak.
+  sourceType       String   @default("UNKNOWN")
+  /// max(0, fetchedAt − positionAt) dalam detik.
+  ageSecAtFetch    Int
+  /// sha256 medan ternormalisasi (bukan payload mentah).
+  payloadHash      String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, vesselId, provider, positionAt])
+  @@index([tenantId, vesselId, positionAt(sort: Desc)])
+  @@index([tenantId, fetchedAt])
+}
+
+/// Satu percobaan pengambilan per tenant. Disapu sesudah 180 hari (D3). Tanpa rahasia/payload.
+model AisPollRun {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  provider     String
+  agentVersion String
+  startedAt    DateTime  @default(now())
+  finishedAt   DateTime?
+  /// RUNNING | OK | PARTIAL | FAILED | SKIPPED_LOCKED | SKIPPED_BACKOFF | DISABLED_QUOTA
+  status       String    @default("RUNNING")
+
+  vesselsEligible          Int @default(0)
+  vesselsSkippedUnverified Int @default(0)
+  vesselsRequested         Int @default(0)
+  vesselsCapped            Int @default(0)
+  /// Permintaan ke penyedia yang BENAR-BENAR dikirim (termasuk ulang) — buku besar kuota bulanan.
+  providerCalls            Int @default(0)
+  observationsAccepted     Int @default(0)
+  duplicates               Int @default(0)
+  rejectedInvalid          Int @default(0)
+  rejectedStale            Int @default(0)
+  rejectedMismatch         Int @default(0)
+  noData                   Int @default(0)
+  errorCode                String?
+
+  observations AisObservation[]
+
+  @@index([tenantId, startedAt])
+}
+
+/// Kesehatan penyedia + kunci sewa (lease), satu baris per tenant per penyedia.
+model AisProviderState {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  provider String
+
+  lastAttemptAt       DateTime?
+  lastSuccessAt       DateTime?
+  consecutiveFailures Int       @default(0)
+  /// Diisi pada kegagalan pertama satu rentetan; dikosongkan saat sukses.
+  outageStartedAt     DateTime?
+  lastErrorCode       String?
+  backoffUntil        DateTime?
+  rateLimitResetAt    DateTime?
+
+  lockedUntil DateTime?
+  /// AisPollRun.id pemegang sewa.
+  lockedBy    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, provider])
 }
 
 // ----------------------------------------------------------------- DISBURSEMENT

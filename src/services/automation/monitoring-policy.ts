@@ -18,7 +18,8 @@
 // disuntikkan pemanggil (lib/business-time.ts), supaya berkas ini tetap murni.
 
 export const AGEN_MONITORING = 'voyage-monitoring'
-export const VERSI_AGEN = '5b.1'
+/** PRD-003 Step 4: + AIS_STALE & AIS_PROVIDER_DOWN (membaca observasi tersimpan saja). */
+export const VERSI_AGEN = '5b.2-ais'
 
 /** D5 — ambang pilot yang dikunci owner. */
 export const AMBANG_DATA_STALE_JAM = 24
@@ -32,13 +33,22 @@ export const JENIS_SINYAL = [
   'ACTUAL_DATE_MISSING',
   'DATA_STALE',
   'MONITORING_ERROR',
+  // PRD-003 Step 4 — dari observasi AIS yang SUDAH tersimpan (job ais-position-poll).
+  'AIS_STALE',
+  'AIS_PROVIDER_DOWN',
 ] as const
 export type JenisSinyal = (typeof JENIS_SINYAL)[number]
 
 export const SEVERITY = ['INFO', 'WARNING', 'ERROR'] as const
 export type Severity = (typeof SEVERITY)[number]
 
-export const JENIS_SUMBER = ['AUDIT_LOG', 'VOYAGE_EVENT', 'VOYAGE', 'SYSTEM'] as const
+export const JENIS_SUMBER = ['AUDIT_LOG', 'VOYAGE_EVENT', 'VOYAGE', 'SYSTEM', 'AIS_OBSERVATION', 'AIS_PROVIDER'] as const
+
+/**
+ * PRD-003 Step 4 — ambang penyedia down. SENGAJA disalin dari ais-policy.ts
+ * (berkas ini tanpa impor); check-automation-policy.mjs memastikan keduanya sama.
+ */
+export const AMBANG_AIS_PROVIDER_DOWN = { gagalBeruntun: 3, jam: 3 } as const
 export type JenisSumber = (typeof JENIS_SUMBER)[number]
 
 export const STATUS_REVIEW = ['OPEN', 'ACKNOWLEDGED', 'DISMISSED', 'EXPIRED'] as const
@@ -88,6 +98,28 @@ export type FaktaVoyage = {
   aktivitasTerakhir: string | null
   /** Waktu pemantauan dimulai (ISO). */
   mulaiPantau: string
+  /** PRD-003 Step 4 — fakta AIS; null/tidak ada = AIS mati atau tanpa penyedia (tanpa sinyal AIS). */
+  ais?: FaktaAis | null
+}
+
+/** Fakta AIS satu voyage: hanya kapal SUMBER POSISI (D4), dibaca dari tabel AIS — tanpa panggilan penyedia. */
+export type FaktaAis = {
+  provider: string
+  /** D7 — dari AIS_STALE_HOURS (bawaan 6). */
+  ambangStaleJam: number
+  kapal: {
+    vesselId: string
+    nama: string
+    /** D2 — kapal tanpa MMSI terverifikasi tidak pernah diambil posisinya → tak dinilai basi. */
+    terverifikasi: boolean
+    terakhir: { id: string; positionAt: string; fetchedAt: string } | null
+  }[]
+  state: {
+    id: string
+    lastSuccessAt: string | null
+    consecutiveFailures: number
+    outageStartedAt: string | null
+  } | null
 }
 
 export type OpsiKebijakan = {
@@ -331,6 +363,82 @@ export function deteksiSinyal(f: FaktaVoyage, o: OpsiKebijakan): CalonSinyal[] {
     })
   }
 
+  // 7 & 8. AIS — hanya bila fakta AIS disertakan.
+  if (f.ais) hasil.push(...deteksiSinyalAis(f, f.ais, o))
+
+  return hasil
+}
+
+/**
+ * 7. AIS_STALE (WARNING) — posisi kapal sumber posisi lebih tua dari ambang
+ *    (D7), satu per kapal per episode (episode = posisi terakhir; posisi baru →
+ *    episode baru). Tanpa observasi sama sekali: hanya bila penyedia sudah
+ *    SUKSES dipanggil sesudah mulaiPantau + ambang (supaya tak menyalak sebelum
+ *    jalan pertama).
+ * 8. AIS_PROVIDER_DOWN (ERROR) — ≥ 3 gagal beruntun DAN rentetan ≥ 3 jam. Satu
+ *    per voyage per rentetan: MonitoringSignal.voyageId wajib diisi, jadi sinyal
+ *    tingkat penyedia ditempel pada tiap voyage terdampak.
+ */
+export function deteksiSinyalAis(f: FaktaVoyage, ais: FaktaAis, o: OpsiKebijakan): CalonSinyal[] {
+  if (alasanBerhenti(f)) return []
+  const sekarangMs = o.sekarang.getTime()
+  const ambangMs = ais.ambangStaleJam * JAM
+  const hasil: CalonSinyal[] = []
+
+  for (const k of ais.kapal) {
+    if (!k.terverifikasi) continue
+    if (k.terakhir) {
+      const pada = Date.parse(k.terakhir.positionAt)
+      if (sekarangMs - pada < ambangMs) continue
+      const jam = Math.floor((sekarangMs - pada) / JAM)
+      hasil.push({
+        kind: 'AIS_STALE',
+        severity: 'WARNING',
+        dedupeKey: `AIS_STALE:${f.voyageId}:${k.vesselId}:${k.terakhir.positionAt}`,
+        sourceType: 'AIS_OBSERVATION',
+        sourceRef: k.terakhir.id,
+        sourceAt: k.terakhir.positionAt,
+        before: null,
+        after: { vesselId: k.vesselId, positionAt: k.terakhir.positionAt, provider: ais.provider },
+        explanation: `Posisi AIS ${k.nama} (voyage ${f.voyageNumber}) terakhir tercatat ${o.formatWaktu(k.terakhir.positionAt)} — ${jam} jam tanpa pembaruan (ambang ${ais.ambangStaleJam} jam).`,
+        recommendation: 'Konfirmasi posisi kapal dengan operasi/nakhoda. Data AIS tidak mengubah data voyage dan tidak dikirim ke pihak luar.',
+      })
+    } else if (ais.state?.lastSuccessAt && Date.parse(ais.state.lastSuccessAt) >= Date.parse(f.mulaiPantau) + ambangMs) {
+      hasil.push({
+        kind: 'AIS_STALE',
+        severity: 'WARNING',
+        dedupeKey: `AIS_STALE:${f.voyageId}:${k.vesselId}:${f.mulaiPantau}`,
+        sourceType: 'AIS_PROVIDER',
+        sourceRef: ais.state.id,
+        sourceAt: ais.state.lastSuccessAt,
+        before: null,
+        after: { vesselId: k.vesselId, positionAt: null, provider: ais.provider },
+        explanation: `Belum ada posisi AIS untuk ${k.nama} (voyage ${f.voyageNumber}) lebih dari ${ais.ambangStaleJam} jam sejak pemantauan dimulai, padahal penyedia merespons.`,
+        recommendation: 'Periksa apakah transponder AIS kapal aktif dan MMSI benar. Data AIS tidak mengubah data voyage.',
+      })
+    }
+  }
+
+  const s = ais.state
+  if (
+    s &&
+    s.outageStartedAt &&
+    s.consecutiveFailures >= AMBANG_AIS_PROVIDER_DOWN.gagalBeruntun &&
+    sekarangMs - Date.parse(s.outageStartedAt) >= AMBANG_AIS_PROVIDER_DOWN.jam * JAM
+  ) {
+    hasil.push({
+      kind: 'AIS_PROVIDER_DOWN',
+      severity: 'ERROR',
+      dedupeKey: `AIS_PROVIDER_DOWN:${f.voyageId}:${ais.provider}:${s.outageStartedAt}`,
+      sourceType: 'AIS_PROVIDER',
+      sourceRef: s.id,
+      sourceAt: s.outageStartedAt,
+      before: null,
+      after: { provider: ais.provider, consecutiveFailures: String(s.consecutiveFailures), outageStartedAt: s.outageStartedAt },
+      explanation: `Penyedia posisi AIS ${ais.provider} gagal ${s.consecutiveFailures} kali beruntun sejak ${o.formatWaktu(s.outageStartedAt)}. Posisi voyage ${f.voyageNumber} tidak diperbarui.`,
+      recommendation: 'Periksa kartu kesehatan AIS dan log server [ais-poll]. Pemantauan internal voyage tetap berjalan.',
+    })
+  }
   return hasil
 }
 

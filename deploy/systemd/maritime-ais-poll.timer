@@ -1,0 +1,20 @@
+# Maritim Suite — jadwal job pengambilan posisi AIS (PRD-003 Step 4).
+#
+# ARTEFAK LOKAL — JANGAN dipasang/diaktifkan sebelum langkah deploy yang diotorisasi.
+#
+# Tiap jam pada menit :15 — reminders :00, AIS :15, voyage-monitoring :30, sehingga
+# observasi sudah segar saat monitoring menilai AIS_STALE. Interval sebenarnya
+# diatur aplikasi (AIS_POLL_INTERVAL_MIN, bawaan 60): jalan yang belum jatuh tempo
+# keluar tanpa kerja, jadi timer ini tak perlu diubah saat interval berubah.
+
+[Unit]
+Description=Maritim Suite - jadwal pengambilan posisi AIS (tiap jam :15)
+
+[Timer]
+OnCalendar=*-*-* *:15:00
+RandomizedDelaySec=120
+Persistent=true
+Unit=maritime-ais-poll.service
+
+[Install]
+WantedBy=timers.target

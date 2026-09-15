@@ -4,6 +4,7 @@ import { getLang, type Lang } from '@/lib/i18n-server'
 import { requireTenant } from '@/services/context'
 import { bolehAksesAutomation } from '@/services/automation/access'
 import { MonitoringOverview } from '@/components/automation/MonitoringOverview'
+import { AisHealthCard } from '@/components/automation/AisHealthCard'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,6 +33,8 @@ export default async function AutomationMonitoringPage() {
     <div className="p-margin-page max-w-[1600px] mx-auto space-y-6">
       <PageHeader kicker={t.kicker} title={t.title} description={t.desc} />
       <MonitoringOverview />
+      {/* PRD-003 Step 4 — kesehatan pengambilan posisi AIS (tanpa kunci/URL penyedia). */}
+      <AisHealthCard />
     </div>
   )
 }
