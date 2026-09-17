@@ -49,6 +49,9 @@ export const ENTITAS_DIDUKUNG = {
   // daftar putih ini seperti entitas lain (uploadAttachment() memanggil
   // pastikanEntitasMilikTenant() SEBELUM menulis apa pun).
   VENDOR_INVOICE_SUBMISSION: { model: 'vendorInvoiceSubmission', lewat: 'langsung' },
+  // PRD-004 Step 3 / D4 — dokumen asli permintaan kunjungan kapal, HANYA bila
+  // peninjau memilih menyimpannya (opt-in). Selalu sensitive, tak pernah ke portal.
+  VESSEL_CALL_INTAKE: { model: 'vesselCallIntake', lewat: 'langsung' },
 } as const
 
 export type EntityType = keyof typeof ENTITAS_DIDUKUNG

@@ -9,6 +9,7 @@ export function AppShell({
   vesselCount,
   principalCount,
   showAutomation = false,
+  showIntake = false,
   banner,
   children,
 }: {
@@ -18,6 +19,8 @@ export function AppShell({
   principalCount: number
   /** PRD-002 Step 5B — menu Automation Hub (fitur aktif + tenant diizinkan + peran). */
   showAutomation?: boolean
+  /** PRD-004 Step 3 — menu Vessel Call Intake (pagar Hub + flag intake, diputus server). */
+  showIntake?: boolean
   banner?: ReactNode
   children: ReactNode
 }) {
@@ -30,6 +33,7 @@ export function AppShell({
           vesselCount={vesselCount}
           principalCount={principalCount}
           showAutomation={showAutomation}
+          showIntake={showIntake}
         />
         <div className="md:ml-[240px] print:ml-0 min-h-screen flex flex-col">
           <TopBar user={user} />

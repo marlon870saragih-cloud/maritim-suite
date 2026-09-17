@@ -20,6 +20,7 @@ import {
   CalendarDays,
   ShoppingCart,
   Radar,
+  Inbox,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/i18n'
@@ -71,6 +72,7 @@ export function Sidebar({
   principalCount,
   user,
   showAutomation = false,
+  showIntake = false,
 }: {
   modulesEnabled: string[]
   vesselCount: number
@@ -78,8 +80,13 @@ export function Sidebar({
   user: ChromeUser
   /** PRD-002 Step 5B — ditentukan server (allowlist tenant + peran). */
   showAutomation?: boolean
+  /** PRD-004 Step 3 — ditentukan server (pagar Hub + flag intake). */
+  showIntake?: boolean
 }) {
   const pathname = usePathname()
+  // PRD-004 Step 3 — /automation/intake punya tautan sendiri; tautan Hub tak ikut menyala di sana.
+  const diIntake = pathname.startsWith('/automation/intake')
+  const diHub = pathname.startsWith('/automation') && !diIntake
   const t = useT(SB)
   const { open, setOpen } = useMobileNav()
 
@@ -208,7 +215,7 @@ export function Sidebar({
             href="/automation"
             className={cn(
               'flex items-center gap-3 px-3 py-2.5 rounded relative border transition-all duration-200 group',
-              pathname.startsWith('/automation')
+              diHub
                 ? 'bg-surface-tertiary border-border-muted'
                 : 'border-transparent hover:bg-surface-tertiary/60 hover:border-border-muted'
             )}
@@ -216,15 +223,42 @@ export function Sidebar({
             <Radar
               className={cn(
                 'w-4 h-4 flex-shrink-0 transition-colors duration-200',
-                pathname.startsWith('/automation') ? 'text-accent-blue' : 'text-text-secondary/70 group-hover:text-accent-blue'
+                diHub ? 'text-accent-blue' : 'text-text-secondary/70 group-hover:text-accent-blue'
               )}
               aria-hidden="true"
             />
             <div className="flex-1 min-w-0">
-              <p className={cn('text-[12px] font-medium truncate', pathname.startsWith('/automation') ? 'text-text-primary' : 'text-text-secondary group-hover:text-text-primary')}>
+              <p className={cn('text-[12px] font-medium truncate', diHub ? 'text-text-primary' : 'text-text-secondary group-hover:text-text-primary')}>
                 Automation Hub
               </p>
               <p className="text-[10px] truncate font-mono text-text-secondary/55">Pemantauan · Alerts</p>
+            </div>
+          </Link>
+        )}
+
+        {/* PRD-004 Step 3 — Vessel Call Intake (pagar Hub + flag intake, diputus server) */}
+        {showIntake && (
+          <Link
+            href="/automation/intake"
+            className={cn(
+              'flex items-center gap-3 px-3 py-2.5 rounded relative border transition-all duration-200 group',
+              diIntake
+                ? 'bg-surface-tertiary border-border-muted'
+                : 'border-transparent hover:bg-surface-tertiary/60 hover:border-border-muted'
+            )}
+          >
+            <Inbox
+              className={cn(
+                'w-4 h-4 flex-shrink-0 transition-colors duration-200',
+                diIntake ? 'text-accent-blue' : 'text-text-secondary/70 group-hover:text-accent-blue'
+              )}
+              aria-hidden="true"
+            />
+            <div className="flex-1 min-w-0">
+              <p className={cn('text-[12px] font-medium truncate', diIntake ? 'text-text-primary' : 'text-text-secondary group-hover:text-text-primary')}>
+                Intake Kunjungan
+              </p>
+              <p className="text-[10px] truncate font-mono text-text-secondary/55">Nominasi · Appointment</p>
             </div>
           </Link>
         )}

@@ -51,6 +51,12 @@ type ChatOptions = {
   toolChoice?: ToolChoice
   temperature?: number
   plugins?: PluginDef[]
+  /**
+   * PRD-004 Step 3 — opsional, ADITIF. Diteruskan ke fetch supaya pemanggil bisa
+   * memberi batas waktu (AbortSignal.timeout). Pemanggil lama tak mengirimnya →
+   * perilaku tetap sama (tanpa batas waktu).
+   */
+  signal?: AbortSignal
 }
 
 type ToolCall = { function?: { name?: string; arguments?: string } }
@@ -81,6 +87,7 @@ export async function chatCompletion(opts: ChatOptions): Promise<ChatResponse> {
       temperature: opts.temperature ?? 0.2,
       plugins: opts.plugins,
     }),
+    signal: opts.signal,
   })
 
   const json = (await res.json().catch(() => ({}))) as ChatResponse

@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { identitasKapal, vesselFields } from '@/lib/vessels'
-import { balasanMmsiGanda, gerbangUbahKapal, konteksKapal, potretIdentitas } from '@/lib/vessel-api'
+import { balasanMmsiGanda, gerbangBuatKapal, konteksKapal, potretIdentitas } from '@/lib/vessel-api'
 import { catatAudit } from '@/services/finance/audit'
 import { jejakDari } from '@/services/http'
 
@@ -19,11 +19,12 @@ export async function GET() {
   return Response.json(vessels)
 }
 
-// POST /api/vessels → tambah kapal baru. PRD-002 Step 2 / D1: hanya ADMIN & OPERATOR.
+// POST /api/vessels → tambah kapal baru. PRD-002 Step 2 / D1: ADMIN & OPERATOR;
+// PRD-004 Step 3 / D3: + MANAJER_OPERASI (pembuatan saja — PATCH/DELETE tidak berubah).
 export async function POST(req: Request) {
   const ctx = await konteksKapal()
   if (ctx instanceof Response) return ctx
-  const ditolak = gerbangUbahKapal(ctx)
+  const ditolak = gerbangBuatKapal(ctx)
   if (ditolak) return ditolak
 
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>

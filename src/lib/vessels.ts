@@ -57,6 +57,13 @@ export function vesselFields(body: Record<string, unknown>): VesselInput {
 export const PERAN_UBAH_KAPAL = ['ADMIN', 'OPERATOR'] as const
 
 /**
+ * PRD-004 Step 3 / D3 — peran yang boleh MEMBUAT kapal (POST saja). MANAJER_OPERASI
+ * ditambahkan agar approver intake bisa membuat master kapal yang belum ada
+ * (dengan konfirmasi eksplisit). PATCH/DELETE tetap PERAN_UBAH_KAPAL.
+ */
+export const PERAN_BUAT_KAPAL = [...PERAN_UBAH_KAPAL, 'MANAJER_OPERASI'] as const
+
+/**
  * D2 — asal nomor MMSI. Hanya PUBLIC_TRACKING yang BELUM terverifikasi (mis.
  * dibaca dari situs pelacakan kapal publik); tiga lainnya adalah konfirmasi dari
  * dokumen/pihak yang bisa dipertanggungjawabkan.

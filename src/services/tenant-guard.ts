@@ -89,6 +89,9 @@ export const TENANT_MODELS: ReadonlySet<string> = new Set([
   'AisObservation',
   'AisPollRun',
   'AisProviderState',
+
+  // --- PRD-004 Step 3 — Vessel Call Intake (usulan voyage menunggu tinjauan) ---
+  'VesselCallIntake',
 ])
 
 /** Operasi yang aman disaring lewat `where`. */

@@ -19,19 +19,24 @@ import { ServiceError } from '@/services/errors'
 import { VoyageWorkspace } from '@/components/voyage/VoyageWorkspace'
 import { bolehAksesAutomation } from '@/services/automation/access'
 import { VoyageMonitoringSection } from '@/components/automation/VoyageMonitoringSection'
+import { bolehAksesIntake } from '@/services/intake/intake-access'
 
 export const dynamic = 'force-dynamic'
 
-const PH: Record<Lang, { kicker: string; desc: string; back: string }> = {
+const PH: Record<Lang, { kicker: string; desc: string; back: string; origin: string; openIntake: string }> = {
   id: {
     kicker: 'Voyage Workspace',
     desc: 'Folder digital satu pelayaran — status, particulars, cargo, port call, dan finansial voyage ini.',
     back: 'Kembali ke daftar voyage',
+    origin: 'Asal: Vessel Call Intake',
+    openIntake: 'Buka intake',
   },
   en: {
     kicker: 'Voyage Workspace',
     desc: 'Digital folder for one call — this voyage’s status, particulars, cargo, port calls, and financials.',
     back: 'Back to voyage list',
+    origin: 'Origin: Vessel Call Intake',
+    openIntake: 'Open intake',
   },
 }
 
@@ -82,6 +87,8 @@ export default async function VoyageDetailPage({ params }: { params: { id: strin
   // Timeline/Peristiwa (sinyal otomasi ≠ fakta SOF). Hanya untuk tenant di
   // allowlist + ADMIN/MANAJER_OPERASI.
   const showMonitoring = bolehAksesAutomation(ctx)
+  // PRD-004 Step 3 — asal intake hanya ditampilkan untuk pemegang akses intake.
+  const asalIntake = voyage.sourceIntakeId && bolehAksesIntake(ctx) ? voyage.sourceIntakeId : null
 
   return (
     <div className="p-margin-page max-w-[1400px] mx-auto space-y-6">
@@ -93,6 +100,12 @@ export default async function VoyageDetailPage({ params }: { params: { id: strin
       </Link>
 
       <PageHeader kicker={t.kicker} title={voyage.voyageNumber} description={t.desc} />
+      {asalIntake && (
+        <p className="text-xs text-text-secondary">
+          {t.origin} ·{' '}
+          <Link href={`/automation/intake/${asalIntake}`} className="text-accent-blue hover:underline">{t.openIntake}</Link>
+        </p>
+      )}
 
       <VoyageWorkspace
         voyage={voyage}

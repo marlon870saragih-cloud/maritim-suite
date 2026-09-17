@@ -32,6 +32,8 @@ import {
   type BentukEntitas,
   type EntityType,
 } from './owner-guard'
+// PRD-004 Step 3 — lampiran/komentar intake hanya untuk pemegang akses Automation Hub + intake.
+import { requireIntake } from '../intake/intake-access'
 
 export type EntitasTerbukti = {
   entityType: EntityType
@@ -63,6 +65,11 @@ export async function pastikanEntitasMilikTenant(
     if (e instanceof OwnerGuardError) throw validation(e.message)
     throw e
   }
+
+  // PRD-004 Step 3 / D4 — dokumen asli intake berisi PII. Jalur generik
+  // (/api/attachments, komentar, email log) tidak boleh melewati gerbang intake:
+  // flag mati / tenant di luar allowlist → NOT_FOUND; OPERATOR dkk → FORBIDDEN.
+  if (diperiksa.entityType === 'VESSEL_CALL_INTAKE') requireIntake(ctx)
 
   const db = forTenant(ctx)
 

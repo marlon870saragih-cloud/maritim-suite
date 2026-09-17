@@ -93,6 +93,8 @@ export type NewNotification = {
     | 'PORT'
     // --- Fase 8g (K172) ---
     | 'VENDOR_INVOICE_SUBMISSION'
+    // --- PRD-004 Step 3 (entitas lampiran/komentar intake) ---
+    | 'VESSEL_CALL_INTAKE'
   entityId?: string
   href?: string
   /**

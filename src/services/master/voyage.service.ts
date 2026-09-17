@@ -174,8 +174,21 @@ export async function getVoyage(ctx: TenantContext, id: string): Promise<VoyageD
   return voyage
 }
 
-export async function createVoyage(ctx: TenantContext, body: Record<string, unknown>): Promise<Voyage> {
-  requireRole(ctx, 'ADMIN', 'OPERATOR')
+/**
+ * PRD-004 Step 3 — `opsi` ADITIF & opsional: `sourceIntakeId` menautkan voyage ke
+ * Vessel Call Intake asalnya (unik per tenant di DB → satu intake, maksimal satu
+ * voyage). Pemanggil lama tidak berubah.
+ */
+export type OpsiBuatVoyage = { sourceIntakeId?: string | null }
+
+export async function createVoyage(
+  ctx: TenantContext,
+  body: Record<string, unknown>,
+  opsi: OpsiBuatVoyage = {},
+): Promise<Voyage> {
+  // PRD-004 Step 3 / D3 — MANAJER_OPERASI ditambahkan untuk PEMBUATAN saja (approver
+  // intake memanggil fungsi ini dengan identitasnya sendiri). update/status/hapus tetap.
+  requireRole(ctx, 'ADMIN', 'OPERATOR', 'MANAJER_OPERASI')
   const db = forTenant(ctx)
   const data = bacaInput(body)
 
@@ -206,6 +219,7 @@ export async function createVoyage(ctx: TenantContext, body: Record<string, unkn
       dataOrigin,
       voyageNumber,
       tenantId: ctx.tenantId,
+      ...(opsi.sourceIntakeId ? { sourceIntakeId: opsi.sourceIntakeId } : {}),
       vessels: { create: [{ vesselId: data.vesselId, sortOrder: 0 }] },
     },
   })

@@ -46,7 +46,8 @@ export async function createCargo(
   voyageId: string,
   body: Record<string, unknown>,
 ): Promise<Cargo> {
-  requireRole(ctx, 'ADMIN', 'OPERATOR')
+  // PRD-004 Step 3 / D3 — MANAJER_OPERASI untuk PEMBUATAN saja (cargo dari intake).
+  requireRole(ctx, 'ADMIN', 'OPERATOR', 'MANAJER_OPERASI')
   await pastikanVoyageMilikTenant(ctx, voyageId)
   const db = forTenant(ctx)
   return db.cargo.create({ data: { ...bacaInput(body), voyageId } })

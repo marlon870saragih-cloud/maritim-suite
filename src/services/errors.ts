@@ -11,6 +11,7 @@ export type ServiceErrorCode =
   | 'VALIDATION' // input tidak sah
   | 'CONFLICT' // bentrok dengan data lain (mis. kode ganda, masih dipakai)
   | 'RATE_LIMITED' // batas laju terlampaui (K172/4, Fase 8g) — coba lagi nanti
+  | 'UPSTREAM' // layanan luar (penyedia AI) gagal/terlambat — PRD-004 Step 3; kode rinci di `details`, tanpa teks penyedia
 
 const STATUS: Record<ServiceErrorCode, number> = {
   UNAUTHORIZED: 401,
@@ -19,6 +20,7 @@ const STATUS: Record<ServiceErrorCode, number> = {
   VALIDATION: 400,
   CONFLICT: 409,
   RATE_LIMITED: 429,
+  UPSTREAM: 502,
 }
 
 export class ServiceError extends Error {
@@ -55,3 +57,5 @@ export const validation = (pesan: string, details?: unknown) =>
 export const conflict = (pesan: string) => new ServiceError('CONFLICT', pesan)
 
 export const rateLimited = (pesan: string) => new ServiceError('RATE_LIMITED', pesan)
+
+export const upstream = (pesan: string, details?: unknown) => new ServiceError('UPSTREAM', pesan, details)

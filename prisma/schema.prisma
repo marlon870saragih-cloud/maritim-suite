@@ -129,6 +129,9 @@ model Tenant {
   aisObservations   AisObservation[]
   aisPollRuns       AisPollRun[]
   aisProviderStates AisProviderState[]
+
+  // --- PRD-004 Step 3 (Vessel Call Intake — usulan voyage yang menunggu tinjauan manusia) ---
+  vesselCallIntakes VesselCallIntake[]
 }
 
 model Payment {
@@ -753,7 +756,15 @@ model Voyage {
   monitoring        MonitoredVoyage[]
   monitoringSignals MonitoringSignal[]
 
+  /// PRD-004 Step 3 — intake asal voyage ini (null = dibuat manual). Unik per
+  /// tenant: satu intake → maksimal satu voyage, dijamin DATABASE meski klaim
+  /// approval terlewati. SENGAJA tanpa FK (hindari siklus FK Voyage ↔ intake).
+  sourceIntakeId String?
+  /// Intake yang menunjuk voyage ini (dibuat darinya, atau ditautkan ke voyage yang sudah ada).
+  intakes        VesselCallIntake[]
+
   @@unique([tenantId, voyageNumber])
+  @@unique([tenantId, sourceIntakeId])
   @@index([tenantId, status])
   @@index([tenantId, eta])
   @@index([tenantId, vesselId])
@@ -2153,4 +2164,69 @@ model SecurityEvent {
   createdAt DateTime @default(now())
 
   @@index([kind, identifier, createdAt])
+}
+
+// ============================================================================
+// PRD-004 STEP 3 — AUTOMATION HUB: VESSEL CALL INTAKE
+// AI extracts → System verifies → Human approves → createVoyage() writes → Audit.
+// Bukan record operasional: Voyage HANYA lahir lewat createVoyage() sesudah
+// approval ADMIN/MANAJER_OPERASI. Bertenant → wajib di TENANT_MODELS. Tanpa
+// GRANT ke maritime_portal. Riwayat transisi ada di AuditLog (tanpa tabel run).
+// ============================================================================
+
+/// Permintaan kunjungan kapal (nominasi/appointment) yang diproses Automation Hub.
+model VesselCallIntake {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  /// NEEDS_REVIEW | CREATING | COMPLETED | LINKED_EXISTING | REJECTED | FAILED
+  status         String
+  /// NEW_NOMINATION | NEW_APPOINTMENT | NOT_RELEVANT | INSUFFICIENT_INFORMATION | UNSUPPORTED_REQUEST
+  classification String
+  /// Optimistic concurrency: naik di setiap perubahan; approve/patch wajib menyebut versi yang ditinjau.
+  version        Int    @default(1)
+
+  /// TEXT | PDF | IMAGE | WORKBOOK | CSV
+  inputKind        String
+  /// sha256 isi ternormalisasi (teks) / byte mentah (berkas). Isi mentah TIDAK disimpan (D4).
+  inputHash        String
+  /// = inputHash selama non-terminal, NULL saat terminal → input sama tak diproses dua kali.
+  activeHashKey    String?
+  sourceFileName   String?
+  sourceSizeBytes  Int?
+  /// Lampiran dokumen asli — HANYA bila peninjau memilih menyimpannya (D4).
+  attachmentId     String?
+  extractorVersion String
+
+  /// Field usulan + provenance (divalidasi services/intake/intake-policy.ts).
+  proposal            Json
+  /// Hasil pencocokan master per entitas.
+  matches             Json
+  /// NO_DUPLICATE | POSSIBLE_DUPLICATE | LIKELY_DUPLICATE
+  duplicateLevel      String
+  duplicateCandidates Json
+
+  /// CONTINUE_AS_NEW | LINK_EXISTING
+  duplicateDecision  String?
+  decisionReason     String?
+  portalExposureAck  Boolean   @default(false)
+  postCreateWarnings Json?
+  errorCode          String?
+
+  submittedByUserId String
+  reviewedByUserId  String?
+  reviewedAt        DateTime?
+  claimedAt         DateTime?
+
+  voyageId String?
+  voyage   Voyage? @relation(fields: [voyageId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, activeHashKey])
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, inputHash])
+  @@index([voyageId])
 }

@@ -103,8 +103,9 @@ export async function setVoyageVessels(
   body: Record<string, unknown>,
   jejak: Jejak = {},
 ): Promise<KapalVoyageRow[]> {
-  // Sama dengan pagar penulisan voyage (createVoyage/updateVoyage).
-  requireRole(ctx, 'ADMIN', 'OPERATOR')
+  // Sama dengan pagar penulisan voyage (createVoyage/updateVoyage). PRD-004 Step 3 / D3 —
+  // MANAJER_OPERASI ditambahkan: approval intake memasang tug+barge lewat fungsi ini.
+  requireRole(ctx, 'ADMIN', 'OPERATOR', 'MANAJER_OPERASI')
   const db = forTenant(ctx)
 
   const voyage = await db.voyage.findFirst({

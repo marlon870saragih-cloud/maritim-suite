@@ -11,7 +11,7 @@ import { Prisma, type Vessel } from '@prisma/client'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { PERAN_UBAH_KAPAL } from '@/lib/vessels'
+import { PERAN_BUAT_KAPAL, PERAN_UBAH_KAPAL } from '@/lib/vessels'
 import { requireRole, type TenantContext } from '@/services/context'
 import { ServiceError } from '@/services/errors'
 
@@ -26,6 +26,17 @@ export async function konteksKapal(): Promise<TenantContext | Response> {
 export function gerbangUbahKapal(ctx: TenantContext): Response | null {
   try {
     requireRole(ctx, ...PERAN_UBAH_KAPAL)
+    return null
+  } catch (e) {
+    if (e instanceof ServiceError) return new Response(e.message, { status: e.status })
+    throw e
+  }
+}
+
+/** PRD-004 Step 3 / D3 — pagar khusus POST (pembuatan). 403 teks bila ditolak. */
+export function gerbangBuatKapal(ctx: TenantContext): Response | null {
+  try {
+    requireRole(ctx, ...PERAN_BUAT_KAPAL)
     return null
   } catch (e) {
     if (e instanceof ServiceError) return new Response(e.message, { status: e.status })
