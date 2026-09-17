@@ -35,6 +35,14 @@ export const JENIS_INPUT = ['TEXT', 'PDF', 'IMAGE', 'WORKBOOK', 'CSV'] as const
 export type JenisInput = (typeof JENIS_INPUT)[number]
 /** Masukan yang teksnya bisa dicek ulang terhadap nilai hasil AI. */
 export const INPUT_BERTEKS: readonly JenisInput[] = ['TEXT', 'WORKBOOK', 'CSV']
+/**
+ * Step 4F — masukan yang dibaca AI dari visual (PDF/gambar) tak bisa dicek ulang
+ * terhadap teks. Setiap kecocokan master otomatis dari masukan ini WAJIB
+ * dikonfirmasi manusia (pengganti konfirmasi "sudah dicek dengan dokumen asli",
+ * yang tak bermakna bila dokumen asli tidak disimpan).
+ */
+export const INPUT_VISUAL: readonly JenisInput[] = ['PDF', 'IMAGE']
+export const inputVisual = (kind: string): boolean => (INPUT_VISUAL as readonly string[]).includes(kind)
 
 export const LEVEL_DUPLIKAT = ['NO_DUPLICATE', 'POSSIBLE_DUPLICATE', 'LIKELY_DUPLICATE'] as const
 export type LevelDuplikat = (typeof LEVEL_DUPLIKAT)[number]
@@ -648,7 +656,11 @@ export function cocokkanSemua(
   norm: NormalisasiKapal,
   sebelum: Matches | null,
   berubah: ReadonlySet<string> = new Set(),
+  opsi: { konfirmasiSemua?: boolean } = {},
 ): Matches {
+  // Step 4F — masukan visual: kecocokan otomatis apa pun (termasuk IMO persis) wajib dikonfirmasi.
+  const wajib = (h: HasilCocok): HasilCocok =>
+    opsi.konfirmasiSemua && h.status === 'MATCHED' && !dipilihManusia(h) ? { ...h, requiresConfirmation: true } : h
   const pertahankan = (lama: HasilCocok | undefined, kunci: string, ada: (id: string) => boolean): HasilCocok | null => {
     if (!lama || berubah.has(kunci)) return null
     if (lama.leftEmpty) return lama
@@ -663,17 +675,17 @@ export function cocokkanSemua(
       master.vessels,
       norm,
     )
-    return pertahankanKonfirmasi(sebelum?.vessels[i], baru, berubah.has(`vessel:${i}`))
+    return pertahankanKonfirmasi(sebelum?.vessels[i], wajib(baru), berubah.has(`vessel:${i}`))
   })
   const principal =
     pertahankan(sebelum?.principal, 'principal', (id) => master.principals.some((x) => x.id === id)) ??
-    pertahankanKonfirmasi(sebelum?.principal, cocokkanPihak(p.principalName.value, master.principals), berubah.has('principal'))
+    pertahankanKonfirmasi(sebelum?.principal, wajib(cocokkanPihak(p.principalName.value, master.principals)), berubah.has('principal'))
   const customer =
     pertahankan(sebelum?.customer, 'customer', (id) => master.customers.some((x) => x.id === id && x.isActive !== false)) ??
-    pertahankanKonfirmasi(sebelum?.customer, cocokkanPihak(p.customerName.value, master.customers), berubah.has('customer'))
+    pertahankanKonfirmasi(sebelum?.customer, wajib(cocokkanPihak(p.customerName.value, master.customers)), berubah.has('customer'))
   const port =
     pertahankan(sebelum?.port, 'port', (id) => master.ports.some((x) => x.id === id)) ??
-    pertahankanKonfirmasi(sebelum?.port, cocokkanPort(p.portName.value, p.portUnlocode.value, master.ports), berubah.has('port'))
+    pertahankanKonfirmasi(sebelum?.port, wajib(cocokkanPort(p.portName.value, p.portUnlocode.value, master.ports)), berubah.has('port'))
   return { vessels, principal, customer, port }
 }
 
@@ -913,7 +925,9 @@ export function syaratApproval(a: {
   if (!p.eta.value || !tanggalSah(p.eta.value)) s.push('ETA_MISSING')
   if (!m.principal.leftEmpty && !idTerpakai(m.principal)) s.push('PRINCIPAL_UNRESOLVED')
   if (!m.customer.leftEmpty && !idTerpakai(m.customer)) s.push('CUSTOMER_UNRESOLVED')
-  if (fieldBelumDikonfirmasi(p).length > 0) s.push('SOURCE_FIELDS_UNCONFIRMED')
+  // Step 4F — SOURCE_FIELDS_UNCONFIRMED tidak lagi disyaratkan: untuk masukan PDF/gambar
+  // setiap kecocokan master wajib dikonfirmasi satu per satu (cocokkanSemua konfirmasiSemua),
+  // sehingga pemeriksaan tetap nyata walau dokumen asli tidak disimpan.
 
   const level = a.duplicateLevel
   if (level !== 'NO_DUPLICATE') {
@@ -967,9 +981,12 @@ export function tanpaKontak(p: Proposal): Proposal {
   return { ...p, contact: null }
 }
 
-/** Catatan voyage dari field yang tak punya kolom sendiri (jetty, rujukan, tanggal permintaan). */
-export function catatanVoyage(p: Proposal, intakeId: string): string {
-  const baris = [`Dibuat dari Vessel Call Intake ${intakeId}.`]
+/**
+ * Catatan voyage dari field yang tak punya kolom sendiri (jetty, rujukan, tanggal permintaan).
+ * Step 4F — TANPA id internal: jejak intake disimpan di Voyage.sourceIntakeId + AuditLog.
+ */
+export function catatanVoyage(p: Proposal): string {
+  const baris = ['Dibuat dari Intake Kunjungan Kapal.']
   if (p.clientReference.value) baris.push(`Rujukan pengirim: ${p.clientReference.value}`)
   if (p.jetty.value) baris.push(`Jetty: ${p.jetty.value}`)
   if (p.requestDate.value) baris.push(`Tanggal permintaan: ${p.requestDate.value}`)
@@ -1006,4 +1023,90 @@ export function proposalSah(v: unknown): v is Proposal {
 export function matchesSah(v: unknown, jumlahKapal: number): v is Matches {
   const h = (x: unknown) => isObj(x) && typeof x.status === 'string' && Array.isArray(x.candidates)
   return isObj(v) && Array.isArray(v.vessels) && v.vessels.length === jumlahKapal && v.vessels.every(h) && h(v.principal) && h(v.customer) && h(v.port)
+}
+
+// ----------------------------------------------------------------- tampilan (Step 4F)
+
+/** Urutan kekuatan dasar kecocokan — kandidat dengan basis gabungan ditampilkan dengan yang terkuat. */
+export const URUTAN_BASIS = [
+  'EXACT_IMO',
+  'EXACT_MMSI_VERIFIED',
+  'EXACT_CALL_SIGN',
+  'UNLOCODE',
+  'MMSI_UNVERIFIED',
+  'NAME_NORMALIZED',
+  'NAME_PARTIAL',
+] as const
+
+export function basisTerkuat(basis: string): string {
+  const bagian = basis.split('+')
+  return URUTAN_BASIS.find((b) => bagian.includes(b)) ?? bagian[0]
+}
+
+/** Kandidat berisiko: memilihnya wajib melalui konfirmasi eksplisit di layar. */
+export function kandidatBerisiko(h: HasilCocok, k: KandidatCocok): boolean {
+  const b = k.basis.split('+')
+  return h.status === 'CONFLICT' || b.includes('MMSI_UNVERIFIED') || (b.includes('NAME_PARTIAL') && b.length === 1) || !!k.warning
+}
+
+/** Kandidat selain yang sedang terpilih (hindari nama yang sama tampil dua kali). */
+export const kandidatLain = (h: HasilCocok): KandidatCocok[] => h.candidates.filter((c) => c.id !== h.selectedId)
+
+const NAMA_IDENTITAS: Record<'id' | 'en', Record<string, string>> = {
+  id: { EXACT_IMO: 'IMO', EXACT_MMSI_VERIFIED: 'MMSI terverifikasi', EXACT_CALL_SIGN: 'call sign', NAME_NORMALIZED: 'nama' },
+  en: { EXACT_IMO: 'IMO', EXACT_MMSI_VERIFIED: 'verified MMSI', EXACT_CALL_SIGN: 'call sign', NAME_NORMALIZED: 'name' },
+}
+
+const KALIMAT_KONFLIK = {
+  id: {
+    dua: (a: string, na: string, b: string, nb: string) => `${a} cocok dengan ${na}, tetapi ${b} cocok dengan ${nb}.`,
+    satu: (a: string, na: string, dok: string) => `${a} cocok dengan ${na}, tetapi ${dok} di dokumen berbeda dengan data master kapal itu.`,
+    identitas: 'identitas',
+    umum: 'Identitas kapal di dokumen saling bertentangan dengan data master.',
+    pastikan: 'Pastikan kapal yang benar sebelum memilih.',
+  },
+  en: {
+    dua: (a: string, na: string, b: string, nb: string) => `${a} matches ${na}, but ${b} matches ${nb}.`,
+    satu: (a: string, na: string, dok: string) => `${a} matches ${na}, but the ${dok} in the document differs from that vessel’s master data.`,
+    identitas: 'identity',
+    umum: 'The vessel identity in the document conflicts with master data.',
+    pastikan: 'Make sure you choose the right vessel.',
+  },
+}
+
+/**
+ * Penjelasan konflik identitas kapal dalam bahasa operator, mis.
+ * "IMO cocok dengan Kapal A, tetapi MMSI terverifikasi cocok dengan Kapal B."
+ */
+export function penjelasanKonflik(
+  h: HasilCocok,
+  usulan: { imo: string | null; mmsi: string | null },
+  lang: 'id' | 'en' = 'id',
+): string | null {
+  if (h.status !== 'CONFLICT') return null
+  const K = KALIMAT_KONFLIK[lang]
+  const perKapal: Array<{ nama: string; identitas: string }> = []
+  for (const c of h.candidates) {
+    const identitas = c.basis.split('+').map((b) => NAMA_IDENTITAS[lang][b]).filter((x): x is string => !!x)
+    if (identitas.length) perKapal.push({ nama: c.label.split(' · ')[0], identitas: identitas.join(' & ') })
+  }
+  if (perKapal.length >= 2) {
+    const [a, b] = perKapal
+    return `${K.dua(a.identitas, a.nama, b.identitas, b.nama)} ${K.pastikan}`
+  }
+  if (perKapal.length === 1) {
+    const dok = [usulan.imo ? `IMO ${usulan.imo}` : null, usulan.mmsi ? `MMSI ${usulan.mmsi}` : null].filter(Boolean).join(' / ')
+    return `${K.satu(perKapal[0].identitas, perKapal[0].nama, dok || K.identitas)} ${K.pastikan}`
+  }
+  return `${K.umum} ${K.pastikan}`
+}
+
+/** Tanggal kalender 'YYYY-MM-DD' → "01 Nov 2026" (tanpa geser zona waktu). */
+export function formatTanggal(ymd: string | null | undefined, lang: 'id' | 'en' = 'id'): string {
+  if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return ymd ?? '—'
+  return new Date(`${ymd}T00:00:00Z`).toLocaleDateString(lang === 'id' ? 'id-ID' : 'en-GB', { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+export function formatJumlah(n: number | null | undefined, lang: 'id' | 'en' = 'id'): string {
+  return n === null || n === undefined ? '' : n.toLocaleString(lang === 'id' ? 'id-ID' : 'en-GB', { maximumFractionDigits: 3 })
 }

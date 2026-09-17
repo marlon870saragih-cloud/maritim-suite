@@ -11,6 +11,7 @@ import { FileUp, Loader2, RefreshCw, Send } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useLang, useT, type Lang } from '@/lib/i18n'
 import type { IntakeRingkas } from '@/services/intake/intake.service'
+import { formatTanggal } from '@/services/intake/intake-policy'
 import { btnCls, fmtWaktu } from './shared'
 import { DuplicateBadge, IntakeStatusBadge, LABEL_KLASIFIKASI, LABEL_STATUS_INTAKE } from './intake-shared'
 
@@ -20,13 +21,14 @@ const STR: Record<Lang, Record<string, string>> = {
     textLabel: 'Isi nominasi / appointment', textPh: 'Tempel isi email atau pesan permintaan kunjungan kapal di sini…',
     fileLabel: 'Berkas (PDF, Excel .xlsx, CSV, JPG/PNG/WEBP — maks 10 MB)',
     saveOriginal: 'Simpan dokumen asli sebagai lampiran',
-    saveOriginalHint: 'Dokumen asli bisa berisi data pribadi (nama, email, telepon). Bawaan: tidak disimpan — hanya hasil ekstraksi & sidik jari (hash).',
+    saveOriginalHint: 'Dokumen asli bisa berisi data pribadi (nama, email, telepon). Bila tidak dicentang, dokumen asli tidak disimpan — hanya hasil bacaan AI yang disimpan untuk ditinjau.',
     submit: 'Baca dengan AI', submitting: 'Membaca…',
     aiNote: 'AI hanya mengusulkan isian. Tidak ada voyage atau master data yang dibuat sebelum Anda meninjau dan menyetujui.',
     reprocessTitle: 'Permintaan ini sudah pernah diproses.', reprocess: 'Proses ulang', open: 'Buka intake sebelumnya',
     listTitle: 'Daftar intake', all: 'Semua status', empty: 'Belum ada intake.', refresh: 'Muat ulang',
     colCreated: 'Diterima', colVessel: 'Kapal', colPort: 'Pelabuhan', colEta: 'ETA', colClass: 'Klasifikasi',
-    colDup: 'Duplikat', colStatus: 'Status', colVoyage: 'Voyage', review: 'Tinjau',
+    colDup: 'Duplikat', colStatus: 'Status', colVoyage: 'Voyage', review: 'Tinjau', pair: 'Tug + Tongkang',
+    colRequest: 'Permintaan', noVessel: 'Kapal belum terbaca',
     errLoad: 'Gagal memuat daftar intake.', errSubmit: 'Intake gagal diproses.', pickFile: 'Pilih berkas lebih dulu.', needText: 'Tempel isi permintaan lebih dulu.',
     reused: 'Permintaan yang sama masih ditinjau — membuka intake yang ada.',
   },
@@ -35,13 +37,14 @@ const STR: Record<Lang, Record<string, string>> = {
     textLabel: 'Nomination / appointment text', textPh: 'Paste the email or message requesting the vessel call here…',
     fileLabel: 'File (PDF, Excel .xlsx, CSV, JPG/PNG/WEBP — max 10 MB)',
     saveOriginal: 'Keep the original document as an attachment',
-    saveOriginalHint: 'The original may contain personal data (names, emails, phone numbers). Default: not kept — only the extraction and a fingerprint (hash).',
+    saveOriginalHint: 'The original may contain personal data (names, emails, phone numbers). If unticked, the original is not kept — only what the AI read is stored for review.',
     submit: 'Read with AI', submitting: 'Reading…',
     aiNote: 'AI only proposes values. No voyage or master data is created until you review and approve.',
     reprocessTitle: 'This request was processed before.', reprocess: 'Process again', open: 'Open previous intake',
     listTitle: 'Intakes', all: 'All statuses', empty: 'No intakes yet.', refresh: 'Reload',
     colCreated: 'Received', colVessel: 'Vessel', colPort: 'Port', colEta: 'ETA', colClass: 'Classification',
-    colDup: 'Duplicate', colStatus: 'Status', colVoyage: 'Voyage', review: 'Review',
+    colDup: 'Duplicate', colStatus: 'Status', colVoyage: 'Voyage', review: 'Review', pair: 'Tug + Barge',
+    colRequest: 'Request', noVessel: 'Vessel not read',
     errLoad: 'Failed to load intakes.', errSubmit: 'Intake could not be processed.', pickFile: 'Choose a file first.', needText: 'Paste the request text first.',
     reused: 'The same request is still under review — opening the existing intake.',
   },
@@ -225,30 +228,44 @@ export function IntakeList() {
         {rows.length === 0 && !loading ? (
           <p className="mt-3 text-sm text-text-secondary">{t.empty}</p>
         ) : (
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full min-w-[760px] text-sm">
+          // Step 4F — tanpa lebar minimum tetap: muat di 1024px tanpa gulir ke samping.
+          <div className="mt-3 min-w-0">
+            <table className="w-full table-fixed text-sm">
               <thead>
                 <tr className="text-left text-[10px] font-mono uppercase tracking-wider text-text-secondary">
-                  {[t.colCreated, t.colVessel, t.colPort, t.colEta, t.colClass, t.colDup, t.colStatus, t.colVoyage, ''].map((h, i) => (
-                    <th key={i} className="py-2 pr-3 font-normal">{h}</th>
-                  ))}
+                  <th className="py-2 pr-3 font-normal w-[34%]">{t.colRequest}</th>
+                  <th className="py-2 pr-3 font-normal w-[22%]">{t.colPort} · {t.colEta}</th>
+                  <th className="py-2 pr-3 font-normal w-[26%]">{t.colStatus}</th>
+                  <th className="py-2 font-normal text-right">{t.colVoyage}</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.id} className="border-t border-border-muted/60 align-top">
-                    <td className="py-2 pr-3 whitespace-nowrap text-text-secondary">{fmtWaktu(String(r.createdAt), lang)}</td>
-                    <td className="py-2 pr-3 text-text-primary">{r.vesselName ?? '—'}</td>
-                    <td className="py-2 pr-3 text-text-primary">{r.portName ?? '—'}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap text-text-primary">{r.eta ?? '—'}</td>
-                    <td className="py-2 pr-3 text-text-secondary">{LABEL_KLASIFIKASI[lang][r.classification] ?? r.classification}</td>
-                    <td className="py-2 pr-3"><DuplicateBadge level={r.duplicateLevel} lang={lang} /></td>
-                    <td className="py-2 pr-3"><IntakeStatusBadge status={r.status} lang={lang} /></td>
-                    <td className="py-2 pr-3">
-                      {r.voyageId ? <Link href={`/voyages/${r.voyageId}`} className="text-accent-blue hover:underline">{r.voyageNumber ?? '→'}</Link> : '—'}
+                    <td className="py-2 pr-3 min-w-0">
+                      <p className="font-medium text-text-primary break-words">{r.vesselName ?? t.noVessel}</p>
+                      {r.vesselCount > 1 && <p className="text-[11px] text-text-secondary">{t.pair}</p>}
+                      <p className="text-[11px] text-text-secondary break-words">
+                        {LABEL_KLASIFIKASI[lang][r.classification] ?? r.classification} · {fmtWaktu(String(r.createdAt), lang)}
+                      </p>
                     </td>
-                    <td className="py-2">
-                      <Link href={`/automation/intake/${r.id}`} className={cn(btnCls, 'border border-border-muted text-text-secondary hover:text-text-primary')}>{t.review}</Link>
+                    <td className="py-2 pr-3 min-w-0 text-text-primary">
+                      <p className="break-words">{r.portName ?? '—'}</p>
+                      <p className="text-[11px] text-text-secondary">{r.eta ? formatTanggal(r.eta, lang) : '—'}</p>
+                    </td>
+                    <td className="py-2 pr-3 min-w-0">
+                      <div className="flex flex-wrap gap-1">
+                        <IntakeStatusBadge status={r.status} lang={lang} />
+                        {r.duplicateLevel !== 'NO_DUPLICATE' && <DuplicateBadge level={r.duplicateLevel} lang={lang} />}
+                      </div>
+                    </td>
+                    <td className="py-2 text-right">
+                      <div className="flex flex-col items-end gap-1">
+                        {r.voyageId && (
+                          <Link href={`/voyages/${r.voyageId}`} className="text-accent-blue hover:underline break-all">{r.voyageNumber ?? '→'}</Link>
+                        )}
+                        <Link href={`/automation/intake/${r.id}`} className={cn(btnCls, 'border border-border-muted text-text-secondary hover:text-text-primary')}>{t.review}</Link>
+                      </div>
                     </td>
                   </tr>
                 ))}

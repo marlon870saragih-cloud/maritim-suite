@@ -161,7 +161,7 @@ async function siapkanData() {
 
   const kapal = (tenantId, data) => prisma.vessel.create({ data: { tenantId, gt: 500, ...data, name: `${TAG}${data.name}` } })
   D.mmsi = `98${String(Date.now()).slice(-7)}`
-  D.kImo = await kapal(D.A.id, { name: 'Sea Star', imoNumber: '9074729', callSign: `ZZ${ACAK.slice(-4).toUpperCase()}` })
+  D.kImo = await kapal(D.A.id, { name: 'Sea Star', imoNumber: '9398242', callSign: `ZZ${ACAK.slice(-4).toUpperCase()}` })
   D.kMmsi = await kapal(D.A.id, { name: 'Mandiri Uji', mmsi: D.mmsi, mmsiSource: 'COMPANY_DOCUMENT', mmsiVerifiedAt: new Date() })
   D.kMmsiBelum = await kapal(D.A.id, { name: 'Belum Verif', mmsi: `97${String(Date.now()).slice(-7)}`, mmsiSource: 'PUBLIC_TRACKING' })
   D.kBarge = await kapal(D.A.id, { name: 'Patra Uji', vesselType: 'Oil Barge' })
@@ -281,7 +281,7 @@ async function ujiSubmitDasar() {
   const aiAwal = await prisma.securityEvent.count({ where: { kind: 'AI_CALL', identifier: D.adminA.id } })
 
   const isi = nominasi({
-    vessels: [{ name: D.kImo.name, imo: '9074729' }],
+    vessels: [{ name: D.kImo.name, imo: '9398242' }],
     portName: D.portA.name, eta: hariDepan(20), principalName: D.principalA.name,
     cargoes: [{ name: 'Batubara', quantity: 5000, unit: 'MT', operation: 'LOAD', price: 99 }],
     contact: { name: 'Budi Uji', email: `budi-${ACAK}@contoh.local` },
@@ -354,12 +354,12 @@ async function ujiSubmitDasar() {
 
 async function ujiBerkas() {
   console.log('\n[C] PDF / gambar / Excel / CSV & dokumen asli opt-in')
-  const isiAi = { classification: 'NEW_APPOINTMENT', vessels: [{ name: D.kImo.name, imo: '9074729' }], portUnlocode: D.portA.unlocode, eta: hariDepan(60), cargoes: [] }
+  const isiAi = { classification: 'NEW_APPOINTMENT', vessels: [{ name: D.kImo.name, imo: '9398242' }], portUnlocode: D.portA.unlocode, eta: hariDepan(60), cargoes: [] }
   const pdf = await unggah(D.sesi.adminA, { file: { name: 'appointment.pdf', type: 'application/pdf', bytes: Buffer.from(`%PDF-1.4 ${ACAK}\n${palsu(isiAi)}`, 'latin1') }, saveOriginal: true })
   if (pdf.json.intake?.id) lacak.intake.add(pdf.json.intake.id)
   const itPdf = pdf.json.intake
   cek('PDF → 201, identitas UNVERIFIED_SOURCE', pdf.status === 201 && itPdf.proposal.vessels[0].name.flags.includes('UNVERIFIED_SOURCE'), `${pdf.status}`)
-  cek('PDF → approve diblok sampai sumber dikonfirmasi', itPdf.review.conditions.includes('SOURCE_FIELDS_UNCONFIRMED'))
+  cek('Step 4F: PDF → kecocokan IMO persis pun wajib dikonfirmasi (bukan "cek dokumen")', itPdf.matches.vessels[0].basis === 'EXACT_IMO' && itPdf.matches.vessels[0].requiresConfirmation && itPdf.review.conditions.includes('VESSEL_CONFIRMATION_REQUIRED') && itPdf.review.conditions.includes('PORT_CONFIRMATION_REQUIRED') && !itPdf.review.conditions.includes('SOURCE_FIELDS_UNCONFIRMED'))
   const lamp = await prisma.attachment.findFirst({ where: { entityType: 'VESSEL_CALL_INTAKE', entityId: itPdf.id } })
   cek('opt-in → lampiran sensitif, tak dibagikan ke portal', !!lamp && lamp.sensitive === true && lamp.sharedToPortal === false && itPdf.attachmentId === lamp.id)
   cek('ADMIN bisa mengunduh dokumen asli', (await D.sesi.adminA.ambil(`/api/attachments/${lamp.id}/content`)).status === 200)
@@ -370,8 +370,13 @@ async function ujiBerkas() {
   if (D.sesi.adminX) cek('tenant lain → 404', (await api(D.sesi.adminX, 'GET', q)).status === 404)
   const komentar = await api(D.sesi.operatorA, 'POST', '/api/comments', { entityType: 'VESSEL_CALL_INTAKE', entityId: itPdf.id, body: 'uji' })
   cek('OPERATOR tak bisa berkomentar pada intake → 403', komentar.status === 403, `${komentar.status}`)
-  const k = await tambal(D.sesi.adminA, itPdf.id, itPdf.version, { confirmSourceFields: true })
-  cek('konfirmasi sumber → syarat hilang', k.status === 200 && !k.json.intake.review.conditions.includes('SOURCE_FIELDS_UNCONFIRMED'))
+  const k1 = await tambal(D.sesi.adminA, itPdf.id, itPdf.version, { confirm: { entity: 'vessel', index: 0 } })
+  const k = await tambal(D.sesi.adminA, itPdf.id, k1.json.intake.version, { confirm: { entity: 'port' } })
+  cek('Step 4F: konfirmasi kapal & pelabuhan → syarat itu hilang', k.status === 200 && !k.json.intake.review.conditions.some((c) => c === 'VESSEL_CONFIRMATION_REQUIRED' || c === 'PORT_CONFIRMATION_REQUIRED'))
+  const tanpaDok = await unggah(D.sesi.adminA, { file: { name: 'tanpa-simpan.pdf', type: 'application/pdf', bytes: Buffer.from(`%PDF-1.4 ${ACAK} b
+${palsu({ ...isiAi, eta: hariDepan(64) })}`, 'latin1') } })
+  if (tanpaDok.json.intake?.id) lacak.intake.add(tanpaDok.json.intake.id)
+  cek('Step 4F: PDF tanpa dokumen asli → tidak ada syarat "cek dokumen", tetap konfirmasi kecocokan', tanpaDok.status === 201 && tanpaDok.json.intake.attachmentId === null && !tanpaDok.json.intake.review.conditions.includes('SOURCE_FIELDS_UNCONFIRMED') && tanpaDok.json.intake.review.conditions.includes('VESSEL_CONFIRMATION_REQUIRED'))
   D.itPdf = k.json.intake
 
   const img = await unggah(D.sesi.adminA, { file: { name: 'wa.png', type: 'image/png', bytes: Buffer.from(`\x89PNG ${ACAK}${palsu({ ...isiAi, eta: hariDepan(61) })}`, 'latin1') } })
@@ -383,7 +388,7 @@ async function ujiBerkas() {
   ws.addRow(['Vessel', D.kNama.name])
   ws.addRow(['ETA', hariDepan(62)])
   ws.addRow(['Port', D.portA2.name])
-  ws.addRow([palsu({ classification: 'NEW_NOMINATION', vessels: [{ name: D.kNama.name, imo: '9321483' }], portName: D.portA2.name, eta: hariDepan(62), cargoes: [] })])
+  ws.addRow([palsu({ classification: 'NEW_NOMINATION', vessels: [{ name: D.kNama.name, imo: '9400124' }], portName: D.portA2.name, eta: hariDepan(62), cargoes: [] })])
   const xlsx = Buffer.from(await wb.xlsx.writeBuffer())
   const rx = await unggah(D.sesi.adminA, { file: { name: `nominasi-${ACAK}.xlsx`, bytes: xlsx } })
   if (rx.json.intake?.id) lacak.intake.add(rx.json.intake.id)
@@ -416,7 +421,7 @@ async function ujiMatching() {
   cek('nama ganda (Kembar / MV Kembar) → AMBIGUOUS', f.matches.vessels[0].status === 'AMBIGUOUS' && f.matches.vessels[0].candidates.length >= 2)
   const pilih = await tambal(D.sesi.manajerA, f.id, f.version, { select: { entity: 'vessel', index: 0, id: D.kKembar2.id } })
   cek('peninjau memilih kandidat → SELECTED_BY_REVIEWER', pilih.status === 200 && pilih.json.intake.matches.vessels[0].basis === 'SELECTED_BY_REVIEWER')
-  const g = await kirim([{ name: 'Apa saja', imo: '9074729', mmsi: D.mmsi }])
+  const g = await kirim([{ name: 'Apa saja', imo: '9398242', mmsi: D.mmsi }])
   cek('IMO → kapal A, MMSI → kapal B → CONFLICT', g.matches.vessels[0].status === 'CONFLICT' && g.review.conditions.includes('PRIMARY_VESSEL_UNRESOLVED'))
   if (D.kX) {
     const h = await kirim([{ name: 'Tenant X Kapal', imo: '9176187' }])
@@ -441,7 +446,7 @@ async function ujiDuplikat() {
     data: { tenantId: D.A.id, vesselId: D.kImo.id, portId: D.portA.id, voyageNumber: `${TAG}VYG-TUTUP-${ACAK}`, status: 'CLOSED', eta: tgl(hariDepan(151)), dataOrigin: 'UJI' },
   })
   D.vLama = vLama
-  const kirim = async (o) => (await kirimBaru(D.sesi.adminA, nominasi({ vessels: [{ name: D.kImo.name, imo: '9074729' }], principalName: D.principalA.name, ...o }))).json.intake
+  const kirim = async (o) => (await kirimBaru(D.sesi.adminA, nominasi({ vessels: [{ name: D.kImo.name, imo: '9398242' }], principalName: D.principalA.name, ...o }))).json.intake
   const likely = await kirim({ portUnlocode: D.portA.unlocode, eta: hariDepan(151) })
   cek('kapal & pelabuhan sama, ETA +1 → LIKELY; voyage CLOSED diabaikan', likely.duplicateLevel === 'LIKELY_DUPLICATE' && likely.duplicateCandidates.some((c) => c.id === vLama.id) && !likely.duplicateCandidates.some((c) => c.id === vTutup.id))
   const lk = await lengkapi(D.sesi.adminA, likely)
@@ -526,6 +531,7 @@ async function ujiApproval() {
   cek('voyage: principal = hasil konfirmasi peninjau / customer kosong (sengaja)', v.principalId === D.principalA.id && v.customerId === null)
   cek('voyage: baris VoyageVessel kapal utama + cargo dari intake', v.vessels.length === 1 && v.cargoes.length === 1 && v.cargoes[0].cargoName === 'Batubara' && v.cargoes[0].quantity === 5000)
   cek('voyage: dataOrigin dicap createVoyage (bukan intake)', typeof v.dataOrigin === 'string')
+  cek('Step 4F: catatan voyage tanpa id internal intake', !v.notes.includes(it.id) && v.notes.includes('Intake Kunjungan Kapal') && v.sourceIntakeId === it.id)
   cek('audit Voyage CREATE DIBUAT_DARI_INTAKE', !!(await prisma.auditLog.findFirst({ where: { tableName: 'Voyage', recordId: v.id, action: 'CREATE' } }))?.newValue?.intakeId)
   cek('pemakaian VOYAGE_CREATED lewat createVoyage', (await prisma.usageEvent.count({ where: { tenantId: D.A.id, nama: 'VOYAGE_CREATED', createdAt: { gte: v.createdAt } } })) >= 1)
   cek('intake COMPLETED, kontak dibuang di DTO & DB', selesai.status === 'COMPLETED' && selesai.proposal.contact === null && (await prisma.vesselCallIntake.findUnique({ where: { id: it.id } })).proposal.contact === null)
@@ -550,6 +556,8 @@ async function ujiApproval() {
   if (rtb.json.intake?.voyageId) {
     lacak.voyage.add(rtb.json.intake.voyageId)
     const vt = await prisma.voyage.findUnique({ where: { id: rtb.json.intake.voyageId }, include: { vessels: { orderBy: { sortOrder: 'asc' } } } })
+    const daftar = (await api(D.sesi.manajerA, 'GET', '/api/automation/intakes')).json.intakes.find((x) => x.id === tb.id)
+    cek('Step 4F: daftar memakai nama MASTER kapal utama & pelabuhan, tandai pasangan', daftar?.vesselName === D.kMmsi.name && daftar?.portName === D.portA2.name && daftar?.vesselCount === 2)
     cek('tug = kapal utama; VoyageVessel TUG + BARGE', vt.vesselId === D.kMmsi.id && vt.vessels.length === 2 && vt.vessels[0].role === 'TUG' && vt.vessels[1].vesselId === D.kBarge.id && vt.vessels[1].role === 'BARGE')
     cek('postCreateWarnings kosong', rtb.json.intake.postCreateWarnings.length === 0)
   }
@@ -564,12 +572,12 @@ async function ujiApproval() {
 async function ujiMasterBaru() {
   console.log('\n[G] Master yang belum ada → dibuat manusia lewat flow master')
   const nama = `${TAG}Kapal Baru ${ACAK}`
-  const r = await kirimBaru(D.sesi.manajerA, nominasi({ vessels: [{ name: nama, imo: '9321483' }], portName: D.portA2.name, eta: hariDepan(200), principalName: `PT ${TAG}Principal Baru ${ACAK}`, customerName: `${TAG}Customer Baru ${ACAK}` }))
+  const r = await kirimBaru(D.sesi.manajerA, nominasi({ vessels: [{ name: nama, imo: '9400124' }], portName: D.portA2.name, eta: hariDepan(200), principalName: `PT ${TAG}Principal Baru ${ACAK}`, customerName: `${TAG}Customer Baru ${ACAK}` }))
   let it = r.json.intake
   cek('kapal/principal/customer NOT_FOUND → approve diblok', it.matches.vessels[0].status === 'NOT_FOUND' && it.review.conditions.includes('PRIMARY_VESSEL_UNRESOLVED') && it.review.conditions.includes('PRINCIPAL_UNRESOLVED'))
   const masterAwal = await prisma.vessel.count({ where: { tenantId: D.A.id } })
   cek('tak ada master yang dibuat otomatis', masterAwal === (await prisma.vessel.count({ where: { tenantId: D.A.id } })) && !(await prisma.vessel.findFirst({ where: { name: nama } })))
-  const kv = await api(D.sesi.manajerA, 'POST', '/api/vessels', { name: nama, imoNumber: '9321483' })
+  const kv = await api(D.sesi.manajerA, 'POST', '/api/vessels', { name: nama, imoNumber: '9400124' })
   cek('MANAJER_OPERASI boleh MEMBUAT kapal (POST /api/vessels)', kv.status === 200 && !!kv.json.vessel?.id, `${kv.status} ${kv.teks.slice(0, 80)}`)
   cek('MANAJER_OPERASI tetap TIDAK boleh mengubah/menghapus kapal', (await api(D.sesi.manajerA, 'PATCH', `/api/vessels/${kv.json.vessel.id}`, { name: 'x' })).status === 403 && (await api(D.sesi.manajerA, 'DELETE', `/api/vessels/${kv.json.vessel.id}`)).status === 403)
   cek('VIEWER tetap tak boleh membuat kapal', (await api(D.sesi.viewerA, 'POST', '/api/vessels', { name: `${TAG}viewer` })).status === 403)
@@ -602,7 +610,7 @@ async function ujiMasterBaru() {
 async function ujiPortal() {
   console.log('\n[H] Paparan portal klien')
   const portalAwal = JSON.stringify(await Promise.all(['portalUser', 'portalAccess', 'portalInvitation'].map((m) => prisma[m].count())))
-  const r = await kirimBaru(D.sesi.adminA, nominasi({ vessels: [{ name: D.kImo.name, imo: '9074729' }], portUnlocode: D.portA.unlocode, eta: hariDepan(330), customerName: D.custPortal.name }))
+  const r = await kirimBaru(D.sesi.adminA, nominasi({ vessels: [{ name: D.kImo.name, imo: '9398242' }], portUnlocode: D.portA.unlocode, eta: hariDepan(330), customerName: D.custPortal.name }))
   let it = r.json.intake
   cek('customer dicocokkan otomatis TIDAK dipakai tanpa tindakan peninjau', it.review.conditions.includes('CUSTOMER_UNRESOLVED') && it.review.portalActiveAccessCount === 0)
   it = (await tambal(D.sesi.adminA, it.id, it.version, { confirm: { entity: 'customer' } })).json.intake
@@ -630,12 +638,13 @@ async function ujiGagalDanRekonsiliasi() {
   const b2 = await prisma.voyage.create({ data: { tenantId: D.A.id, vesselId: D.kNama.id, voyageNumber: `VYG-${tahun}-000NaN`, status: 'CANCELLED', dataOrigin: 'UJI' } })
   lacak.blokir.add(b1.id)
   lacak.blokir.add(b2.id)
-  let it = (await kirimBaru(D.sesi.adminA, nominasi({ vessels: [{ name: D.kImo.name, imo: '9074729' }], portName: D.portA2.name, eta: hariDepan(345) }))).json.intake
+  let it = (await kirimBaru(D.sesi.adminA, nominasi({ vessels: [{ name: D.kImo.name, imo: '9398242' }], portName: D.portA2.name, eta: hariDepan(345) }))).json.intake
   it = await lengkapi(D.sesi.adminA, it)
   const kep = it.duplicateLevel === 'NO_DUPLICATE' ? {} : { duplicateDecision: 'CONTINUE_AS_NEW', duplicateConfirmed: true, decisionReason: 'uji kegagalan pembuatan' }
   const jumlah = await prisma.voyage.count({ where: { tenantId: D.A.id } })
   const gagalBuat = await setujui(D.sesi.adminA, it.id, it.version, kep)
   cek('createVoyage gagal (tabrakan nomor) → 409 CREATE_FAILED', gagalBuat.status === 409 && gagalBuat.json.error?.details?.errorCode === 'VOYAGE_NUMBER_COLLISION', `${gagalBuat.status} ${gagalBuat.teks.slice(0, 160)}`)
+  cek('Step 4F: pesan utama tanpa kode mentah (kode hanya di details)', !gagalBuat.json.error.message.includes('VOYAGE_NUMBER_COLLISION') && /Voyage belum dibuat/.test(gagalBuat.json.error.message))
   const f = (await baca(D.sesi.adminA, it.id)).json.intake
   cek('… intake FAILED + errorCode, tanpa voyage, hash tetap dipegang', f.status === 'FAILED' && f.errorCode === 'VOYAGE_NUMBER_COLLISION' && (await prisma.voyage.count({ where: { tenantId: D.A.id } })) === jumlah && (await prisma.vesselCallIntake.findUnique({ where: { id: it.id } })).activeHashKey !== null)
   cek('… audit FAILED tercatat', (await prisma.auditLog.findMany({ where: { tableName: 'VesselCallIntake', recordId: it.id } })).some((a) => a.newValue?.status === 'FAILED'))

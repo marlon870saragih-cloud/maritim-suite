@@ -501,7 +501,7 @@ export async function submitIntake(
     norm: NORM,
   })
   const master = await muatMaster(ctx)
-  const matches = P.cocokkanSemua(proposal, master, NORM, null)
+  const matches = P.cocokkanSemua(proposal, master, NORM, null, new Set(), { konfirmasiSemua: P.inputVisual(kind) })
   const dup = await hitungDuplikat(ctx, proposal, matches, null)
 
   const dibuat = await db.vesselCallIntake.createManyAndReturn({
@@ -591,6 +591,8 @@ export type IntakeRingkas = {
   inputKind: string
   sourceFileName: string | null
   vesselName: string | null
+  /** Step 4F — "Tug + Tongkang" bila ada pasangan. */
+  vesselCount: number
   eta: string | null
   portName: string | null
   voyageId: string | null
@@ -610,17 +612,36 @@ export async function listIntakes(ctx: TenantContext, q: URLSearchParams): Promi
     take: 100,
     select: {
       id: true, status: true, classification: true, duplicateLevel: true, inputKind: true,
-      sourceFileName: true, proposal: true, voyageId: true, errorCode: true, createdAt: true,
+      sourceFileName: true, proposal: true, matches: true, voyageId: true, errorCode: true, createdAt: true,
     },
   })
   const voyageIds = rows.map((r) => r.voyageId).filter((x): x is string => !!x)
-  const voyages = voyageIds.length
-    ? await db.voyage.findMany({ where: { id: { in: voyageIds } }, select: { id: true, voyageNumber: true } })
-    : []
+  // Step 4F — tampilkan nama MASTER (kapal/pelabuhan terpilih), bukan hanya teks/kode dari dokumen.
+  const idKapal = new Set<string>()
+  const idPort = new Set<string>()
+  for (const r of rows) {
+    const p = r.proposal as unknown
+    const m = r.matches as unknown
+    if (!P.proposalSah(p) || !P.matchesSah(m, p.vessels.length)) continue
+    const i = P.indeksKapalUtama(p)
+    if (i >= 0 && m.vessels[i].selectedId) idKapal.add(m.vessels[i].selectedId!)
+    if (m.port.selectedId) idPort.add(m.port.selectedId)
+  }
+  const [voyages, kapalMaster, portMaster] = await Promise.all([
+    voyageIds.length ? db.voyage.findMany({ where: { id: { in: voyageIds } }, select: { id: true, voyageNumber: true } }) : [],
+    idKapal.size ? db.vessel.findMany({ where: { id: { in: Array.from(idKapal) } }, select: { id: true, name: true } }) : [],
+    idPort.size ? db.port.findMany({ where: { id: { in: Array.from(idPort) } }, select: { id: true, name: true } }) : [],
+  ])
+  const namaKapal = new Map(kapalMaster.map((x) => [x.id, x.name]))
+  const namaPort = new Map(portMaster.map((x) => [x.id, x.name]))
   return rows.map((r) => {
     const p = r.proposal as unknown
+    const m = r.matches as unknown
     const sah = P.proposalSah(p)
+    const mSah = sah && P.matchesSah(m, p.vessels.length)
     const utama = sah ? P.indeksKapalUtama(p) : -1
+    const idK = mSah && utama >= 0 ? m.vessels[utama].selectedId : null
+    const idP = mSah ? m.port.selectedId : null
     return {
       id: r.id,
       status: r.status,
@@ -628,9 +649,10 @@ export async function listIntakes(ctx: TenantContext, q: URLSearchParams): Promi
       duplicateLevel: r.duplicateLevel,
       inputKind: r.inputKind,
       sourceFileName: r.sourceFileName,
-      vesselName: sah && utama >= 0 ? p.vessels[utama].name.value : null,
+      vesselName: (idK && namaKapal.get(idK)) || (sah && utama >= 0 ? p.vessels[utama].name.value ?? p.vessels[utama].imo.value ?? p.vessels[utama].mmsi.value : null),
+      vesselCount: sah ? p.vessels.filter((v) => !v.excluded).length : 0,
       eta: sah ? p.eta.value : null,
-      portName: sah ? p.portName.value ?? p.portUnlocode.value : null,
+      portName: (idP && namaPort.get(idP)) || (sah ? p.portName.value ?? p.portUnlocode.value : null),
       voyageId: r.voyageId,
       voyageNumber: voyages.find((v) => v.id === r.voyageId)?.voyageNumber ?? null,
       errorCode: r.errorCode,
@@ -894,7 +916,7 @@ export async function updateIntake(
   }
 
   const master = await muatMaster(ctx)
-  const mBaru = P.cocokkanSemua(p, master, NORM, m, berubah)
+  const mBaru = P.cocokkanSemua(p, master, NORM, m, berubah, { konfirmasiSemua: P.inputVisual(row.inputKind) })
   const dup = await hitungDuplikat(ctx, p, mBaru, row.id)
 
   const n = await forTenant(ctx).vesselCallIntake.updateMany({
@@ -970,7 +992,7 @@ type PraApproval = { p: P.Proposal; m: P.Matches; dup: P.HasilDuplikat; portal: 
 async function siapkanApproval(ctx: TenantContext, row: BarisIntake): Promise<PraApproval> {
   const { p, m } = uraikan(row)
   const master = await muatMaster(ctx)
-  const m2 = P.cocokkanSemua(p, master, NORM, m)
+  const m2 = P.cocokkanSemua(p, master, NORM, m, new Set(), { konfirmasiSemua: P.inputVisual(row.inputKind) })
   const dup = await hitungDuplikat(ctx, p, m2, row.id)
   const levelNaik = P.peringkatDuplikat(dup.level) > P.peringkatDuplikat(row.duplicateLevel)
   const masterBerubah = P.jsonKanonik(m2) !== P.jsonKanonik(m)
@@ -1121,7 +1143,7 @@ async function jalankanPembuatan(
     etb: p.etb.value,
     etc: p.etc.value,
     etd: p.etd.value,
-    notes: P.catatanVoyage(p, intakeId),
+    notes: P.catatanVoyage(p),
   }
 
   let voyageId: string
@@ -1143,8 +1165,9 @@ async function jalankanPembuatan(
       { tableName: 'VesselCallIntake', recordId: intakeId, action: 'UPDATE', oldValue: { status: 'CREATING' }, newValue: { status: 'FAILED', errorCode: kode } },
       jejak,
     )
-    const pesan = e instanceof ServiceError ? ` ${e.message}` : ''
-    throw new ServiceError('CONFLICT', `Voyage belum dibuat (${kode}).${pesan}`, { code: 'CREATE_FAILED', errorCode: kode })
+    // Step 4F — pesan utama untuk manusia; kode mesin hanya di `details` (layar menerjemahkannya).
+    const pesan = e instanceof ServiceError && e.code !== 'CONFLICT' ? ` ${e.message}` : ''
+    throw new ServiceError('CONFLICT', `Voyage belum dibuat.${pesan}`, { code: 'CREATE_FAILED', errorCode: kode })
   }
 
   const peringatan: string[] = []

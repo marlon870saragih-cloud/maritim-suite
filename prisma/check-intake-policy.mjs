@@ -335,16 +335,51 @@ cek('status tak dikenal → tidak sah', !P.transisiSah('DRAFT', 'CREATING') && !
   const customerCocokOtomatis = { ...mOk, customer: { ...P.cocokKosong('MATCHED'), basis: 'NAME_NORMALIZED', selectedId: 'c1', requiresConfirmation: true } }
   cek('customer dicocokkan otomatis (belum dikonfirmasi) → tak dipakai (portal aman)', P.idTerpakai(customerCocokOtomatis.customer) === null && P.syaratApproval({ ...dasar, matches: customerCocokOtomatis }).includes('CUSTOMER_UNRESOLVED'))
   const pdf = validasi({ classification: 'NEW_NOMINATION', vessels: [{ name: 'MV SEA STAR', imo: '9074729' }], principalName: 'PT Surya Perkasa Samudera', portUnlocode: 'IDSRI', eta: '2026-09-20', cargoes: [] }, 'PDF', null)
-  cek('PDF belum dikonfirmasi → SOURCE_FIELDS_UNCONFIRMED', P.syaratApproval({ ...dasar, proposal: pdf.proposal, matches: mOk }).includes('SOURCE_FIELDS_UNCONFIRMED'))
+  // Step 4F — konfirmasi "sudah dicek dengan dokumen" diganti konfirmasi per kecocokan untuk masukan visual.
+  cek('Step 4F: SOURCE_FIELDS_UNCONFIRMED tidak lagi disyaratkan', !P.syaratApproval({ ...dasar, proposal: pdf.proposal, matches: mOk }).includes('SOURCE_FIELDS_UNCONFIRMED'))
+  const mPdf = P.cocokkanSemua(pdf.proposal, master, NORM, null, new Set(), { konfirmasiSemua: true })
+  cek('Step 4F: PDF/gambar → kecocokan IMO persis pun wajib dikonfirmasi', mPdf.vessels[0].basis === 'EXACT_IMO' && mPdf.vessels[0].requiresConfirmation && mPdf.port.basis === 'UNLOCODE' && mPdf.port.requiresConfirmation)
+  const sPdf = P.syaratApproval({ ...dasar, proposal: pdf.proposal, matches: { ...mPdf, customer: { ...mPdf.customer, leftEmpty: true } } })
+  cek('Step 4F: … approve diblok sampai kapal & pelabuhan dikonfirmasi', sPdf.includes('VESSEL_CONFIRMATION_REQUIRED') && sPdf.includes('PORT_CONFIRMATION_REQUIRED') && sPdf.includes('PRINCIPAL_UNRESOLVED'))
+  const mPdfOk = { ...mPdf, vessels: [{ ...mPdf.vessels[0], confirmed: true }], port: { ...mPdf.port, confirmed: true }, principal: { ...mPdf.principal, confirmed: true }, customer: { ...mPdf.customer, leftEmpty: true } }
+  cek('Step 4F: … setelah semua dikonfirmasi → boleh approve', P.syaratApproval({ ...dasar, proposal: pdf.proposal, matches: mPdfOk }).length === 0)
+  cek('Step 4F: masukan teks tetap tanpa konfirmasi untuk IMO persis', !P.cocokkanSemua(p, master, NORM, null).vessels[0].requiresConfirmation)
+  cek('Step 4F: pilihan peninjau tidak dipaksa konfirmasi ulang', (() => {
+    const pilihan = { ...mPdf, vessels: [{ ...P.cocokKosong('MATCHED'), basis: 'SELECTED_BY_REVIEWER', selectedId: 'v-imo', confirmed: true }] }
+    const h = P.cocokkanSemua(pdf.proposal, master, NORM, pilihan, new Set(), { konfirmasiSemua: true }).vessels[0]
+    return h.basis === 'SELECTED_BY_REVIEWER' && P.idTerpakai(h) === 'v-imo'
+  })())
+  cek('Step 4F: inputVisual hanya PDF & IMAGE', P.inputVisual('PDF') && P.inputVisual('IMAGE') && !['TEXT', 'CSV', 'WORKBOOK'].some(P.inputVisual))
   const dupKapal = { ...mOk, vessels: [mOk.vessels[0], mOk.vessels[0]] }
   const p2 = { ...p, vessels: [p.vessels[0], { ...p.vessels[0] }] }
   cek('kapal yang sama dipilih dua kali → DUPLICATE_VESSEL_SELECTED', P.syaratApproval({ ...dasar, proposal: p2, matches: dupKapal }).includes('DUPLICATE_VESSEL_SELECTED'))
   cek('jsonKanonik kebal urutan kunci (JSONB)', P.jsonKanonik({ b: 1, a: [{ y: 2, x: null }] }) === P.jsonKanonik({ a: [{ x: null, y: 2 }], b: 1 }) && P.jsonKanonik({ a: 1 }) !== P.jsonKanonik({ a: 2 }))
   cek('proposalSah / matchesSah menerima bentuk hasil sendiri & menolak rusak', P.proposalSah(p) && P.matchesSah(m, 1) && !P.proposalSah({}) && !P.matchesSah(m, 2))
-  cek('catatan voyage memuat rujukan intake, tanpa kontak', (() => {
-    const c = P.catatanVoyage(validasi(RAW_BAIK, 'TEXT', SUMBER).proposal, 'int123')
-    return c.includes('int123') && c.includes('SPS/NOM/0917') && !c.includes('budi@')
+  cek('Step 4F: catatan voyage memuat rujukan pengirim, TANPA id internal & tanpa kontak', (() => {
+    const c = P.catatanVoyage(validasi(RAW_BAIK, 'TEXT', SUMBER).proposal)
+    return c.includes('Intake Kunjungan Kapal') && c.includes('SPS/NOM/0917') && !c.includes('budi@') && !/c[a-z0-9]{20,}/.test(c)
   })())
+}
+
+// =================================================================== 5b. tampilan (Step 4F)
+console.log('\n[5b] Bantuan tampilan (Step 4F)')
+{
+  const konf = P.cocokkanKapal({ name: 'Apa saja', imo: '9074729', mmsi: '525200433', callSign: null }, KAPAL, NORM)
+  const teks = P.penjelasanKonflik(konf, { imo: '9074729', mmsi: '525200433' })
+  cek('konflik IMO vs MMSI dijelaskan dengan nama kedua kapal', /IMO cocok dengan MV Sea Star, tetapi MMSI terverifikasi cocok dengan TB Mandiri 23/.test(teks ?? ''), teks ?? '')
+  const konf2 = P.cocokkanKapal({ name: 'MV Sea Star', imo: '9176187', mmsi: null, callSign: null }, KAPAL, NORM)
+  const teks2 = P.penjelasanKonflik(konf2, { imo: '9176187', mmsi: null })
+  cek('konflik nama vs IMO dijelaskan (IMO dokumen berbeda)', /nama cocok dengan MV Sea Star, tetapi IMO 9176187 di dokumen berbeda/.test(teks2 ?? ''), teks2 ?? '')
+  cek('konflik dijelaskan dalam bahasa Inggris bila layar EN', /IMO matches MV Sea Star, but verified MMSI matches TB Mandiri 23/.test(P.penjelasanKonflik(konf, { imo: '9074729', mmsi: '525200433' }, 'en') ?? ''))
+  cek('bukan konflik → tanpa penjelasan', P.penjelasanKonflik(P.cocokKosong('MATCHED'), { imo: null, mmsi: null }) === null)
+  cek('basis gabungan ditampilkan dengan yang terkuat', P.basisTerkuat('NAME_NORMALIZED+EXACT_IMO') === 'EXACT_IMO' && P.basisTerkuat('NAME_PARTIAL') === 'NAME_PARTIAL')
+  const amb = P.cocokkanKapal({ name: null, imo: null, mmsi: '525999999', callSign: null }, KAPAL, NORM)
+  cek('kandidat MMSI belum terverifikasi = berisiko', P.kandidatBerisiko(amb, amb.candidates[0]))
+  const pasti = P.cocokkanKapal({ name: 'MV Sea Star', imo: '9074729', mmsi: null, callSign: null }, KAPAL, NORM)
+  cek('kandidat IMO persis tidak berisiko; kandidat terpilih tidak diulang', !P.kandidatBerisiko(pasti, pasti.candidates[0]) && P.kandidatLain(pasti).every((c) => c.id !== pasti.selectedId))
+  cek('kandidat pada status CONFLICT selalu berisiko', konf.candidates.every((c) => P.kandidatBerisiko(konf, c)))
+  cek('formatTanggal tanpa geser zona & format id-ID', P.formatTanggal('2026-11-01') === '01 Nov 2026' && P.formatTanggal(null) === '—')
+  cek('formatJumlah memakai pemisah ribuan', P.formatJumlah(12000) === '12.000' && P.formatJumlah(12.5) === '12,5' && P.formatJumlah(null) === '')
 }
 
 // =================================================================== 6. hash & batas waktu
@@ -430,6 +465,30 @@ console.log('\n[7] Kunci sumber (batas tulis, skema, pagar)')
   const cust = baca('src/services/master/customer.service.ts')
   cek('D3: updateCustomer tetap ADMIN/OPERATOR, removeCustomer ADMIN', /export async function updateCustomer[\s\S]{0,200}requireRole\(ctx, 'ADMIN', 'OPERATOR'\)\n/.test(cust) && /export async function removeCustomer[\s\S]{0,150}requireRole\(ctx, 'ADMIN'\)/.test(cust))
   cek('lampiran/komentar intake dipagari gerbang intake', /if \(diperiksa\.entityType === 'VESSEL_CALL_INTAKE'\) requireIntake\(ctx\)/.test(baca('src/services/ops/ownership.service.ts')))
+  const ui = baca('src/components/automation/IntakeReview.tsx')
+  cek('Step 4F: approve & retry lewat ringkasan konfirmasi (RingkasanDialog)', /setRingkasan\('approve'\)/.test(ui) && /setRingkasan\('retry'\)/.test(ui) && /function RingkasanDialog/.test(ui))
+  cek('Step 4F: galat approve ditampilkan di dekat tombol & digulir ke sana', /galatDi\('aksi'\)/.test(ui) && /scrollIntoView/.test(ui) && /kirim\(url, 'POST', body, 'aksi'\)/.test(ui))
+  cek('Step 4F: kode kegagalan diterjemahkan (penjelasanGagal), kode hanya sekunder', /penjelasanGagal\(/.test(ui) && /techCode/.test(ui))
+  {
+    // Label dicari per kunci di blok id & en (tipe Record<string, string> tak menangkap salah ketik kunci).
+    const shared = baca('src/components/automation/intake-shared.tsx')
+    const perBahasa = (nama) => {
+      const blok = shared.slice(shared.indexOf(`export const ${nama}`)).split(/\n}\n/)[0]
+      const en = blok.indexOf('\n  en: {')
+      return [blok.slice(0, en), blok.slice(en)]
+    }
+    const tanpaLabel = (kode, nama) => kode.filter((k) => perBahasa(nama).some((b) => !new RegExp(`\\b${k}:`).test(b)))
+    const kodeSyarat = [...(baca('src/services/intake/intake-policy.ts').match(/export type SyaratApproval =([\s\S]*?)\n\n/)?.[1] ?? '').matchAll(/'([A-Z_]+)'/g)].map((x) => x[1])
+    const s1 = tanpaLabel(kodeSyarat, 'LABEL_SYARAT')
+    cek('Step 4F: setiap kode syarat approval punya label id & en', kodeSyarat.length >= 16 && s1.length === 0, s1.join(','))
+    const fnGagal = svc.match(/function kodeGagalBuat[\s\S]*?\n}\n/)?.[0] ?? ''
+    const kodeGagal = [...new Set([...fnGagal.matchAll(/return '([A-Z_]+)'/g), ...svc.matchAll(/errorCode: '([A-Z_]+)'/g)].map((x) => x[1]))]
+    const s2 = tanpaLabel(kodeGagal, 'LABEL_GAGAL')
+    cek('Step 4F: setiap kode kegagalan pembuatan punya penjelasan id & en', kodeGagal.length >= 7 && s2.length === 0, `${kodeGagal.length} kode; tanpa label: ${s2.join(',')}`)
+  }
+  cek('Step 4F: tak ada lebar minimum tabel yang memaksa gulir samping', !/min-w-\[\d+px\]/.test(ui + baca('src/components/automation/IntakeList.tsx')))
+  cek('Step 4F: pilihan dropdown master butuh tombol eksplisit', /useSelected/.test(ui) && !/onChange=\{\(e\) => e\.target\.value && pilih/.test(ui))
+  cek('Step 4F: pesan CREATE_FAILED server tanpa kode mentah', !/Voyage belum dibuat \(\$\{kode\}\)/.test(svc))
   cek('intake tidak menyalakan pemantauan otomatis', !/mulaiPemantauan|monitoredVoyage/.test(svc))
   cek('intake tak bergantung pada AIS', !/services\/ais|\bais\b/i.test(svc.replace(/^\s*\/\/.*$/gm, '')))
 }
