@@ -898,7 +898,13 @@ export async function updateIntake(
       if (q !== null && (!Number.isFinite(q) || q < 0)) throw validation('Jumlah muatan harus angka ≥ 0.')
       const op = teksOpsional(c.operation, 10)?.toUpperCase() ?? null
       if (op && !(P.OPERASI_CARGO as readonly string[]).includes(op)) throw validation('Operasi muatan: LOAD atau DISCHARGE.')
-      return { name, quantity: q, unit: teksOpsional(c.unit, 20), operation: op as 'LOAD' | 'DISCHARGE' | null, source: 'USER_EDITED' as const }
+      // Jejak asal dipertahankan untuk baris yang isinya tidak berubah; hanya baris
+      // baru atau yang benar-benar diubah peninjau yang dicap USER_EDITED (§9).
+      const baru = { name, quantity: q, unit: teksOpsional(c.unit, 20), operation: op as 'LOAD' | 'DISCHARGE' | null }
+      const sama = asal.p.cargoes.find(
+        (a) => a.name === baru.name && a.quantity === baru.quantity && a.unit === baru.unit && a.operation === baru.operation,
+      )
+      return { ...baru, source: sama ? sama.source : ('USER_EDITED' as const) }
     })
     perubahan.push({ field: 'cargoes', lama: asal.p.cargoes.length, baru: p.cargoes.length })
   }

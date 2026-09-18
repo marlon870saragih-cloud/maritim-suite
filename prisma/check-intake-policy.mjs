@@ -500,7 +500,27 @@ console.log('\n[7] Kunci sumber (batas tulis, skema, pagar)')
     /const refBatal = useRef<HTMLButtonElement>\(null\)/.test(ui) &&
       /refBatal\.current\?\.focus\(\)/.test(ui) &&
       /<button ref=\{refBatal\}[^>]*onClick=\{tutup\}/.test(ui) &&
-      !/ref=\{refYa\}/.test(ui))
+!/ref=\{refYa\}/.test(ui))
+  {
+    // Batch B (Step 4G) — Cargo Edit/Add + integritas D2.
+    const pol = baca('src/services/intake/intake-policy.ts')
+    cek('B-1: muatan bisa ditambah & diubah, bukan hanya dihapus',
+      /function simpanCargo\(\)/.test(ui) && /cargoAdd:/.test(ui) && /cargoEdit:/.test(ui) && /formCargo\?\.i === 'baru'/.test(ui))
+    cek('B-1: batas jumlah muatan dipakai dari kebijakan, bukan angka tertulis di UI',
+      /MAKS_CARGO_INTAKE/.test(ui) && /p\.cargoes\.length >= MAKS_CARGO_INTAKE/.test(ui))
+    cek('B-1: PATCH muatan mempertahankan jejak asal baris yang tidak berubah',
+      /asal\.p\.cargoes\.find\(/.test(svc) && /sama \? sama\.source : \('USER_EDITED' as const\)/.test(svc))
+    cek('B-2: status MMSI dibawa sebagai data, bukan teks Indonesia di dalam label',
+      !/belum terverifikasi/.test(pol.match(/function labelKapal[\s\S]*?\n}/)?.[0] ?? '') &&
+        /mmsiUnverified\?: boolean/.test(pol) &&
+        /mmsiUnverified: !!v\.mmsi && !v\.mmsiVerifiedAt/.test(pol))
+    cek('B-2: penanda MMSI tampil di dropdown & kandidat, berlabel id & en',
+      /o\.mmsiUnverified \? ` · \$\{t\.mmsiUnverified\}`/.test(ui) &&
+        /c\.mmsiUnverified \? ` · \$\{t\.mmsiUnverified\}`/.test(ui) &&
+        (ui.match(/mmsiUnverified: '/g) ?? []).length === 2)
+    cek('B-3: dropdown master menampilkan pilihan yang sedang aktif',
+      /value=\{dropdown \|\| \(h\.selectedId && opsi\.some/.test(ui))
+  }
   cek('intake tidak menyalakan pemantauan otomatis', !/mulaiPemantauan|monitoredVoyage/.test(svc))
   cek('intake tak bergantung pada AIS', !/services\/ais|\bais\b/i.test(svc.replace(/^\s*\/\/.*$/gm, '')))
 }

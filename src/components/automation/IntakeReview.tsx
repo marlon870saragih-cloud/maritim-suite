@@ -35,6 +35,7 @@ import {
   inputVisual,
   kandidatBerisiko,
   kandidatLain,
+  MAKS_CARGO_INTAKE,
   MIN_PANJANG_ALASAN,
   penjelasanKonflik,
   type FieldUsulan,
@@ -81,10 +82,10 @@ const STR: Record<Lang, Record<string, string>> = {
     master: 'Data master', selected: 'Terpilih', otherCandidates: 'Kemungkinan lain', choose: 'Pilih', confirm: 'Ya, ini benar',
     pickFromMaster: '— cari di data master —', useSelected: 'Pakai pilihan ini', createNew: 'Buat data master baru',
     leaveEmpty: 'Biarkan kosong', undoEmpty: 'Batalkan "kosong"', unselect: 'Batalkan pilihan',
-    riskyAsk: 'Kandidat ini berisiko. Yakin memilih', riskyYes: 'Ya, pilih', riskyUnverified: 'MMSI kapal ini belum terverifikasi di data master.',
+    riskyAsk: 'Kandidat ini berisiko. Yakin memilih', riskyYes: 'Ya, pilih', mmsiUnverified: 'MMSI belum terverifikasi', riskyUnverified: 'MMSI kapal ini belum terverifikasi di data master.',
     riskyPartial: 'Namanya hanya mirip, tidak sama.', riskyInactive: 'Data master ini nonaktif.', riskyConflict: 'Identitas di dokumen bertentangan.',
     portsLink: 'Kelola data master pelabuhan', noPortCreate: 'Pelabuhan tidak dibuat dari intake — tambahkan dulu di data master bila belum ada.',
-    cargoTitle: 'Muatan', noCargo: 'Tidak ada muatan.', remove: 'Hapus', contact: 'Narahubung di dokumen (hanya untuk mengisi data master baru)',
+    cargoTitle: 'Muatan', noCargo: 'Tidak ada muatan.', remove: 'Hapus', cargoEdit: 'Ubah', cargoAdd: 'Tambah muatan', cargoName: 'Nama muatan', cargoQty: 'Jumlah', cargoUnit: 'Satuan', cargoOp: 'Operasi', cargoOpNone: '— tidak ditentukan —', cargoSave: 'Simpan muatan', cargoCancel: 'Batal', cargoNameReq: 'Nama muatan wajib diisi.', cargoQtyBad: 'Jumlah harus angka 0 atau lebih.', cargoFull: 'Sudah mencapai batas 20 muatan.', contact: 'Narahubung di dokumen (hanya untuk mengisi data master baru)',
     dupTitle: 'Pemeriksaan duplikat', noDup: 'Tidak ditemukan voyage atau intake lain yang mirip.',
     dupBanner: 'Ada voyage yang mungkin sama dengan permintaan ini. Periksa bagian "Pemeriksaan duplikat" sebelum menyetujui.',
     thisIntake: 'Permintaan ini', existing: 'Voyage yang ada',
@@ -135,10 +136,10 @@ const STR: Record<Lang, Record<string, string>> = {
     master: 'Master data', selected: 'Selected', otherCandidates: 'Other possibilities', choose: 'Choose', confirm: 'Yes, this is right',
     pickFromMaster: '— search master data —', useSelected: 'Use this selection', createNew: 'Create new master record',
     leaveEmpty: 'Leave empty', undoEmpty: 'Undo "empty"', unselect: 'Clear selection',
-    riskyAsk: 'This candidate is risky. Really choose', riskyYes: 'Yes, choose', riskyUnverified: 'This vessel’s MMSI is not verified in master data.',
+    riskyAsk: 'This candidate is risky. Really choose', riskyYes: 'Yes, choose', mmsiUnverified: 'MMSI unverified', riskyUnverified: 'This vessel’s MMSI is not verified in master data.',
     riskyPartial: 'The name is only similar, not the same.', riskyInactive: 'This master record is inactive.', riskyConflict: 'The document identity is conflicting.',
     portsLink: 'Manage port master', noPortCreate: 'Ports are not created from an intake — add it to the port master first if missing.',
-    cargoTitle: 'Cargo', noCargo: 'No cargo.', remove: 'Remove', contact: 'Contact in document (only to prefill new master data)',
+    cargoTitle: 'Cargo', noCargo: 'No cargo.', remove: 'Remove', cargoEdit: 'Edit', cargoAdd: 'Add cargo', cargoName: 'Cargo name', cargoQty: 'Quantity', cargoUnit: 'Unit', cargoOp: 'Operation', cargoOpNone: '— not specified —', cargoSave: 'Save cargo', cargoCancel: 'Cancel', cargoNameReq: 'Cargo name is required.', cargoQtyBad: 'Quantity must be a number 0 or greater.', cargoFull: 'The 20 cargo limit has been reached.', contact: 'Contact in document (only to prefill new master data)',
     dupTitle: 'Duplicate check', noDup: 'No similar voyage or intake found.',
     dupBanner: 'A voyage may already exist for this request. Check "Duplicate check" before approving.',
     thisIntake: 'This request', existing: 'Existing voyage',
@@ -191,7 +192,8 @@ const LABEL_ALASAN_DUP: Record<Lang, Record<string, string>> = {
   },
 }
 
-type Opsi = { id: string; name: string; label?: string }
+type Opsi = { id: string; name: string; label?: string; mmsiUnverified?: boolean }
+type FormCargo = { i: number | 'baru'; name: string; quantity: string; unit: string; operation: string }
 type Entitas = 'vessel' | 'principal' | 'customer' | 'port'
 type Buat = { kind: 'vessel'; index: number } | { kind: 'principal' } | { kind: 'customer' }
 type LokasiGalat = 'atas' | 'aksi' | 'duplikat'
@@ -239,6 +241,9 @@ export function IntakeReview({ id }: { id: string }) {
   const [notice, setNotice] = useState('')
   const [edit, setEdit] = useState<{ key: string; value: string } | null>(null)
   const [master, setMaster] = useState<Record<Entitas, Opsi[]>>({ vessel: [], principal: [], customer: [], port: [] })
+  /** Formulir muatan: 'baru' saat menambah, indeks saat mengubah baris yang ada. */
+  const [formCargo, setFormCargo] = useState<FormCargo | null>(null)
+  const [galatCargo, setGalatCargo] = useState('')
   const [putusan, setPutusan] = useState<'' | 'CONTINUE_AS_NEW'>('')
   const [sudahCek, setSudahCek] = useState(false)
   const [alasan, setAlasan] = useState('')
@@ -282,7 +287,9 @@ export function IntakeReview({ id }: { id: string }) {
       }
     }
     const [vessel, principal, customer, port] = await Promise.all([
-      ambil('/api/vessels', (x) => ({ id: String(x.id), name: String(x.name), label: [x.name, x.imoNumber && `IMO ${x.imoNumber}`, x.mmsi && `MMSI ${x.mmsi}`, x.callSign && `CS ${x.callSign}`].filter(Boolean).join(' · ') })),
+      // Penanda MMSI belum terverifikasi dibawa sebagai data, bukan teks, agar
+      // bisa diterjemahkan saat dirender (D2 — peninjau harus melihatnya di dropdown).
+      ambil('/api/vessels', (x) => ({ id: String(x.id), name: String(x.name), mmsiUnverified: !!x.mmsi && !x.mmsiVerifiedAt, label: [x.name, x.imoNumber && `IMO ${x.imoNumber}`, x.mmsi && `MMSI ${x.mmsi}`, x.callSign && `CS ${x.callSign}`].filter(Boolean).join(' · ') })),
       ambil('/api/principals', (x) => ({ id: String(x.id), name: String(x.name) })),
       ambil('/api/customers', (x) => ({ id: String(x.id), name: String(x.name) })),
       ambil('/api/ports', (x) => ({ id: String(x.id), name: String(x.name), label: x.unlocode ? `${x.name} (${x.unlocode})` : String(x.name) })),
@@ -376,6 +383,62 @@ export function IntakeReview({ id }: { id: string }) {
   }
 
   const p = d.proposal
+
+  /**
+   * Simpan satu baris muatan (tambah atau ubah). Server menerima larik utuh dan
+   * mempertahankan jejak asal baris yang isinya tidak berubah, jadi kirim semuanya.
+   */
+  function simpanCargo() {
+    if (!formCargo) return
+    const name = formCargo.name.trim()
+    if (!name) return setGalatCargo(t.cargoNameReq)
+    const qTeks = formCargo.quantity.trim().replace(",", ".")
+    const q = qTeks === "" ? null : Number(qTeks)
+    if (q !== null && (!Number.isFinite(q) || q < 0)) return setGalatCargo(t.cargoQtyBad)
+    const baris = { name, quantity: q, unit: formCargo.unit.trim() || null, operation: formCargo.operation || null }
+    const daftar = formCargo.i === "baru" ? [...p.cargoes, baris] : p.cargoes.map((c, j) => (j === formCargo.i ? baris : c))
+    setGalatCargo("")
+    setFormCargo(null)
+void patch({ cargoes: daftar })
+  }
+
+  /** Formulir satu baris muatan; dipakai untuk menambah maupun mengubah. */
+  function formulirCargo() {
+    if (!formCargo) return null
+    const set = (k: 'name' | 'quantity' | 'unit' | 'operation', v: string) => setFormCargo({ ...formCargo, [k]: v })
+    return (
+      <div className="rounded border border-border-muted p-3">
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div className="min-w-0">
+            <label className={labelCls} htmlFor="cargo-name">{t.cargoName}</label>
+            <input id="cargo-name" value={formCargo.name} onChange={(e) => set('name', e.target.value)} maxLength={200} className={inputCls} />
+          </div>
+          <div className="min-w-0">
+            <label className={labelCls} htmlFor="cargo-qty">{t.cargoQty}</label>
+            <input id="cargo-qty" inputMode="decimal" value={formCargo.quantity} onChange={(e) => set('quantity', e.target.value)} className={inputCls} />
+          </div>
+          <div className="min-w-0">
+            <label className={labelCls} htmlFor="cargo-unit">{t.cargoUnit}</label>
+            <input id="cargo-unit" value={formCargo.unit} onChange={(e) => set('unit', e.target.value)} maxLength={20} className={inputCls} />
+          </div>
+          <div className="min-w-0">
+            <label className={labelCls} htmlFor="cargo-op">{t.cargoOp}</label>
+            <select id="cargo-op" value={formCargo.operation} onChange={(e) => set('operation', e.target.value)} className={inputCls}>
+              <option value="">{t.cargoOpNone}</option>
+              <option value="LOAD">LOAD</option>
+              <option value="DISCHARGE">DISCHARGE</option>
+            </select>
+          </div>
+        </div>
+        {galatCargo && <p role="alert" className="mt-2 text-xs text-status-danger">{galatCargo}</p>}
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button type="button" disabled={busy} className={cn(btnCls, 'min-h-[30px] px-2 bg-accent-blue text-white hover:bg-accent-blue/90')} onClick={simpanCargo}>{t.cargoSave}</button>
+          <button type="button" disabled={busy} className={btnKecil} onClick={() => { setFormCargo(null); setGalatCargo('') }}>{t.cargoCancel}</button>
+        </div>
+      </div>
+    )
+  }
+
   const m = d.matches
   const rev = d.review
   const pelanggan = idDipakai(m.customer)
@@ -602,20 +665,49 @@ export function IntakeReview({ id }: { id: string }) {
       {/* Muatan */}
       <section className={cardCls} aria-labelledby="in-cargo">
         <h2 id="in-cargo" className="font-display text-lg text-text-primary">{t.cargoTitle}</h2>
-        {p.cargoes.length === 0 ? (
+        {p.cargoes.length === 0 && formCargo?.i !== 'baru' ? (
           <p className="mt-2 text-sm text-text-secondary">{t.noCargo}</p>
         ) : (
           <ul className="mt-2 space-y-1 text-sm">
-            {p.cargoes.map((c, i) => (
-              <li key={i} className="flex flex-wrap items-center gap-2 text-text-primary">
-                <span className="break-words">{c.name}{c.quantity != null ? ` · ${formatJumlah(c.quantity, lang)} ${c.unit ?? ''}` : ''}{c.operation ? ` · ${c.operation}` : ''}</span>
-                <ProvenanceBadge f={{ value: c.name, source: c.source, flags: [], extracted: null, confirmed: false }} lang={lang} />
-                {bisaEdit && (
-                  <button type="button" disabled={busy} className={btnKecil} onClick={() => void patch({ cargoes: p.cargoes.filter((_, j) => j !== i) })}>{t.remove}</button>
-                )}
-              </li>
-            ))}
+            {p.cargoes.map((c, i) =>
+              formCargo?.i === i ? (
+                <li key={i}>{formulirCargo()}</li>
+              ) : (
+                <li key={i} className="flex flex-wrap items-center gap-2 text-text-primary">
+                  <span className="break-words">{c.name}{c.quantity != null ? ` · ${formatJumlah(c.quantity, lang)} ${c.unit ?? ''}` : ''}{c.operation ? ` · ${c.operation}` : ''}</span>
+                  <ProvenanceBadge f={{ value: c.name, source: c.source, flags: [], extracted: null, confirmed: false }} lang={lang} />
+                  {bisaEdit && !formCargo && (
+                    <>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        className={btnKecil}
+                        onClick={() => { setGalatCargo(''); setFormCargo({ i, name: c.name, quantity: c.quantity == null ? '' : String(c.quantity), unit: c.unit ?? '', operation: c.operation ?? '' }) }}
+                      >
+                        {t.cargoEdit}
+                      </button>
+                      <button type="button" disabled={busy} className={btnKecil} onClick={() => void patch({ cargoes: p.cargoes.filter((_, j) => j !== i) })}>{t.remove}</button>
+                    </>
+                  )}
+                </li>
+              ),
+            )}
+            {formCargo?.i === 'baru' && <li>{formulirCargo()}</li>}
           </ul>
+        )}
+        {bisaEdit && !formCargo && (
+          p.cargoes.length >= MAKS_CARGO_INTAKE ? (
+            <p className="mt-2 text-xs text-text-secondary">{t.cargoFull}</p>
+          ) : (
+            <button
+              type="button"
+              disabled={busy}
+              className={cn(btnKecil, 'mt-2')}
+              onClick={() => { setGalatCargo(''); setFormCargo({ i: 'baru', name: '', quantity: '', unit: '', operation: '' }) }}
+            >
+              <Plus className="w-3.5 h-3.5" aria-hidden="true" /> {t.cargoAdd}
+            </button>
+          )
         )}
       </section>
 
@@ -1102,7 +1194,7 @@ function MatchPanel({
                   <span className="text-text-primary [overflow-wrap:anywhere]">{c.label}</span>
                   <span className={cn('text-[11px]', kandidatBerisiko(h, c) ? 'text-accent-amber' : 'text-text-secondary')}>
                     {kandidatBerisiko(h, c) && <AlertTriangle className="mr-0.5 inline w-3 h-3" aria-hidden="true" />}
-                    {L[basisTerkuat(c.basis)] ?? c.basis}{c.warning ? ` · ${L[c.warning] ?? c.warning}` : ''}
+                    {L[basisTerkuat(c.basis)] ?? c.basis}{c.warning ? ` · ${L[c.warning] ?? c.warning}` : ''}{c.mmsiUnverified ? ` · ${t.mmsiUnverified}` : ''}
                   </span>
                   {bisaEdit && !c.warning && (
                     <button type="button" onClick={() => pakaiKandidat(c)} className={btnKecil}>{t.choose}</button>
@@ -1128,12 +1220,16 @@ function MatchPanel({
             <>
               <select
                 aria-label={t.pickFromMaster}
-                value={dropdown}
+                value={dropdown || (h.selectedId && opsi.some((o) => o.id === h.selectedId) ? h.selectedId : '')}
                 onChange={(e) => setDropdown(e.target.value)}
                 className="min-w-0 max-w-full bg-surface border border-border-muted rounded px-2 py-1 text-xs text-text-primary"
               >
                 <option value="">{t.pickFromMaster}</option>
-                {opsi.map((o) => <option key={o.id} value={o.id}>{o.label ?? o.name}</option>)}
+                {opsi.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {(o.label ?? o.name) + (o.mmsiUnverified ? ` · ${t.mmsiUnverified}` : '')}
+                  </option>
+                ))}
               </select>
               {dropdown && (
                 <button type="button" onClick={() => { pilih(dropdown, false); setDropdown('') }} className={btnKecil}>{t.useSelected}</button>

@@ -143,7 +143,7 @@ export type BasisCocok =
   | 'SELECTED_BY_REVIEWER'
   | 'CREATED_BY_REVIEWER'
 
-export type KandidatCocok = { id: string; label: string; basis: string; warning?: string | null }
+export type KandidatCocok = { id: string; label: string; basis: string; warning?: string | null; mmsiUnverified?: boolean }
 
 export type HasilCocok = {
   status: StatusCocok
@@ -483,7 +483,7 @@ export const cocokKosong = (status: StatusCocok = 'NOT_FOUND'): HasilCocok => ({
 })
 
 function labelKapal(v: KapalMaster): string {
-  return [v.name, v.imoNumber ? `IMO ${v.imoNumber}` : null, v.mmsi ? `MMSI ${v.mmsi}${v.mmsiVerifiedAt ? '' : ' (belum terverifikasi)'}` : null, v.callSign ? `CS ${v.callSign}` : null]
+  return [v.name, v.imoNumber ? `IMO ${v.imoNumber}` : null, v.mmsi ? `MMSI ${v.mmsi}` : null, v.callSign ? `CS ${v.callSign}` : null]
     .filter(Boolean)
     .join(' · ')
 }
@@ -493,7 +493,7 @@ function kumpulkanKandidat(daftar: Array<{ v: KapalMaster; basis: string }>): Ka
   for (const { v, basis } of daftar) {
     const ada = lihat.get(v.id)
     if (ada) ada.basis = ada.basis.includes(basis) ? ada.basis : `${ada.basis}+${basis}`
-    else lihat.set(v.id, { id: v.id, label: labelKapal(v), basis })
+    else lihat.set(v.id, { id: v.id, label: labelKapal(v), basis, mmsiUnverified: !!v.mmsi && !v.mmsiVerifiedAt })
   }
   return Array.from(lihat.values()).slice(0, MAKS_KANDIDAT)
 }
