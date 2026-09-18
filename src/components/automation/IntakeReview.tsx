@@ -44,6 +44,7 @@ import {
   type KandidatDuplikat,
 } from '@/services/intake/intake-policy'
 import { VesselFieldsGrid, emptyForm, inputCls, labelCls, type FormState } from '@/components/settings/vessel-form'
+import { VOYAGE_STATUS_COLOR, type VoyageStatusStr } from '@/components/voyage/voyage-status'
 import { btnCls, fmtWaktu } from './shared'
 import {
   DuplicateBadge,
@@ -175,7 +176,12 @@ const LABEL_ALASAN_DUP: Record<Lang, Record<string, string>> = {
   id: {
     SAME_PORT_ACTIVE_ETA_CLOSE: 'pelabuhan sama, voyage masih aktif, ETA berselisih ≤ 3 hari',
     SAME_PORT_ACTIVE_NO_ETA: 'pelabuhan sama, voyage aktif belum punya ETA',
+    // Kode lama: masih dipakai baris duplikat yang TERSIMPAN sebelum pemecahan kode di
+    // bawah, dan baris itu bisa saja beda pelabuhan — jadi teksnya tak boleh mengklaim apa pun
+    // soal pelabuhan. Dua kode di bawahnya hanya muncul pada duplikat yang dihitung ulang.
     ETA_WITHIN_WINDOW: 'ETA berselisih ≤ 7 hari',
+    ETA_WITHIN_WINDOW_OTHER_PORT: 'ETA berselisih ≤ 7 hari, tetapi PELABUHANNYA BERBEDA',
+    ETA_WITHIN_WINDOW_PORT_UNKNOWN: 'ETA berselisih ≤ 7 hari, pelabuhan salah satunya belum diketahui',
     PORT_MISSING: 'pelabuhan salah satunya belum diketahui',
     ETA_MISSING: 'ETA salah satunya belum diketahui',
     RECENTLY_COMPLETED_SAME_PORT: 'baru selesai di pelabuhan yang sama',
@@ -185,6 +191,8 @@ const LABEL_ALASAN_DUP: Record<Lang, Record<string, string>> = {
     SAME_PORT_ACTIVE_ETA_CLOSE: 'same port, voyage still active, ETA within 3 days',
     SAME_PORT_ACTIVE_NO_ETA: 'same port, active voyage has no ETA',
     ETA_WITHIN_WINDOW: 'ETA within 7 days',
+    ETA_WITHIN_WINDOW_OTHER_PORT: 'ETA within 7 days, but a DIFFERENT port',
+    ETA_WITHIN_WINDOW_PORT_UNKNOWN: 'ETA within 7 days, port unknown on one side',
     PORT_MISSING: 'port unknown on one side',
     ETA_MISSING: 'ETA unknown on one side',
     RECENTLY_COMPLETED_SAME_PORT: 'recently completed at the same port',
@@ -196,7 +204,7 @@ type Opsi = { id: string; name: string; label?: string; mmsiUnverified?: boolean
 type FormCargo = { i: number | 'baru'; name: string; quantity: string; unit: string; operation: string }
 type Entitas = 'vessel' | 'principal' | 'customer' | 'port'
 type Buat = { kind: 'vessel'; index: number } | { kind: 'principal' } | { kind: 'customer' }
-type LokasiGalat = 'atas' | 'aksi' | 'duplikat'
+type LokasiGalat = 'atas' | 'aksi' | 'duplikat' | 'field'
 
 const cardCls = 'bg-card-bg border border-card-border rounded-lg p-4 sm:p-5 min-w-0'
 const btnGaris = cn(btnCls, 'border border-border-muted text-text-secondary hover:text-text-primary')
@@ -351,7 +359,7 @@ export function IntakeReview({ id }: { id: string }) {
     }
   }
 
-  const patch = (body: Record<string, unknown>) => kirim(`/api/automation/intakes/${id}`, 'PATCH', body)
+  const patch = (body: Record<string, unknown>, lokasi: LokasiGalat = 'atas') => kirim(`/api/automation/intakes/${id}`, 'PATCH', body, lokasi)
 
   async function mulaiPantau() {
     if (!d?.voyageId) return
@@ -474,9 +482,9 @@ void patch({ cargoes: daftar })
     setRingkasan('approve')
   }
 
-  const ubahField = (key: string, value: string | null) => {
-    setEdit(null)
-    void patch({ fields: { [key]: value === '' ? null : value } })
+  // C-5 — isian tetap terbuka bila server menolak, supaya galatnya bisa tampil di sebelahnya.
+  const ubahField = async (key: string, value: string | null) => {
+    if (await patch({ fields: { [key]: value === '' ? null : value } }, 'field')) setEdit(null)
   }
 
   const baris = (key: string, label: string, f: FieldUsulan, jenis: 'text' | 'date' = 'text', bisa = true) => (
@@ -488,11 +496,13 @@ void patch({ cargoes: daftar })
       t={t}
       bisaEdit={!!bisaEdit && !busy && bisa}
       sedangEdit={edit?.key === key ? edit.value : null}
-      mulai={() => setEdit({ key, value: f.value ?? '' })}
+      mulai={() => { setGalat(null); setEdit({ key, value: f.value ?? '' }) }}
       ubah={(v) => setEdit({ key, value: v })}
-      batal={() => setEdit(null)}
-      simpan={() => ubahField(key, edit?.value ?? '')}
+      batal={() => { setGalat(null); setEdit(null) }}
+      simpan={() => void ubahField(key, edit?.value ?? '')}
       jenis={jenis}
+      visual={visual}
+      galat={galat?.lokasi === 'field' && edit?.key === key ? galat.pesan : undefined}
     />
   )
 
@@ -554,13 +564,16 @@ void patch({ cargoes: daftar })
                     t={t}
                     bisaEdit={!!bisaEdit && !busy && !v.excluded}
                     sedangEdit={edit?.key === `v${i}.${k}` ? edit.value : null}
-                    mulai={() => setEdit({ key: `v${i}.${k}`, value: v[k].value ?? '' })}
+                    mulai={() => { setGalat(null); setEdit({ key: `v${i}.${k}`, value: v[k].value ?? '' }) }}
                     ubah={(x) => setEdit({ key: `v${i}.${k}`, value: x })}
-                    batal={() => setEdit(null)}
+                    batal={() => { setGalat(null); setEdit(null) }}
+                    visual={visual}
+                    galat={galat?.lokasi === 'field' && edit?.key === `v${i}.${k}` ? galat.pesan : undefined}
                     simpan={() => {
                       const nilai = edit?.value ?? ''
-                      setEdit(null)
-                      void patch({ vessels: [{ index: i, [k]: nilai === '' ? null : nilai }] })
+                      void (async () => {
+                        if (await patch({ vessels: [{ index: i, [k]: nilai === '' ? null : nilai }] }, 'field')) setEdit(null)
+                      })()
                     }}
                   />
                 ))}
@@ -582,7 +595,7 @@ void patch({ cargoes: daftar })
                     ) : (
                       <span className="text-sm text-text-primary">{v.role.value ? namaPeran(v.role.value) : t.empty}</span>
                     )}
-                    <ProvenanceBadge f={v.role} lang={lang} />
+                    <ProvenanceBadge f={v.role} lang={lang} visual={visual} />
                   </div>
                 </div>
               </div>
@@ -675,7 +688,7 @@ void patch({ cargoes: daftar })
               ) : (
                 <li key={i} className="flex flex-wrap items-center gap-2 text-text-primary">
                   <span className="break-words">{c.name}{c.quantity != null ? ` · ${formatJumlah(c.quantity, lang)} ${c.unit ?? ''}` : ''}{c.operation ? ` · ${c.operation}` : ''}</span>
-                  <ProvenanceBadge f={{ value: c.name, source: c.source, flags: [], extracted: null, confirmed: false }} lang={lang} />
+                  <ProvenanceBadge f={{ value: c.name, source: c.source, flags: [], extracted: null, confirmed: false }} lang={lang} visual={visual} />
                   {bisaEdit && !formCargo && (
                     <>
                       <button
@@ -736,8 +749,15 @@ void patch({ cargoes: daftar })
                       <Link href={`/automation/intake/${c.id}`} className="font-medium text-accent-blue hover:underline">{t.openIntake}</Link>
                     )}
                   </div>
-                  <p className="mt-1 text-text-primary break-words">
-                    {t.existing}: {[c.vesselName, c.portName, c.eta && `ETA ${formatTanggal(c.eta, lang)}`, c.status !== 'OPEN_INTAKE' && c.status].filter(Boolean).join(' · ')}
+                  {/* C-3 — status voyage tak lagi diselipkan sebagai token telanjang di
+                      tengah kalimat; jadi lencana berlabel dengan warna status bersama. */}
+                  <p className="mt-1 flex flex-wrap items-center gap-2 text-text-primary break-words">
+                    <span>{t.existing}: {[c.vesselName, c.portName, c.eta && `ETA ${formatTanggal(c.eta, lang)}`].filter(Boolean).join(' · ') || t.empty}</span>
+                    {c.status !== 'OPEN_INTAKE' && (
+                      <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[11px]', VOYAGE_STATUS_COLOR[c.status as VoyageStatusStr] ?? 'border-border-muted text-text-secondary')}>
+                        {t.cStatus}: {c.status}
+                      </span>
+                    )}
                   </p>
                   <p className="mt-1 text-xs text-text-secondary">{t.basis}: {LABEL_ALASAN_DUP[lang][c.reason] ?? c.reason}</p>
                   {bisaEdit && c.type === 'VOYAGE' && (
@@ -1080,13 +1100,15 @@ function Info({ label, value }: { label: string; value: string }) {
 
 /** Satu baris isian: label | nilai (+ bacaan AI) | lencana & tombol — menumpuk rapi di layar sempit. */
 function FieldRow({
-  label, f, lang, t, bisaEdit, sedangEdit, mulai, ubah, batal, simpan, jenis = 'text',
+  label, f, lang, t, bisaEdit, sedangEdit, mulai, ubah, batal, simpan, jenis = 'text', visual = false, galat,
 }: {
   label: string
   f: FieldUsulan<string | null> | FieldUsulan
   lang: Lang
   t: Record<string, string>
   bisaEdit: boolean
+  visual?: boolean
+  galat?: string | string[]
   sedangEdit: string | null
   mulai: () => void
   ubah: (v: string) => void
@@ -1101,21 +1123,25 @@ function FieldRow({
       <span className="text-sm text-text-secondary">{label}</span>
       <div className="min-w-0">
         {sedangEdit !== null ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              type={jenis}
-              aria-label={label}
-              value={sedangEdit}
-              onChange={(e) => ubah(e.target.value)}
-              className="min-w-0 max-w-full bg-surface border border-border-muted rounded px-2 py-1 text-sm text-text-primary"
-            />
-            <button type="button" onClick={simpan} className={btnKecil}>{t.save}</button>
-            <button type="button" onClick={batal} className={btnKecil}>{t.cancel}</button>
-          </div>
+          <>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type={jenis}
+                aria-label={label}
+                value={sedangEdit}
+                onChange={(e) => ubah(e.target.value)}
+                className="min-w-0 max-w-full bg-surface border border-border-muted rounded px-2 py-1 text-sm text-text-primary"
+              />
+              <button type="button" onClick={simpan} className={btnKecil}>{t.save}</button>
+              <button type="button" onClick={batal} className={btnKecil}>{t.cancel}</button>
+            </div>
+            {/* C-5 — penolakan isian ini tampil di sebelah isiannya, bukan di puncak layar. */}
+            {galat && <div className="mt-1"><Galat id="galat-field" pesan={galat} /></div>}
+          </>
         ) : (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="text-sm text-text-primary [overflow-wrap:anywhere]">{tampil(f.value)}</span>
-            <ProvenanceBadge f={f as FieldUsulan} lang={lang} />
+            <ProvenanceBadge f={f as FieldUsulan} lang={lang} visual={visual} />
             {bisaEdit && (
               <button type="button" onClick={mulai} className={cn(btnCls, 'min-h-[26px] px-2 border border-border-muted text-text-secondary hover:text-text-primary')}>{t.edit}</button>
             )}

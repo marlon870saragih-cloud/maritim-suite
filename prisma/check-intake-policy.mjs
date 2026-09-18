@@ -32,7 +32,9 @@ import {
 import { TENANT_MODELS } from '../src/services/tenant-guard.ts'
 
 const AKAR = fileURLToPath(new URL('..', import.meta.url))
-const baca = (rel) => readFileSync(join(AKAR, rel), 'utf8')
+// Akhir-baris dinormalkan ke LF: di Windows berkas kerja bisa CRLF (core.autocrlf),
+// dan pola seperti /\n\n/ di bawah akan meleset tanpa ini — kerapuhan uji, bukan cacat kode.
+const baca = (rel) => readFileSync(join(AKAR, rel), 'utf8').replace(/\r\n/g, '\n')
 
 let lulus = 0
 let gagal = 0
@@ -520,6 +522,30 @@ console.log('\n[7] Kunci sumber (batas tulis, skema, pagar)')
         (ui.match(/mmsiUnverified: '/g) ?? []).length === 2)
     cek('B-3: dropdown master menampilkan pilihan yang sedang aktif',
       /value=\{dropdown \|\| \(h\.selectedId && opsi\.some/.test(ui))
+
+    // Batch C (Step 4G) — kejelasan pesan, alasan, dan letak galat.
+    const bersama = baca('src/components/automation/intake-shared.tsx')
+    cek('C-1: lencana tanggal di luar rentang menyebut batasnya dari konstanta kebijakan',
+      /TANGGAL_MUNDUR_HARI,\s*TANGGAL_MAJU_HARI|TANGGAL_MAJU_HARI,\s*TANGGAL_MUNDUR_HARI/.test(bersama) &&
+        !/implausible date/.test(bersama) &&
+        (bersama.match(/DATE_OUT_OF_RANGE: `[^`]*\$\{TANGGAL_MUNDUR_HARI\}[^`]*\$\{TANGGAL_MAJU_HARI\}[^`]*`/g) ?? []).length === 2)
+    const alasanEta = ['ETA_WITHIN_WINDOW', 'ETA_WITHIN_WINDOW_OTHER_PORT', 'ETA_WITHIN_WINDOW_PORT_UNKNOWN']
+    cek('C-2: alasan duplikat ETA dipecah menurut keadaan pelabuhan',
+      alasanEta.every((k) => new RegExp(`'${k}'`).test(pol)) &&
+        // Dicocokkan dengan split, bukan regex word-boundary: escape itu di dalam
+        // template literal JS terbaca sebagai karakter backspace, jadi tak pernah cocok.
+        alasanEta.every((k) => ui.split(k + ": '").length - 1 === 2))
+    cek('C-3: status voyage tidak lagi disambung mentah ke dalam kalimat',
+      !/c\.status !== 'OPEN_INTAKE' && c\.status\]/.test(ui) && /VOYAGE_STATUS_COLOR\[c\.status as VoyageStatusStr\]/.test(ui))
+    cek('C-4: lencana asal tahu intake berasal dari PDF/gambar',
+      /visual = false/.test(bersama) &&
+        /f\.flags\.includes\('UNVERIFIED_SOURCE'\) \|\| visual/.test(bersama) &&
+        (ui.match(/<ProvenanceBadge[^>]*visual=\{visual\}/g) ?? []).length === 3 &&
+        !/<ProvenanceBadge(?![^>]*visual=)/.test(ui))
+    cek('C-5: penolakan isian tampil di sebelah isiannya dan isian tetap terbuka',
+      /'atas' \| 'aksi' \| 'duplikat' \| 'field'/.test(ui) &&
+        /if \(await patch\(\{ fields: \{ \[key\]: value === '' \? null : value \} \}, 'field'\)\) setEdit\(null\)/.test(ui) &&
+        /<Galat id="galat-field" pesan=\{galat\} \/>/.test(ui))
   }
   cek('intake tidak menyalakan pemantauan otomatis', !/mulaiPemantauan|monitoredVoyage/.test(svc))
   cek('intake tak bergantung pada AIS', !/services\/ais|\bais\b/i.test(svc.replace(/^\s*\/\/.*$/gm, '')))

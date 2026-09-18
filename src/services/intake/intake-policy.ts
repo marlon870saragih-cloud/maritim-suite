@@ -772,7 +772,14 @@ export function nilaiDuplikat(
       reason = v.eta === null ? 'SAME_PORT_ACTIVE_NO_ETA' : 'SAME_PORT_ACTIVE_ETA_CLOSE'
     } else if (d !== null && d <= AMBANG_DUPLIKAT_POSSIBLE_HARI) {
       level = 'POSSIBLE_DUPLICATE'
-      reason = 'ETA_WITHIN_WINDOW'
+      // Pelabuhan yang berbeda adalah alasan terkuat ini BUKAN duplikat, jadi
+      // disebut terpisah — peninjau tak perlu membandingkan sendiri (4G C-2).
+      reason =
+        !u.portId || !v.portId
+          ? 'ETA_WITHIN_WINDOW_PORT_UNKNOWN'
+          : u.portId !== v.portId
+            ? 'ETA_WITHIN_WINDOW_OTHER_PORT'
+            : 'ETA_WITHIN_WINDOW'
     } else if (!u.portId || !v.portId) {
       level = 'POSSIBLE_DUPLICATE'
       reason = 'PORT_MISSING'

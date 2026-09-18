@@ -21,7 +21,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Lang } from '@/lib/i18n'
-import type { HasilCocok } from '@/services/intake/intake-policy'
+import { TANGGAL_MAJU_HARI, TANGGAL_MUNDUR_HARI, type HasilCocok } from '@/services/intake/intake-policy'
 
 const pil = 'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium'
 const netral = 'bg-surface-tertiary text-text-secondary border-border-muted'
@@ -103,20 +103,27 @@ const LABEL_ASAL: Record<Lang, Record<string, string>> = {
     SOURCE_DOCUMENT: 'Dibaca AI dari dokumen', VISUAL: 'Dibaca AI dari PDF/gambar',
     MASTER_MATCH: 'Dari data master', USER_EDITED: 'Diisi peninjau',
     SYSTEM_DERIVED: 'Diturunkan sistem', EMPTY: 'Tidak ada di dokumen', NOT_IN_SOURCE: 'Dibuang: tidak tertulis di dokumen',
-    DATE_OUT_OF_RANGE: 'Dibuang: tanggal tidak masuk akal', IMO_CHECK_DIGIT: 'Nomor IMO tampak salah ketik',
+    DATE_OUT_OF_RANGE: `Dibuang: tanggal di luar rentang yang diterima (maks ${TANGGAL_MUNDUR_HARI} hari ke belakang, ${TANGGAL_MAJU_HARI} hari ke depan)`, IMO_CHECK_DIGIT: 'Nomor IMO tampak salah ketik',
   },
   en: {
     SOURCE_DOCUMENT: 'Read by AI from the document', VISUAL: 'Read by AI from a PDF/image',
     MASTER_MATCH: 'From master data', USER_EDITED: 'Entered by reviewer',
     SYSTEM_DERIVED: 'Derived by system', EMPTY: 'Not in the document', NOT_IN_SOURCE: 'Discarded: not written in the document',
-    DATE_OUT_OF_RANGE: 'Discarded: implausible date', IMO_CHECK_DIGIT: 'IMO number looks mistyped',
+    DATE_OUT_OF_RANGE: `Discarded: date outside the accepted range (at most ${TANGGAL_MUNDUR_HARI} days back, ${TANGGAL_MAJU_HARI} days ahead)`, IMO_CHECK_DIGIT: 'IMO number looks mistyped',
   },
 }
 
 type FieldLike = { value: unknown; source: string; flags: string[]; extracted: unknown; confirmed: boolean }
 
-/** Lencana asal nilai — hasil AI selalu disebut "dibaca AI", tidak pernah sebagai fakta. */
-export function ProvenanceBadge({ f, lang }: { f: FieldLike; lang: Lang }) {
+/**
+ * Lencana asal nilai — hasil AI selalu disebut "dibaca AI", tidak pernah sebagai fakta.
+ * `visual` = seluruh intake berasal dari PDF/gambar. Cargo & tanggal tidak membawa
+ * bendera UNVERIFIED_SOURCE sendiri (lihat `tanggal()`/cargo di intake-policy), jadi
+ * tanpa ini mereka tampil "dibaca dari dokumen" sementara field identitas di layar
+ * yang sama tampil "dibaca dari PDF/gambar". Hanya memengaruhi tampilan; gerbang
+ * konfirmasi tetap dihitung server dari proposal.
+ */
+export function ProvenanceBadge({ f, lang, visual = false }: { f: FieldLike; lang: Lang; visual?: boolean }) {
   const L = LABEL_ASAL[lang]
   const g =
     f.source === 'USER_EDITED'
@@ -124,7 +131,7 @@ export function ProvenanceBadge({ f, lang }: { f: FieldLike; lang: Lang }) {
       : f.source === 'MASTER_MATCH'
         ? { Icon: Database, c: hijau, t: L.MASTER_MATCH }
         : f.source === 'SOURCE_DOCUMENT'
-          ? f.flags.includes('UNVERIFIED_SOURCE')
+          ? f.flags.includes('UNVERIFIED_SOURCE') || visual
             ? { Icon: ShieldQuestion, c: kuning, t: L.VISUAL }
             : { Icon: Bot, c: biru, t: L.SOURCE_DOCUMENT }
           : f.flags.includes('NOT_IN_SOURCE')
