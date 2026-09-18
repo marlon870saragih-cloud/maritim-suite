@@ -45,7 +45,7 @@ import {
 } from '@/services/intake/intake-policy'
 import { VesselFieldsGrid, emptyForm, inputCls, labelCls, type FormState } from '@/components/settings/vessel-form'
 import { VOYAGE_STATUS_COLOR, type VoyageStatusStr } from '@/components/voyage/voyage-status'
-import { btnCls, fmtWaktu } from './shared'
+import { btnCls, fmtWaktu, tautanSentuhCls } from './shared'
 import {
   DuplicateBadge,
   IntakeStatusBadge,
@@ -384,7 +384,7 @@ export function IntakeReview({ id }: { id: string }) {
   if (!d) {
     return (
       <div className="space-y-3">
-        <Link href="/automation/intake" className="text-sm text-accent-blue hover:underline">{t.back}</Link>
+        <Link href="/automation/intake" className={cn(tautanSentuhCls, 'text-sm text-accent-blue hover:underline')}>{t.back}</Link>
         <Galat pesan={galat?.pesan ?? t.errLoad} />
       </div>
     )
@@ -744,9 +744,9 @@ void patch({ cargoes: daftar })
                   <div className="flex flex-wrap items-center gap-2">
                     <DuplicateBadge level={c.level} lang={lang} />
                     {c.type === 'VOYAGE' ? (
-                      <Link href={`/voyages/${c.id}`} className="font-medium text-accent-blue hover:underline break-all">{c.label}</Link>
+                      <Link href={`/voyages/${c.id}`} className={cn(tautanSentuhCls, 'font-medium text-accent-blue hover:underline break-all')}>{c.label}</Link>
                     ) : (
-                      <Link href={`/automation/intake/${c.id}`} className="font-medium text-accent-blue hover:underline">{t.openIntake}</Link>
+                      <Link href={`/automation/intake/${c.id}`} className={cn(tautanSentuhCls, 'font-medium text-accent-blue hover:underline')}>{t.openIntake}</Link>
                     )}
                   </div>
                   {/* C-3 — status voyage tak lagi diselipkan sebagai token telanjang di
@@ -829,7 +829,7 @@ void patch({ cargoes: daftar })
   return (
     <div className="space-y-6 min-w-0">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Link href="/automation/intake" className="text-sm text-accent-blue hover:underline">{t.back}</Link>
+        <Link href="/automation/intake" className={cn(tautanSentuhCls, 'text-sm text-accent-blue hover:underline')}>{t.back}</Link>
         <button type="button" onClick={() => void load()} disabled={loading || busy} className={btnGaris}>
           <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} aria-hidden="true" /> {t.refresh}
         </button>
@@ -918,7 +918,7 @@ void patch({ cargoes: daftar })
               {d.attachmentId ? (
                 <span className="flex flex-wrap items-center gap-2">
                   {t.originalKept}
-                  <a href={`/api/attachments/${d.attachmentId}/content`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-accent-blue hover:underline">
+                  <a href={`/api/attachments/${d.attachmentId}/content`} target="_blank" rel="noreferrer" className={cn(tautanSentuhCls, 'text-accent-blue hover:underline')}>
                     <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" /> {t.openOriginal}
                   </a>
                 </span>

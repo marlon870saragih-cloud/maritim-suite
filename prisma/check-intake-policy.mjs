@@ -571,6 +571,16 @@ console.log('\n[7] Kunci sumber (batas tulis, skema, pagar)')
         /t\.clearFilters/.test(daftarUi) &&
         ['emptyFiltered', 'truncated', 'showing', 'clearFilters'].every((k) => daftarUi.split(k + ": '").length - 1 === 2))
 
+    // Batch E (Step 4G) — target sentuh WCAG 2.2 SC 2.5.8 (24×24 CSS px) di 320px.
+    const shared = baca('src/components/automation/shared.tsx')
+    cek('E-1: tautan berdiri sendiri memenuhi target sentuh 24px',
+      /export const tautanSentuhCls = 'inline-flex items-center gap-1 min-h-\[24px\]'/.test(shared) &&
+        (ui.match(/cn\(tautanSentuhCls,/g) ?? []).length >= 4)
+    // Tautan yang tertanam di dalam kalimat DIKECUALIKAN oleh SC 2.5.8; memberinya
+    // tinggi paksa akan merusak alir baris. Diuji agar tak "diperbaiki" keliru kelak.
+    cek('E-2: tautan di dalam kalimat sengaja tidak diberi tinggi paksa',
+      /\{t\.noPortCreate\} <Link href="\/settings\/ports" className="text-accent-blue hover:underline">/.test(ui))
+
     cek('C-5: penolakan isian tampil di sebelah isiannya dan isian tetap terbuka',
       /'atas' \| 'aksi' \| 'duplikat' \| 'field'/.test(ui) &&
         /if \(await patch\(\{ fields: \{ \[key\]: value === '' \? null : value \} \}, 'field'\)\) setEdit\(null\)/.test(ui) &&

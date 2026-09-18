@@ -100,6 +100,13 @@ export function fmtWaktu(iso: string | null | undefined, lang: Lang): string {
   )
 }
 
+/**
+ * Tautan teks yang sekaligus target sentuh. WCAG 2.2 SC 2.5.8 meminta 24×24 CSS px.
+ * TIDAK dipakai untuk tautan yang tertanam di dalam kalimat: SC itu mengecualikannya,
+ * dan memaksakan tinggi di sana justru merusak alir baris teksnya.
+ */
+export const tautanSentuhCls = 'inline-flex items-center gap-1 min-h-[24px]'
+
 export const btnCls =
   'inline-flex items-center justify-center gap-1.5 min-h-[36px] rounded px-3 py-1.5 text-xs font-medium transition-colors ' +
   'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/60 disabled:opacity-50 disabled:cursor-not-allowed'
