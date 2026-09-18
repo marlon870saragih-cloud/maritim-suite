@@ -10,10 +10,12 @@ import { listIntakes, submitIntake, type MasukanSubmit } from '@/services/intake
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-// GET /api/automation/intakes?status=NEEDS_REVIEW
+// GET /api/automation/intakes?status=&q=&sort=createdAt|eta&dir=desc|asc&page=&perPage=
+// Balasan: { intakes, total, page, perPage, terpotong }. `total` adalah jumlah baris
+// yang cocok, bukan panjang halaman; `terpotong` menandai batas pindai tersentuh.
 export const GET = withTenant(async (ctx, req) => {
-  const intakes = await listIntakes(ctx, new URL(req.url).searchParams)
-  return Response.json({ intakes })
+  const { rows, ...sisa } = await listIntakes(ctx, new URL(req.url).searchParams)
+  return Response.json({ intakes: rows, ...sisa })
 })
 
 const benar = (v: unknown) => v === true || v === 'true' || v === '1' || v === 'on'

@@ -64,6 +64,17 @@ export const MAKS_CARGO_INTAKE = 20
 export const MAKS_PANJANG_NILAI = 200
 export const MIN_PANJANG_ALASAN = 10
 export const MIN_PANJANG_ALASAN_TOLAK = 3
+/**
+ * Daftar intake. ETA & nama kapal/pelabuhan diturunkan dari JSON proposal di
+ * JavaScript, bukan kolom basis data, sehingga cari & urut-per-ETA tak bisa
+ * dijalankan di SQL. Server memindai baris ber-status terpilih sampai batas ini,
+ * lalu mencari/mengurutkan/memenggal di memori. Bila batas tersentuh, hasilnya
+ * ditandai terpotong supaya UI tidak diam-diam menyembunyikan baris.
+ */
+export const MAKS_PINDAI_INTAKE = 1000
+export const UKURAN_HALAMAN_INTAKE = 25
+export const MAKS_UKURAN_HALAMAN_INTAKE = 100
+
 /** Rentang tanggal yang diterima dari dokumen (relatif hari ini, hari kalender). */
 export const TANGGAL_MUNDUR_HARI = 30
 export const TANGGAL_MAJU_HARI = 365

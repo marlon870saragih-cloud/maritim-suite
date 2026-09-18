@@ -601,20 +601,37 @@ export type IntakeRingkas = {
   createdAt: Date
 }
 
-export async function listIntakes(ctx: TenantContext, q: URLSearchParams): Promise<IntakeRingkas[]> {
+export type HasilDaftarIntake = {
+  rows: IntakeRingkas[]
+  total: number
+  page: number
+  perPage: number
+  /** Batas pindai tersentuh → hasil cari/urut bisa belum mencakup semua baris. */
+  terpotong: boolean
+}
+
+export async function listIntakes(ctx: TenantContext, q: URLSearchParams): Promise<HasilDaftarIntake> {
   requireIntake(ctx)
   const status = q.get('status')
   if (status && !(P.STATUS_INTAKE as readonly string[]).includes(status)) throw validation('Status tidak dikenal.')
+  const cari = (q.get('q') ?? '').trim().toLowerCase()
+  const urut = q.get('sort') === 'eta' ? 'eta' : 'createdAt'
+  const arah = q.get('dir') === 'asc' ? 'asc' : 'desc'
+  const perPage = Math.min(Math.max(Number(q.get('perPage')) || P.UKURAN_HALAMAN_INTAKE, 1), P.MAKS_UKURAN_HALAMAN_INTAKE)
+  const halamanDiminta = Math.max(Number(q.get('page')) || 1, 1)
   const db = forTenant(ctx)
   const rows = await db.vesselCallIntake.findMany({
     where: status ? { status } : {},
     orderBy: { createdAt: 'desc' },
-    take: 100,
+    // +1 hanya untuk mendeteksi apakah batas pindai tersentuh.
+    take: P.MAKS_PINDAI_INTAKE + 1,
     select: {
       id: true, status: true, classification: true, duplicateLevel: true, inputKind: true,
       sourceFileName: true, proposal: true, matches: true, voyageId: true, errorCode: true, createdAt: true,
     },
   })
+  const terpotong = rows.length > P.MAKS_PINDAI_INTAKE
+  if (terpotong) rows.length = P.MAKS_PINDAI_INTAKE
   const voyageIds = rows.map((r) => r.voyageId).filter((x): x is string => !!x)
   // Step 4F — tampilkan nama MASTER (kapal/pelabuhan terpilih), bukan hanya teks/kode dari dokumen.
   const idKapal = new Set<string>()
@@ -634,7 +651,7 @@ export async function listIntakes(ctx: TenantContext, q: URLSearchParams): Promi
   ])
   const namaKapal = new Map(kapalMaster.map((x) => [x.id, x.name]))
   const namaPort = new Map(portMaster.map((x) => [x.id, x.name]))
-  return rows.map((r) => {
+  const semua: IntakeRingkas[] = rows.map((r) => {
     const p = r.proposal as unknown
     const m = r.matches as unknown
     const sah = P.proposalSah(p)
@@ -659,6 +676,26 @@ export async function listIntakes(ctx: TenantContext, q: URLSearchParams): Promi
       createdAt: r.createdAt,
     }
   })
+
+  // Cari pada teks yang BENAR-BENAR dilihat peninjau di tabel (nama master bila
+  // sudah dipilih, teks dokumen bila belum) — bukan pada isi JSON mentah.
+  const cocok = cari
+    ? semua.filter((r) =>
+        [r.vesselName, r.portName, r.voyageNumber, r.sourceFileName].some((x) => !!x && x.toLowerCase().includes(cari)),
+      )
+    : semua
+  const diurut = [...cocok].sort((a, b) => {
+    if (urut === 'eta') {
+      // Intake tanpa ETA selalu di bawah, apa pun arah urutannya.
+      if (!a.eta || !b.eta) return a.eta ? -1 : b.eta ? 1 : 0
+      return arah === 'asc' ? a.eta.localeCompare(b.eta) : b.eta.localeCompare(a.eta)
+    }
+    const selisih = a.createdAt.getTime() - b.createdAt.getTime()
+    return arah === 'asc' ? selisih : -selisih
+  })
+  const total = diurut.length
+  const page = Math.min(halamanDiminta, Math.max(Math.ceil(total / perPage), 1))
+  return { rows: diurut.slice((page - 1) * perPage, page * perPage), total, page, perPage, terpotong }
 }
 
 export async function getIntake(ctx: TenantContext, id: string): Promise<IntakeDto> {

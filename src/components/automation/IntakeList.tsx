@@ -11,7 +11,7 @@ import { FileUp, Loader2, RefreshCw, Send } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useLang, useT, type Lang } from '@/lib/i18n'
 import type { IntakeRingkas } from '@/services/intake/intake.service'
-import { formatTanggal } from '@/services/intake/intake-policy'
+import { formatTanggal, MAKS_PINDAI_INTAKE } from '@/services/intake/intake-policy'
 import { btnCls, fmtWaktu } from './shared'
 import { DuplicateBadge, IntakeStatusBadge, LABEL_KLASIFIKASI, LABEL_STATUS_INTAKE, pesanGalatServer } from './intake-shared'
 
@@ -26,6 +26,11 @@ const STR: Record<Lang, Record<string, string>> = {
     aiNote: 'AI hanya mengusulkan isian. Tidak ada voyage atau master data yang dibuat sebelum Anda meninjau dan menyetujui.',
     reprocessTitle: 'Permintaan ini sudah pernah diproses.', reprocess: 'Proses ulang', open: 'Buka intake sebelumnya',
     listTitle: 'Daftar intake', all: 'Semua status', empty: 'Belum ada intake.', refresh: 'Muat ulang',
+    cari: 'Cari kapal, pelabuhan, atau nomor voyage', cariLabel: 'Cari intake',
+    urutLabel: 'Urutkan', urutBaru: 'Terbaru diterima', urutLama: 'Terlama diterima', urutEtaDekat: 'ETA terdekat', urutEtaJauh: 'ETA terjauh',
+    emptyFiltered: 'Tidak ada intake yang cocok dengan filter ini.', clearFilters: 'Bersihkan filter',
+    showing: 'Menampilkan {a}–{b} dari {n}', prev: 'Sebelumnya', next: 'Berikutnya',
+    truncated: 'Pencarian dan pengurutan hanya mencakup {n} intake terbaru. Persempit dengan filter status agar hasilnya lengkap.',
     colCreated: 'Diterima', colVessel: 'Kapal', colPort: 'Pelabuhan', colEta: 'ETA', colClass: 'Klasifikasi',
     colDup: 'Duplikat', colStatus: 'Status', colVoyage: 'Voyage', review: 'Tinjau', pair: 'Tug + Tongkang',
     colRequest: 'Permintaan', noVessel: 'Kapal belum terbaca',
@@ -42,6 +47,11 @@ const STR: Record<Lang, Record<string, string>> = {
     aiNote: 'AI only proposes values. No voyage or master data is created until you review and approve.',
     reprocessTitle: 'This request was processed before.', reprocess: 'Process again', open: 'Open previous intake',
     listTitle: 'Intakes', all: 'All statuses', empty: 'No intakes yet.', refresh: 'Reload',
+    cari: 'Search vessel, port or voyage number', cariLabel: 'Search intakes',
+    urutLabel: 'Sort', urutBaru: 'Newest received', urutLama: 'Oldest received', urutEtaDekat: 'Earliest ETA', urutEtaJauh: 'Latest ETA',
+    emptyFiltered: 'No intake matches these filters.', clearFilters: 'Clear filters',
+    showing: 'Showing {a}–{b} of {n}', prev: 'Previous', next: 'Next',
+    truncated: 'Search and sorting cover only the {n} most recent intakes. Narrow by status to get complete results.',
     colCreated: 'Received', colVessel: 'Vessel', colPort: 'Port', colEta: 'ETA', colClass: 'Classification',
     colDup: 'Duplicate', colStatus: 'Status', colVoyage: 'Voyage', review: 'Review', pair: 'Tug + Barge',
     colRequest: 'Request', noVessel: 'Vessel not read',
@@ -81,28 +91,56 @@ export function IntakeList() {
   const [rows, setRows] = useState<IntakeRingkas[]>([])
   const [status, setStatus] = useState('')
   const [loading, setLoading] = useState(true)
+  /** Kotak cari diketik bebas; `cariAktif` yang dikirim ke server (ditunda 350 ms). */
+  const [cariKetik, setCariKetik] = useState('')
+  const [cariAktif, setCariAktif] = useState('')
+  const [urut, setUrut] = useState('createdAt:desc')
+  const [page, setPage] = useState(1)
+  const [daftar, setDaftar] = useState({ total: 0, page: 1, perPage: 25, terpotong: false })
+  const adaFilter = !!status || !!cariAktif
+  const bersihkanFilter = () => {
+    setStatus('')
+    setCariKetik('')
+    setCariAktif('')
+  }
   const fileRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/automation/intakes${status ? `?status=${status}` : ''}`, { cache: 'no-store' })
+      const [sort, dir] = urut.split(':')
+      const qs = new URLSearchParams({ sort, dir, page: String(page) })
+      if (status) qs.set('status', status)
+      if (cariAktif) qs.set('q', cariAktif)
+      const res = await fetch(`/api/automation/intakes?${qs.toString()}`, { cache: 'no-store' })
       const body = await res.json().catch(() => null)
       if (!res.ok || !body) {
         setError(pesanGalatServer(body?.error?.details, lang) ?? body?.error?.message ?? t.errLoad)
         return
       }
       setRows(body.intakes)
+      setDaftar({ total: body.total ?? body.intakes.length, page: body.page ?? 1, perPage: body.perPage ?? 25, terpotong: !!body.terpotong })
     } catch {
       setError(t.errLoad)
     } finally {
       setLoading(false)
     }
-  }, [status, t.errLoad, lang])
+  }, [status, cariAktif, urut, page, t.errLoad, lang])
 
   useEffect(() => {
     void load()
   }, [load])
+
+  // Ketikan ditunda supaya tiap huruf tidak memicu satu permintaan ke server.
+  useEffect(() => {
+    const jeda = setTimeout(() => setCariAktif(cariKetik.trim()), 350)
+    return () => clearTimeout(jeda)
+  }, [cariKetik])
+
+  // Mengganti filter, pencarian, atau urutan selalu kembali ke halaman pertama.
+  useEffect(() => {
+    setPage(1)
+  }, [status, cariAktif, urut])
 
   async function kirim(prosesUlang = false) {
     setError('')
@@ -211,6 +249,25 @@ export function IntakeList() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 id="intake-list" className="font-display text-lg text-text-primary">{t.listTitle}</h2>
           <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="search"
+              aria-label={t.cariLabel}
+              placeholder={t.cari}
+              value={cariKetik}
+              onChange={(e) => setCariKetik(e.target.value)}
+              className="min-w-0 w-full sm:w-64 bg-surface border border-border-muted rounded px-2 py-1.5 text-xs text-text-primary"
+            />
+            <select
+              aria-label={t.urutLabel}
+              value={urut}
+              onChange={(e) => setUrut(e.target.value)}
+              className="bg-surface border border-border-muted rounded px-2 py-1.5 text-xs text-text-primary"
+            >
+              <option value="createdAt:desc">{t.urutBaru}</option>
+              <option value="createdAt:asc">{t.urutLama}</option>
+              <option value="eta:asc">{t.urutEtaDekat}</option>
+              <option value="eta:desc">{t.urutEtaJauh}</option>
+            </select>
             <select
               aria-label={t.colStatus}
               value={status}
@@ -225,8 +282,21 @@ export function IntakeList() {
             </button>
           </div>
         </div>
+        {daftar.terpotong && (
+          <p className="mt-3 rounded border border-accent-amber/40 bg-accent-amber/10 px-3 py-2 text-xs text-text-primary">
+            {t.truncated.replace('{n}', String(MAKS_PINDAI_INTAKE))}
+          </p>
+        )}
         {rows.length === 0 && !loading ? (
-          <p className="mt-3 text-sm text-text-secondary">{t.empty}</p>
+          // Empty-state membedakan "memang belum ada" dari "tak ada yang cocok".
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <p className="text-sm text-text-secondary">{adaFilter ? t.emptyFiltered : t.empty}</p>
+            {adaFilter && (
+              <button type="button" onClick={bersihkanFilter} className={cn(btnCls, 'border border-border-muted text-text-secondary hover:text-text-primary')}>
+                {t.clearFilters}
+              </button>
+            )}
+          </div>
         ) : (
           // Step 4F — tanpa lebar minimum tetap: muat di 1024px tanpa gulir ke samping.
           <div className="mt-3 min-w-0">
@@ -271,6 +341,34 @@ export function IntakeList() {
                 ))}
               </tbody>
             </table>
+            {daftar.total > 0 && (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border-muted pt-3">
+                <p className="text-xs text-text-secondary">
+                  {t.showing
+                    .replace('{a}', String((daftar.page - 1) * daftar.perPage + 1))
+                    .replace('{b}', String(Math.min(daftar.page * daftar.perPage, daftar.total)))
+                    .replace('{n}', String(daftar.total))}
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={loading || daftar.page <= 1}
+                    onClick={() => setPage(daftar.page - 1)}
+                    className={cn(btnCls, 'border border-border-muted text-text-secondary hover:text-text-primary disabled:opacity-40')}
+                  >
+                    {t.prev}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={loading || daftar.page * daftar.perPage >= daftar.total}
+                    onClick={() => setPage(daftar.page + 1)}
+                    className={cn(btnCls, 'border border-border-muted text-text-secondary hover:text-text-primary disabled:opacity-40')}
+                  >
+                    {t.next}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </section>

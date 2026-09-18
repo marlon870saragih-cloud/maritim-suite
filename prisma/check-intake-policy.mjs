@@ -542,6 +542,35 @@ console.log('\n[7] Kunci sumber (batas tulis, skema, pagar)')
         /f\.flags\.includes\('UNVERIFIED_SOURCE'\) \|\| visual/.test(bersama) &&
         (ui.match(/<ProvenanceBadge[^>]*visual=\{visual\}/g) ?? []).length === 3 &&
         !/<ProvenanceBadge(?![^>]*visual=)/.test(ui))
+    // Batch D (Step 4G) — skala daftar intake.
+    const daftarUi = baca('src/components/automation/IntakeList.tsx')
+    const rute = baca('src/app/api/automation/intakes/route.ts')
+    // Dibatasi ke badan listIntakes: `take: 100` lain di berkas ini milik kueri
+    // deteksi duplikat dan memang tidak ikut berubah.
+    const fnDaftar = svc.match(/export async function listIntakes[\s\S]*?\n}\n/)?.[0] ?? ''
+    cek('D-1: daftar dipenggal per halaman dan melaporkan total',
+      /take: P\.MAKS_PINDAI_INTAKE \+ 1/.test(fnDaftar) &&
+        !/take: 100/.test(fnDaftar) &&
+        /return \{ rows: diurut\.slice\(\(page - 1\) \* perPage, page \* perPage\), total, page, perPage, terpotong \}/.test(svc) &&
+        /intakes: rows, \.\.\.sisa/.test(rute) &&
+        /t\.showing/.test(daftarUi) && /t\.prev/.test(daftarUi) && /t\.next/.test(daftarUi))
+    cek('D-1: batas pindai disebut ke UI, bukan diam-diam memotong',
+      /const terpotong = rows\.length > P\.MAKS_PINDAI_INTAKE/.test(svc) &&
+        /daftar\.terpotong &&/.test(daftarUi) &&
+        /t\.truncated\.replace\('\{n\}', String\(MAKS_PINDAI_INTAKE\)\)/.test(daftarUi))
+    cek('D-2: daftar bisa dicari dan diurut, termasuk per ETA',
+      /q\.get\('q'\)/.test(svc) && /q\.get\('sort'\) === 'eta'/.test(svc) && /q\.get\('dir'\) === 'asc'/.test(svc) &&
+        /if \(!a\.eta \|\| !b\.eta\) return a\.eta \? -1 : b\.eta \? 1 : 0/.test(svc) &&
+        /type="search"/.test(daftarUi) && /value="eta:asc"/.test(daftarUi) && /value="eta:desc"/.test(daftarUi))
+    cek('D-2: pencarian ditunda dan selalu balik ke halaman pertama',
+      /setTimeout\(\(\) => setCariAktif\(cariKetik\.trim\(\)\), 350\)/.test(daftarUi) &&
+        /setPage\(1\)\n  \}, \[status, cariAktif, urut\]\)/.test(daftarUi))
+    cek('D-3: empty-state membedakan belum ada intake dari tak ada yang cocok',
+      /adaFilter \? t\.emptyFiltered : t\.empty/.test(daftarUi) &&
+        /const adaFilter = !!status \|\| !!cariAktif/.test(daftarUi) &&
+        /t\.clearFilters/.test(daftarUi) &&
+        ['emptyFiltered', 'truncated', 'showing', 'clearFilters'].every((k) => daftarUi.split(k + ": '").length - 1 === 2))
+
     cek('C-5: penolakan isian tampil di sebelah isiannya dan isian tetap terbuka',
       /'atas' \| 'aksi' \| 'duplikat' \| 'field'/.test(ui) &&
         /if \(await patch\(\{ fields: \{ \[key\]: value === '' \? null : value \} \}, 'field'\)\) setEdit\(null\)/.test(ui) &&
