@@ -209,14 +209,37 @@ async function bagianDb(tA, tB, dibuat) {
   }
   cek('banyak kapal tanpa MMSI dalam satu tenant diizinkan', galatNull === null)
 
-  const mmsiDiluarUji = await prisma.vessel.count({ where: { NOT: { name: { startsWith: TAG } }, mmsi: { not: null } } })
-  cek('tak ada MMSI terisi pada kapal non-uji (migrasi tidak mengarang data)', mmsiDiluarUji === 0, `${mmsiDiluarUji} kapal`)
-  const kapalLama = await prisma.vessel.findMany({
-    where: { NOT: { name: { startsWith: TAG } } },
-    select: { id: true, mmsi: true, mmsiSource: true, mmsiVerifiedAt: true },
+  // Kedua pemeriksaan di bawah dulunya memindai SELURUH tabel kapal dan menuntut
+  // nol MMSI. Itu sah tepat sesudah migrasi, tetapi sekarang kapal demo/pilot yang
+  // sah (mis. tug+barge PRD-004) sudah punya MMSI yang diisi LEWAT APLIKASI —
+  // sehingga pemeriksaan lama menghukum data yang benar. Properti yang sebenarnya
+  // ingin dijaga adalah "migrasi hanya menambah kolom NULL dan tidak mengarang
+  // nilai", dan itu diuji di bawah tanpa bergantung pada isi DB dev.
+
+  // (a) Kapal yang MMSI-nya memang tak pernah diisi: ketiga kolom baru harus NULL.
+  const kapalTanpaMmsi = await prisma.vessel.findMany({
+    where: { NOT: { name: { startsWith: TAG } }, mmsi: null },
+    select: { id: true, mmsiSource: true, mmsiVerifiedAt: true },
   })
-  cek('kapal lama tetap terbaca dengan kolom baru bernilai null',
-    kapalLama.every((v) => v.mmsi === null && v.mmsiSource === null && v.mmsiVerifiedAt === null), `${kapalLama.length} kapal`)
+  cek('kapal tanpa MMSI: kolom identitas baru seluruhnya null (migrasi tidak mengarang data)',
+    kapalTanpaMmsi.every((v) => v.mmsiSource === null && v.mmsiVerifiedAt === null), `${kapalTanpaMmsi.length} kapal`)
+
+  // (b) `identitasKapal()` MENOLAK MMSI tanpa sumber ("Sumber MMSI wajib dipilih
+  // bila MMSI diisi"), jadi baris ber-MMSI tetapi bersumber NULL mustahil lahir
+  // dari aplikasi — persis wujud yang akan ditinggalkan backfill migrasi.
+  const mmsiTanpaSumber = await prisma.vessel.count({
+    where: { NOT: { name: { startsWith: TAG } }, mmsi: { not: null }, mmsiSource: null },
+  })
+  cek('tak ada MMSI tanpa sumber di luar uji (jejak khas backfill migrasi)', mmsiTanpaSumber === 0, `${mmsiTanpaSumber} kapal`)
+
+  // (c) Kapal uji sendiri: dibuat tanpa MMSI → ketiga kolom baru NULL.
+  const kapalUjiTanpaMmsi = await prisma.vessel.findMany({
+    where: { name: { startsWith: `${TAG}DB tanpa MMSI` } },
+    select: { mmsi: true, mmsiSource: true, mmsiVerifiedAt: true },
+  })
+  cek('kapal uji tanpa MMSI: ketiga kolom baru null',
+    kapalUjiTanpaMmsi.length >= 2 && kapalUjiTanpaMmsi.every((v) => v.mmsi === null && v.mmsiSource === null && v.mmsiVerifiedAt === null),
+    `${kapalUjiTanpaMmsi.length} kapal uji`)
 }
 
 // ------------------------------------------------------------------ 3. HTTP

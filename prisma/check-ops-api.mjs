@@ -36,6 +36,14 @@ const BASE_URL = process.env.BASE_URL ?? 'http://localhost:3000'
 const SANDI = 'Uji7cOps!2026'
 const TAG = '7C-'
 const NAMA_TEMPLATE_CONTOH = 'CONTOH — ganti dengan checklist Tribuana'
+// Alamat milik uji ini saja. Dipakai untuk menyapu sisa run yang berhenti di
+// tengah: tanpa itu satu run gagal membuat SEMUA run berikutnya gagal P2002.
+const EMAIL_UJI = [
+  '7c-admin@tribuanagency.co.id',
+  '7c-oper@tribuanagency.co.id',
+  '7c-biaya@tribuanagency.co.id',
+  '7c-admin@verifikasi.local',
+]
 
 let lulus = 0
 let gagal = 0
@@ -113,9 +121,32 @@ const DELETE = (s, p) => json(s, 'DELETE', p)
 // -------------------------------------------------------------- data disposable
 
 async function siapkanData() {
-  const tenantA = await prisma.tenant.findFirst({ where: { companyName: { contains: 'Tribuana' } } })
-  const tenantB = await prisma.tenant.findFirst({ where: { companyName: { contains: 'Verifikasi' } } })
-  if (!tenantA || !tenantB) throw new Error('Tenant Tribuana / Verifikasi tidak ditemukan di DB dev.')
+  // Seleksi tenant uji WAJIB deterministik. DB dev boleh berisi lebih dari satu
+  // tenant bernama "Tribuana"; `findFirst` tanpa urutan mengembalikan baris yang
+  // berganti-ganti sesudah UPDATE, dan suite ini pernah gagal acak karenanya.
+  // Yang dipilih: tenant TERTUA yang benar-benar memenuhi prasyarat uji di bawah
+  // (pelabuhan IDSRI + IDBPN dan template CONTOH), bukan yang namanya cocok.
+  const tenantA = await prisma.tenant.findFirst({
+    where: {
+      AND: [
+        { ports: { some: { unlocode: 'IDSRI', deletedAt: null } } },
+        { ports: { some: { unlocode: 'IDBPN', deletedAt: null } } },
+        { taskTemplates: { some: { name: NAMA_TEMPLATE_CONTOH, deletedAt: null } } },
+      ],
+    },
+    orderBy: { createdAt: 'asc' },
+  })
+  const tenantB = await prisma.tenant.findFirst({
+    where: { companyName: { contains: 'Verifikasi' } },
+    orderBy: { createdAt: 'asc' },
+  })
+  if (!tenantA) {
+    throw new Error('Tak ada tenant dev dengan pelabuhan IDSRI+IDBPN dan template CONTOH — jalankan seed dulu.')
+  }
+  if (!tenantB) throw new Error('Tenant "Verifikasi" tidak ditemukan di DB dev.')
+
+  // Sapu sisa pengguna uji dari run yang gagal di tengah (hanya alamat di atas).
+  await prisma.user.deleteMany({ where: { email: { in: EMAIL_UJI } } })
 
   const sandi = await bcrypt.hash(SANDI, 10)
   const buatUser = (tenantId, email, role) =>
@@ -189,7 +220,9 @@ async function bersihkan(d) {
   await prisma.auditLog.deleteMany({ where: { recordId: { in: [...idVoyage, ...idTugas] } } })
   if (idVoyage.length) await prisma.voyage.deleteMany({ where: { id: { in: idVoyage } } })
   for (const k of [d.kapalA, d.kapalB]) if (k) await prisma.vessel.deleteMany({ where: { id: k.id } })
-  for (const u of Object.values(d.users ?? {})) await prisma.user.deleteMany({ where: { id: u.id } })
+  // Dihapus berdasarkan alamat, bukan id yang dikumpulkan: run yang berhenti
+  // sebelum `d.users` terisi tetap ikut tersapu.
+  await prisma.user.deleteMany({ where: { email: { in: EMAIL_UJI } } })
 }
 
 // ----------------------------------------------------------------------- uji
