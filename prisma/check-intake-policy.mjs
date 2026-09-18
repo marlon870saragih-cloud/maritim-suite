@@ -485,10 +485,22 @@ console.log('\n[7] Kunci sumber (batas tulis, skema, pagar)')
     const kodeGagal = [...new Set([...fnGagal.matchAll(/return '([A-Z_]+)'/g), ...svc.matchAll(/errorCode: '([A-Z_]+)'/g)].map((x) => x[1]))]
     const s2 = tanpaLabel(kodeGagal, 'LABEL_GAGAL')
     cek('Step 4F: setiap kode kegagalan pembuatan punya penjelasan id & en', kodeGagal.length >= 7 && s2.length === 0, `${kodeGagal.length} kode; tanpa label: ${s2.join(',')}`)
+    // F-1 — tiap kode penolakan yang dilempar service (selain yang punya jalur UI sendiri)
+    // wajib punya pesan id & en, supaya tak ada pesan server Bahasa Indonesia bocor ke UI EN.
+    const PUNYA_JALUR_SENDIRI = ['APPROVAL_CONDITIONS', 'CREATE_FAILED', 'ALREADY_PROCESSED']
+    const kodeGalat = [...new Set([...svc.matchAll(/code: '([A-Z_]+)'/g)].map((x) => x[1]))].filter((k) => !PUNYA_JALUR_SENDIRI.includes(k))
+    const s3 = tanpaLabel(kodeGalat, 'LABEL_GALAT_SERVER')
+    cek('F-1: setiap kode penolakan server punya pesan UI id & en', kodeGalat.length >= 10 && s3.length === 0, `${kodeGalat.length} kode; tanpa label: ${s3.join(',')}`)
+    cek('F-1: pesan server hanya cadangan sesudah peta kode', /pesanGalatServer\(det, lang\) \?\? j\?\.error\?\.message/.test(ui) && /pesanGalatServer\(j\?\.error\?\.details, lang\) \?\? j\?\.error\?\.message/.test(ui))
   }
   cek('Step 4F: tak ada lebar minimum tabel yang memaksa gulir samping', !/min-w-\[\d+px\]/.test(ui + baca('src/components/automation/IntakeList.tsx')))
   cek('Step 4F: pilihan dropdown master butuh tombol eksplisit', /useSelected/.test(ui) && !/onChange=\{\(e\) => e\.target\.value && pilih/.test(ui))
   cek('Step 4F: pesan CREATE_FAILED server tanpa kode mentah', !/Voyage belum dibuat \(\$\{kode\}\)/.test(svc))
+  cek('G-1: fokus awal ringkasan di tombol batal, bukan tombol pembuat voyage',
+    /const refBatal = useRef<HTMLButtonElement>\(null\)/.test(ui) &&
+      /refBatal\.current\?\.focus\(\)/.test(ui) &&
+      /<button ref=\{refBatal\}[^>]*onClick=\{tutup\}/.test(ui) &&
+      !/ref=\{refYa\}/.test(ui))
   cek('intake tidak menyalakan pemantauan otomatis', !/mulaiPemantauan|monitoredVoyage/.test(svc))
   cek('intake tak bergantung pada AIS', !/services\/ais|\bais\b/i.test(svc.replace(/^\s*\/\/.*$/gm, '')))
 }

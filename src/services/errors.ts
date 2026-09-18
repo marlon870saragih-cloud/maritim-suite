@@ -54,7 +54,7 @@ export const notFound = (apa = 'Data') => new ServiceError('NOT_FOUND', `${apa} 
 export const validation = (pesan: string, details?: unknown) =>
   new ServiceError('VALIDATION', pesan, details)
 
-export const conflict = (pesan: string) => new ServiceError('CONFLICT', pesan)
+export const conflict = (pesan: string, details?: unknown) => new ServiceError('CONFLICT', pesan, details)
 
 export const rateLimited = (pesan: string) => new ServiceError('RATE_LIMITED', pesan)
 

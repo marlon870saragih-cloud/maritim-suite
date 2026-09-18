@@ -125,7 +125,7 @@ function uraikan(row: BarisIntake): { p: P.Proposal; m: P.Matches } {
   const m = row.matches as unknown
   if (!P.proposalSah(p) || !P.matchesSah(m, p.vessels.length)) {
     console.error('[intake] bentuk JSON tersimpan tidak sah', { intakeId: row.id })
-    throw conflict('Data intake tidak utuh — intake ini tidak bisa diproses. Tolak lalu kirim ulang permintaannya.')
+    throw conflict('Data intake tidak utuh — intake ini tidak bisa diproses. Tolak lalu kirim ulang permintaannya.', { code: 'INTAKE_CORRUPT' })
   }
   return { p, m }
 }
@@ -735,7 +735,7 @@ export async function updateIntake(
 ): Promise<IntakeDto> {
   requireIntake(ctx)
   const row = await rekonsiliasi(ctx, await bacaBaris(ctx, id), jejak)
-  if (row.status !== 'NEEDS_REVIEW') throw conflict('Intake ini tidak lagi dalam tinjauan.')
+  if (row.status !== 'NEEDS_REVIEW') throw conflict('Intake ini tidak lagi dalam tinjauan.', { code: 'NOT_IN_REVIEW' })
   const version = versiDari(body)
   if (version !== row.version) throw galatVersi()
 
@@ -755,9 +755,9 @@ export async function updateIntake(
       let nilai = teksOpsional(mentah)
       if (nilai && P.FIELD_TANGGAL.includes(f)) {
         const t = P.tanggalSah(nilai)
-        if (!t) throw validation(`${f.toUpperCase()} harus berformat YYYY-MM-DD (tahun 4 digit).`)
+        if (!t) throw validation(`${f.toUpperCase()} harus berformat YYYY-MM-DD (tahun 4 digit).`, { code: 'DATE_INVALID', field: f.toUpperCase() })
         if (!P.dalamRentangTanggal(t, tanggalBisnis(new Date()))) {
-          throw validation(`${f.toUpperCase()} di luar rentang yang diterima (−${P.TANGGAL_MUNDUR_HARI} s/d +${P.TANGGAL_MAJU_HARI} hari).`)
+          throw validation(`${f.toUpperCase()} di luar rentang yang diterima (−${P.TANGGAL_MUNDUR_HARI} s/d +${P.TANGGAL_MAJU_HARI} hari).`, { code: 'DATE_OUTSIDE_WINDOW', field: f.toUpperCase(), mundur: P.TANGGAL_MUNDUR_HARI, maju: P.TANGGAL_MAJU_HARI })
         }
         nilai = t
       }
@@ -862,7 +862,7 @@ export async function updateIntake(
     if (!(ENTITAS_PILIH as readonly string[]).includes(e)) throw validation('Entitas konfirmasi tidak dikenal.')
     const i = e === 'vessel' ? indeksKapal(p, body.confirm.index) : 0
     const h = hasilEntitas(m, e, i)
-    if (h.status !== 'MATCHED' || !h.selectedId) throw validation('Tidak ada kecocokan yang bisa dikonfirmasi.')
+    if (h.status !== 'MATCHED' || !h.selectedId) throw validation('Tidak ada kecocokan yang bisa dikonfirmasi.', { code: 'NOTHING_TO_CONFIRM' })
     setEntitas(m, e, i, { ...h, confirmed: true })
     pilihan.push({ entity: e, index: e === 'vessel' ? i : null, id: h.selectedId, basis: `CONFIRMED_${h.basis}` })
   }
@@ -908,7 +908,7 @@ export async function updateIntake(
     if (row.classification !== 'INSUFFICIENT_INFORMATION' || !(P.KLASIFIKASI_PILOT as readonly string[]).includes(c)) {
       throw validation('Klasifikasi hanya bisa ditetapkan NEW_NOMINATION/NEW_APPOINTMENT untuk intake yang informasinya tadinya belum lengkap.')
     }
-    if (!P.syaratMinimumTerpenuhi(p)) throw validation('Lengkapi identitas kapal dan pelabuhan/ETA lebih dulu.')
+    if (!P.syaratMinimumTerpenuhi(p)) throw validation('Lengkapi identitas kapal dan pelabuhan/ETA lebih dulu.', { code: 'MINIMUM_NOT_MET' })
     if (c !== classification) {
       perubahan.push({ field: 'classification', lama: classification, baru: c })
       classification = c
@@ -1030,8 +1030,8 @@ export async function approveIntake(
 ): Promise<IntakeDto> {
   requireIntake(ctx)
   const row = await rekonsiliasi(ctx, await bacaBaris(ctx, id), jejak)
-  if (row.status === 'FAILED') throw conflict('Pembuatan voyage sebelumnya gagal — gunakan "Coba lagi" atau tolak intake ini.')
-  if (row.status !== 'NEEDS_REVIEW') throw conflict('Intake ini sudah diproses.')
+  if (row.status === 'FAILED') throw conflict('Pembuatan voyage sebelumnya gagal — gunakan "Coba lagi" atau tolak intake ini.', { code: 'PREVIOUS_CREATE_FAILED' })
+  if (row.status !== 'NEEDS_REVIEW') throw conflict('Intake ini sudah diproses.', { code: 'INTAKE_ALREADY_PROCESSED' })
   const version = versiDari(body)
   if (version !== row.version) throw galatVersi()
 
@@ -1254,7 +1254,7 @@ export async function retryIntake(
 ): Promise<IntakeDto> {
   requireIntake(ctx)
   const row = await rekonsiliasi(ctx, await bacaBaris(ctx, id), jejak)
-  if (row.status !== 'FAILED') throw conflict('Hanya intake yang gagal yang bisa dicoba lagi.')
+  if (row.status !== 'FAILED') throw conflict('Hanya intake yang gagal yang bisa dicoba lagi.', { code: 'RETRY_NOT_FAILED' })
   const version = versiDari(body)
   if (version !== row.version) throw galatVersi()
 
@@ -1303,7 +1303,7 @@ export async function rejectIntake(
 ): Promise<IntakeDto> {
   requireIntake(ctx)
   const row = await rekonsiliasi(ctx, await bacaBaris(ctx, id), jejak)
-  if (row.status !== 'NEEDS_REVIEW' && row.status !== 'FAILED') throw conflict('Intake ini sudah diproses.')
+  if (row.status !== 'NEEDS_REVIEW' && row.status !== 'FAILED') throw conflict('Intake ini sudah diproses.', { code: 'INTAKE_ALREADY_PROCESSED' })
   const version = versiDari(body)
   if (version !== row.version) throw galatVersi()
   const alasan = teksOpsional(body.reason, 1000)
@@ -1340,7 +1340,7 @@ export async function linkExistingIntake(
 ): Promise<IntakeDto> {
   requireIntake(ctx)
   const row = await rekonsiliasi(ctx, await bacaBaris(ctx, id), jejak)
-  if (row.status !== 'NEEDS_REVIEW') throw conflict('Intake ini sudah diproses.')
+  if (row.status !== 'NEEDS_REVIEW') throw conflict('Intake ini sudah diproses.', { code: 'INTAKE_ALREADY_PROCESSED' })
   const version = versiDari(body)
   if (version !== row.version) throw galatVersi()
   const voyageId = teksOpsional(body.voyageId, 40)
@@ -1350,7 +1350,7 @@ export async function linkExistingIntake(
   const dup = await hitungDuplikat(ctx, p, m, row.id)
   const kandidat = dup.candidates.find((c) => c.type === 'VOYAGE' && c.id === voyageId)
   // Kandidat berasal dari query berpagar tenant → voyage tenant lain mustahil lolos.
-  if (!kandidat) throw validation('Voyage tersebut bukan kandidat duplikat intake ini.')
+  if (!kandidat) throw validation('Voyage tersebut bukan kandidat duplikat intake ini.', { code: 'NOT_DUPLICATE_CANDIDATE' })
 
   const alasan = teksOpsional(body.reason, 1000)
   const n = await forTenant(ctx).vesselCallIntake.updateMany({

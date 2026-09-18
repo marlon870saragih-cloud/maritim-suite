@@ -314,6 +314,61 @@ export function penjelasanGagal(kode: string | null | undefined, lang: Lang) {
   return LABEL_GAGAL[lang][kode ?? ''] ?? LABEL_GAGAL[lang].CREATE_FAILED
 }
 
+/**
+ * F-1 — penolakan server yang BISA dialami peninjau, dalam bahasa UI. Pesan asli
+ * server tetap Bahasa Indonesia (untuk klien API & log) dan hanya dipakai sebagai
+ * cadangan bila kodenya tak dikenal di sini. Placeholder `{field}` / `{mundur}` /
+ * `{maju}` diisi dari `details`.
+ */
+export const LABEL_GALAT_SERVER: Record<Lang, Record<string, string>> = {
+  id: {
+    VERSION_CONFLICT:
+      'Intake ini berubah sejak Anda membukanya — mungkin disunting peninjau lain, atau data master ikut berubah. Layar sudah dimuat ulang; periksa lagi sebelum melanjutkan.',
+    MASTER_CHANGED:
+      'Data master berubah sejak Anda meninjau, jadi kecocokannya dihitung ulang. Layar sudah dimuat ulang; periksa lagi kecocokan kapal, pelabuhan dan pihak sebelum menyetujui.',
+    DUPLICATE_LEVEL_INCREASED:
+      'Sejak Anda meninjau, muncul voyage atau intake yang mungkin sama. Layar sudah dimuat ulang; periksa lagi bagian Pemeriksaan duplikat sebelum menyetujui.',
+    ALREADY_CLAIMED: 'Peninjau lain sedang memproses intake ini. Tunggu sampai selesai, lalu muat ulang untuk melihat hasilnya.',
+    INTAKE_ALREADY_PROCESSED: 'Intake ini sudah selesai diproses dan tidak bisa diubah lagi. Layar sudah dimuat ulang dengan keadaan terakhirnya.',
+    NOT_IN_REVIEW: 'Intake ini tidak lagi berstatus perlu ditinjau, jadi suntingan tak bisa disimpan. Layar sudah dimuat ulang dengan keadaan terakhirnya.',
+    PREVIOUS_CREATE_FAILED: 'Percobaan membuat voyage sebelumnya gagal. Gunakan "Coba buat lagi", atau tolak intake ini.',
+    RETRY_NOT_FAILED: 'Hanya intake yang gagal membuat voyage yang bisa dicoba lagi.',
+    NOTHING_TO_CONFIRM: 'Tidak ada kecocokan yang bisa dikonfirmasi di sini — pilihannya sudah berubah. Layar sudah dimuat ulang.',
+    MINIMUM_NOT_MET: 'Identitas kapal serta pelabuhan/ETA harus lengkap lebih dulu.',
+    NOT_DUPLICATE_CANDIDATE: 'Voyage itu bukan kandidat duplikat untuk intake ini. Pilih dari daftar di bagian Pemeriksaan duplikat.',
+    DATE_INVALID: '{field} harus berupa tanggal yang sah (YYYY-MM-DD, tahun 4 digit).',
+    DATE_OUTSIDE_WINDOW: '{field} di luar rentang yang diterima: paling jauh {mundur} hari ke belakang dan {maju} hari ke depan dari hari ini.',
+    INTAKE_CORRUPT: 'Data intake ini tidak utuh sehingga tidak bisa diproses. Tolak intake ini, lalu kirim ulang permintaannya.',
+  },
+  en: {
+    VERSION_CONFLICT:
+      'This intake changed since you opened it — another reviewer may have edited it, or master data changed. The screen has been refreshed; check it again before continuing.',
+    MASTER_CHANGED:
+      'Master data changed since you reviewed, so the matches were recalculated. The screen has been refreshed; re-check the vessel, port and party matches before approving.',
+    DUPLICATE_LEVEL_INCREASED:
+      'Since you reviewed, a voyage or intake that may be the same one appeared. The screen has been refreshed; re-check Duplicate check before approving.',
+    ALREADY_CLAIMED: 'Another reviewer is processing this intake. Wait until they finish, then reload to see the result.',
+    INTAKE_ALREADY_PROCESSED: 'This intake has already been processed and can no longer be changed. The screen has been refreshed with its latest state.',
+    NOT_IN_REVIEW: 'This intake is no longer awaiting review, so your edit could not be saved. The screen has been refreshed with its latest state.',
+    PREVIOUS_CREATE_FAILED: 'The previous attempt to create the voyage failed. Use "Try creating again", or reject this intake.',
+    RETRY_NOT_FAILED: 'Only an intake whose voyage creation failed can be retried.',
+    NOTHING_TO_CONFIRM: 'There is no match to confirm here — the selection has changed. The screen has been refreshed.',
+    MINIMUM_NOT_MET: 'The vessel identity and the port/ETA must be complete first.',
+    NOT_DUPLICATE_CANDIDATE: 'That voyage is not a duplicate candidate for this intake. Pick one from the list in Duplicate check.',
+    DATE_INVALID: '{field} must be a valid date (YYYY-MM-DD, 4-digit year).',
+    DATE_OUTSIDE_WINDOW: '{field} is outside the accepted range: at most {mundur} days back and {maju} days ahead of today.',
+    INTAKE_CORRUPT: 'This intake data is incomplete, so it cannot be processed. Reject it, then submit the request again.',
+  },
+}
+
+/** Pesan UI untuk penolakan server berkode; null bila kodenya tak dikenal (pakai pesan server). */
+export function pesanGalatServer(details: Record<string, unknown> | undefined, lang: Lang): string | null {
+  const kode = typeof details?.code === 'string' ? details.code : null
+  const pola = kode ? LABEL_GALAT_SERVER[lang][kode] : undefined
+  if (!pola) return null
+  return pola.replace(/\{(field|mundur|maju)\}/g, (_, k: string) => String(details?.[k] ?? ''))
+}
+
 export const LABEL_PERINGATAN: Record<Lang, Record<string, string>> = {
   id: {
     VESSELS_NOT_ATTACHED: 'Kapal tambahan (tug/tongkang) gagal dipasang — tambahkan manual di halaman voyage.',

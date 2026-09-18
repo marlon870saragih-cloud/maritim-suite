@@ -13,7 +13,7 @@ import { useLang, useT, type Lang } from '@/lib/i18n'
 import type { IntakeRingkas } from '@/services/intake/intake.service'
 import { formatTanggal } from '@/services/intake/intake-policy'
 import { btnCls, fmtWaktu } from './shared'
-import { DuplicateBadge, IntakeStatusBadge, LABEL_KLASIFIKASI, LABEL_STATUS_INTAKE } from './intake-shared'
+import { DuplicateBadge, IntakeStatusBadge, LABEL_KLASIFIKASI, LABEL_STATUS_INTAKE, pesanGalatServer } from './intake-shared'
 
 const STR: Record<Lang, Record<string, string>> = {
   id: {
@@ -89,7 +89,7 @@ export function IntakeList() {
       const res = await fetch(`/api/automation/intakes${status ? `?status=${status}` : ''}`, { cache: 'no-store' })
       const body = await res.json().catch(() => null)
       if (!res.ok || !body) {
-        setError(body?.error?.message ?? t.errLoad)
+        setError(pesanGalatServer(body?.error?.details, lang) ?? body?.error?.message ?? t.errLoad)
         return
       }
       setRows(body.intakes)
@@ -98,7 +98,7 @@ export function IntakeList() {
     } finally {
       setLoading(false)
     }
-  }, [status, t.errLoad])
+  }, [status, t.errLoad, lang])
 
   useEffect(() => {
     void load()
@@ -124,7 +124,7 @@ export function IntakeList() {
           setSudahDiproses({ intakeId: d.intakeId, status: d.status })
           return
         }
-        setError((d?.code && aiErr[d.code]) || body?.error?.message || t.errSubmit)
+        setError((d?.code && aiErr[d.code]) || pesanGalatServer(d, lang) || body?.error?.message || t.errSubmit)
         return
       }
       setSudahDiproses(null)

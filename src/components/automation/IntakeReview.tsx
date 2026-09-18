@@ -56,6 +56,7 @@ import {
   MatchBadge,
   ProvenanceBadge,
   penjelasanGagal,
+  pesanGalatServer,
 } from './intake-shared'
 
 const STR: Record<Lang, Record<string, string>> = {
@@ -209,11 +210,11 @@ function idDipakai(m: HasilCocok): string | null {
   return m.selectedId
 }
 
-async function bacaGalat(res: Response, cadangan: string): Promise<string> {
+async function bacaGalat(res: Response, cadangan: string, lang: Lang): Promise<string> {
   const teks = await res.text().catch(() => '')
   try {
     const j = JSON.parse(teks)
-    return j?.error?.message ?? cadangan
+    return pesanGalatServer(j?.error?.details, lang) ?? j?.error?.message ?? cadangan
   } catch {
     return teks && teks.length < 300 ? teks : cadangan
   }
@@ -255,7 +256,7 @@ export function IntakeReview({ id }: { id: string }) {
     setLoading(true)
     try {
       const res = await fetch(`/api/automation/intakes/${id}`, { cache: 'no-store' })
-      if (!res.ok) return setGalat({ lokasi: 'atas', pesan: await bacaGalat(res, t.errLoad) })
+      if (!res.ok) return setGalat({ lokasi: 'atas', pesan: await bacaGalat(res, t.errLoad, lang) })
       const body = await res.json()
       setD(body.intake)
     } catch {
@@ -263,7 +264,7 @@ export function IntakeReview({ id }: { id: string }) {
     } finally {
       setLoading(false)
     }
-  }, [id, t.errLoad])
+  }, [id, t.errLoad, lang])
 
   useEffect(() => {
     void load()
@@ -311,7 +312,7 @@ export function IntakeReview({ id }: { id: string }) {
       const g = penjelasanGagal(det.errorCode as string, lang)
       return `${g.judul} ${g.langkah}`
     }
-    return j?.error?.message ?? t.errAction
+    return pesanGalatServer(det, lang) ?? j?.error?.message ?? t.errAction
   }
 
   async function kirim(url: string, method: string, body: Record<string, unknown>, lokasi: LokasiGalat = 'atas', sukses?: string): Promise<boolean> {
@@ -355,7 +356,7 @@ export function IntakeReview({ id }: { id: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ voyageId: d.voyageId }),
       })
-      if (!res.ok) tampilkanGalat('atas', await bacaGalat(res, t.errAction))
+      if (!res.ok) tampilkanGalat('atas', await bacaGalat(res, t.errAction, lang))
       else setNotice(t.monitorStarted)
     } finally {
       setBusy(false)
@@ -1167,11 +1168,13 @@ function RingkasanDialog({
   tutup: () => void
   lanjut: () => void
 }) {
-  const refYa = useRef<HTMLButtonElement>(null)
+  const refBatal = useRef<HTMLButtonElement>(null)
   const refTutup = useRef(tutup)
   refTutup.current = tutup
   useEffect(() => {
-    refYa.current?.focus()
+    // G-1 — fokus awal di tombol batal, BUKAN di tombol pembuat voyage: aksi ini tak bisa dibatalkan,
+    // jadi Enter/Spasi refleks setelah dialog muncul tidak boleh langsung membuat voyage.
+    refBatal.current?.focus()
     const esc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') refTutup.current()
     }
@@ -1224,8 +1227,8 @@ function RingkasanDialog({
           ))}
         </dl>
         <div className="mt-4 flex flex-wrap justify-end gap-2">
-          <button type="button" onClick={tutup} className={btnGaris}>{t.back2}</button>
-          <button ref={refYa} type="button" disabled={busy} onClick={lanjut} className={cn(btnCls, 'bg-accent-blue text-white hover:bg-accent-blue/90')}>
+          <button ref={refBatal} type="button" onClick={tutup} className={btnGaris}>{t.back2}</button>
+          <button type="button" disabled={busy} onClick={lanjut} className={cn(btnCls, 'bg-accent-blue text-white hover:bg-accent-blue/90')}>
             <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" /> {t.yesCreate}
           </button>
         </div>
@@ -1247,6 +1250,7 @@ function BuatMasterDialog({
   tutup: () => void
   selesai: (id: string) => void
 }) {
+  const { lang } = useLang()
   const [form, setForm] = useState<FormState>(() => ({ ...emptyForm(), ...prefill, mmsiSource: '' }))
   const [yakin, setYakin] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -1263,7 +1267,7 @@ function BuatMasterDialog({
           ? form
           : { name: form.name, email: form.email || null, phone: form.phone || null, address: form.address || null }
       const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      if (!res.ok) return setError(await bacaGalat(res, t.errAction))
+      if (!res.ok) return setError(await bacaGalat(res, t.errAction, lang))
       const j = await res.json()
       const baru = j.vessel ?? j.principal ?? j.customer
       if (!baru?.id) return setError(t.errAction)
