@@ -28,6 +28,8 @@ import { catatHasilBackup } from '@/services/saas/backup-status.service'
 import { jalankanMonitoringSemuaTenant } from '@/services/automation/monitoring.service'
 // PRD-003 Step 4 — pengambilan posisi AIS terjadwal (AIS_ENABLED + AIS_TENANT_IDS).
 import { jalankanPollAisSemuaTenant } from '@/services/ais/poll.service'
+// P36 / K110 — pemusnahan berkas lampiran yang masa retensinya sudah lewat.
+import { sapuLampiranKedaluwarsa } from '@/services/ops/attachment-retention'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -92,6 +94,19 @@ const JOB: Readonly<Record<string, (req: Request) => Promise<unknown>>> = {
    * Menulis HANYA AisObservation/AisPollRun/AisProviderState.
    */
   'ais-position-poll': () => jalankanPollAisSemuaTenant(),
+
+  /**
+   * P36 / K110 — musnahkan berkas fisik lampiran yang sudah di-soft-delete
+   * lebih lama dari RETENSI_LAMPIRAN_HARI. SATU-SATUNYA jalur kode di repo ini
+   * yang boleh menghapus berkas dari penyimpanan.
+   *
+   * Tidak menghapus baris DB (barisnya jadi nisan ber-`purgedAt`), tidak
+   * menyentuh lampiran yang masih hidup, dan tidak menjangkau berkas yatim yang
+   * barisnya sudah hilang — lihat services/ops/attachment-retention.ts.
+   * Idempoten (K88): `purgedAt IS NULL` adalah antreannya, jadi jalan kedua
+   * pada hari yang sama tidak menemukan pekerjaan.
+   */
+  'attachment-retention': () => sapuLampiranKedaluwarsa(),
 }
 
 const JOB_BAWAAN = 'reminders'

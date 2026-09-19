@@ -1480,7 +1480,13 @@ model Attachment {
 
   uploadedByUserId String
   createdAt        DateTime  @default(now())
-  deletedAt        DateTime? // K110 — soft delete; berkas fisik TIDAK pernah dihapus
+  deletedAt        DateTime? // K110 — soft delete; berkas fisik dipertahankan sampai retensi
+  /// P36 / K110 — diisi job `attachment-retention` SESUDAH berkas fisiknya benar-benar
+  /// dihapus dari penyimpanan. Barisnya SENGAJA dipertahankan: menghapus lampiran tidak
+  /// menulis AuditLog di mana pun, jadi baris inilah satu-satunya bukti bahwa berkas itu
+  /// pernah ada dan kapan ia dimusnahkan. NULL = berkas fisik masih ada (atau penyapuan
+  /// terakhir gagal dan akan dicoba lagi) → kolom ini sekaligus antrean kerjanya.
+  purgedAt         DateTime?
 
   /// Fase 8 / K170. true HANYA bila seseorang menekan "Bagikan ke portal".
   /// Bawaan false (sama semangat K111). Lampiran `sensitive = true` TIDAK
@@ -1493,6 +1499,8 @@ model Attachment {
   @@index([tenantId, sha256])
   @@index([tenantId, expiresAt])
   @@index([tenantId, sharedToPortal])
+  /// Antrean penyapuan retensi: baris yang sudah di-soft-delete tapi berkasnya belum dimusnahkan.
+  @@index([purgedAt, deletedAt])
 }
 
 /// K128 — catatan pada entitas. Datar (tanpa thread), bukan messenger.
