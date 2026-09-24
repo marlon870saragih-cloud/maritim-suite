@@ -2,6 +2,9 @@
 // AI HANYA untuk bahasa: menerjemahkan instruksi ke field form. Tak pernah menghitung
 // uang & tak pernah jadi sumber kebenaran angka. Dipanggil server-side; key tak ke browser.
 
+// PRD-005 Step 3B — hanya dipakai chatCompletionMeta (di akhir berkas).
+import { bacaMetaRespons, type MetaRespons } from '@/services/tah/tah-policy'
+
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions'
 
 // Slug model bisa di-override via env bila katalog OpenRouter berubah, tanpa edit kode.
@@ -113,4 +116,52 @@ export function firstToolCall(resp: ChatResponse): { name: string; arguments: st
 /** Ambil isi teks jawaban (untuk percakapan biasa tanpa tool). */
 export function firstMessageText(resp: ChatResponse): string {
   return (resp.choices?.[0]?.message?.content ?? '').trim()
+}
+
+// ------------------------------------------------------------------------------
+// PRD-005 Step 3B — pembungkus metadata (ADITIF). `chatCompletion` di atas TIDAK
+// berubah (dikunci uji prisma/check-tah-ledger.mjs lewat sidik jari sumbernya);
+// pemanggil lamanya tak terpengaruh.
+//
+// `chatCompletionMeta` mengirim permintaan yang PERSIS SAMA dengan `chatCompletion`
+// untuk opsi yang sama (diuji: URL, header, dan badan identik), lalu mengembalikan
+// respons + metadata identitas/pemakaian yang lolos pola ketat (bacaMetaRespons).
+// Satu-satunya tambahan perilaku: `kirimTemperature: false` menghilangkan
+// `temperature` dari badan untuk model yang menolaknya (peta kemampuan, D7).
+// Metadata TIDAK memuat isi pesan, prompt, atau respons mentah.
+
+
+export type OpsiChatMeta = ChatOptions & {
+  /** false → `temperature` tidak dikirim sama sekali. Bawaan true (perilaku lama). */
+  kirimTemperature?: boolean
+}
+
+export async function chatCompletionMeta(opts: OpsiChatMeta): Promise<{ resp: ChatResponse; meta: MetaRespons }> {
+  const apiKey = process.env.OPENROUTER_API_KEY
+  if (!apiKey) throw new Error('OPENROUTER_API_KEY belum diset di .env')
+
+  const res = await fetch(OPENROUTER_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': process.env.NEXTAUTH_URL || 'http://localhost:3000',
+      'X-Title': 'Maritime Suite',
+    },
+    body: JSON.stringify({
+      model: opts.model || SPK_MODEL,
+      messages: opts.messages,
+      tools: opts.tools,
+      tool_choice: opts.toolChoice,
+      temperature: opts.kirimTemperature === false ? undefined : (opts.temperature ?? 0.2),
+      plugins: opts.plugins,
+    }),
+    signal: opts.signal,
+  })
+
+  const json = (await res.json().catch(() => ({}))) as ChatResponse
+  if (!res.ok) {
+    throw new Error(json.error?.message || `OpenRouter error (${res.status})`)
+  }
+  return { resp: json, meta: bacaMetaRespons(json) }
 }

@@ -11,14 +11,20 @@
 // data master tenant apa pun. Pesan galat penyedia TIDAK PERNAH diteruskan: semua
 // kegagalan dipetakan ke tiga kode (AI_TIMEOUT / AI_UNAVAILABLE / AI_BAD_RESPONSE).
 
+import { createHash } from 'node:crypto'
 import {
-  chatCompletion,
+  chatCompletionMeta,
   firstToolArguments,
   PDF_NATIVE_PLUGIN,
+  SPK_MODEL,
   type ChatMessage,
   type ToolDef,
 } from './openrouter'
 import { flattenWorkbook } from './vessel-extract'
+// PRD-005 Step 3B — model hasil resolusi TAH_INTAKE_MODEL + pelaporan setiap percobaan
+// panggilan ke buku besar TAH (no-op di luar konteks; lihat perekam-panggilan.ts).
+import { bentukParameter } from './model-capabilities'
+import { konteksModel, laporPanggilan } from './perekam-panggilan'
 
 export const VERSI_PENGEKSTRAK_INTAKE = 'vessel-call-extract/1'
 
@@ -150,28 +156,96 @@ function galatDari(e: unknown, signal: AbortSignal): GalatEkstraksi {
   return new GalatEkstraksi('AI_UNAVAILABLE')
 }
 
-/** Pengekstrak sungguhan lewat OpenRouter. Galat penyedia tidak pernah keluar dari fungsi ini. */
+// PRD-005 Step 3B — identitas prompt untuk AgentModelCall (bukan teksnya). Hash
+// dihitung sekali dari system prompt + skema tool: suntingan prompt tanpa menaikkan
+// versi tetap terlihat di buku besar.
+export const ID_PROMPT_INTAKE = 'vessel-call-extract'
+export const VERSI_PROMPT_INTAKE = '1'
+export const VERSI_SKEMA_INTAKE = '1'
+export const HASH_PROMPT_INTAKE = createHash('sha256').update(SYSTEM_PROMPT).update('\n').update(JSON.stringify(TOOL)).digest('hex')
+
+/**
+ * Pengekstrak sungguhan lewat OpenRouter. Galat penyedia tidak pernah keluar dari fungsi ini.
+ *
+ * Step 3B: tanpa konteks model (TAH_INTAKE_MODEL tak diset) permintaannya PERSIS seperti
+ * sebelumnya — model bawaan klien, temperature 0, tool paksa, plugin PDF native untuk PDF,
+ * dan satu ulang tanpa plugin bila engine ditolak. Setiap percobaan dilaporkan ke
+ * perekam (no-op bila TAH Core mati): metadata saja, tanpa prompt/isi/respons mentah.
+ */
 export const ekstrakLewatOpenRouter: PengekstrakIntake = async (masukan, signal) => {
   try {
-    const kirim = (pakaiPlugin: boolean) =>
-      chatCompletion({
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: isiPesan(masukan) },
-        ],
-        tools: [TOOL],
-        toolChoice: { type: 'function', function: { name: TOOL.function.name } },
-        plugins: pakaiPlugin ? PDF_NATIVE_PLUGIN : undefined,
-        temperature: 0,
-        signal,
-      })
+    const konteks = konteksModel()
+    const bentuk = bentukParameter(konteks?.kemampuan ?? null, {
+      temperature: 0,
+      paksaTool: TOOL.function.name,
+      pdfNative: masukan.kind === 'PDF',
+    })
+    // Model terverifikasi yang tak mendukung tool paksa: gagal tanpa panggilan.
+    if (!bentuk.ok) throw new GalatEkstraksi('AI_UNAVAILABLE')
+    const modelDiminta = konteks?.model ?? SPK_MODEL
+    const pakaiPluginAwal = masukan.kind === 'PDF' && bentuk.pdfNative
+
+    const kirim = async (pakaiPlugin: boolean) => {
+      const mulai = Date.now()
+      const identitas = {
+        provider: 'OPENROUTER' as const,
+        requestedModel: modelDiminta,
+        promptId: ID_PROMPT_INTAKE,
+        promptVersion: VERSI_PROMPT_INTAKE,
+        promptHash: HASH_PROMPT_INTAKE,
+        schemaId: TOOL.function.name,
+        schemaVersion: VERSI_SKEMA_INTAKE,
+        params: {
+          temperature: bentuk.temperature,
+          toolChoice: TOOL.function.name,
+          pdfEngine: pakaiPlugin ? PDF_NATIVE_PLUGIN[0]?.pdf?.engine : undefined,
+        },
+      }
+      try {
+        const { resp, meta } = await chatCompletionMeta({
+          model: konteks?.model ?? undefined,
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'user', content: isiPesan(masukan) },
+          ],
+          tools: [TOOL],
+          toolChoice: { type: 'function', function: { name: TOOL.function.name } },
+          plugins: pakaiPlugin ? PDF_NATIVE_PLUGIN : undefined,
+          temperature: bentuk.temperature,
+          kirimTemperature: bentuk.temperature !== undefined,
+          signal,
+        })
+        laporPanggilan({
+          ...identitas,
+          servedModel: meta.servedModel,
+          providerRequestId: meta.providerRequestId,
+          status: 'OK',
+          errorCode: null,
+          latencyMs: Date.now() - mulai,
+          pemakaian: meta.pemakaian,
+        })
+        return resp
+      } catch (e) {
+        const g = galatDari(e, signal)
+        laporPanggilan({
+          ...identitas,
+          servedModel: null,
+          providerRequestId: null,
+          status: g.kode === 'AI_TIMEOUT' ? 'TIMEOUT' : 'ERROR',
+          errorCode: g.kode,
+          latencyMs: Date.now() - mulai,
+          pemakaian: { inputTokens: null, outputTokens: null, cachedInputTokens: null, reasoningTokens: null },
+        })
+        throw e
+      }
+    }
     let resp
     try {
-      resp = await kirim(masukan.kind === 'PDF')
+      resp = await kirim(pakaiPluginAwal)
     } catch (e) {
       // Pola vessel-extract.ts: model tanpa dukungan engine native → ulangi tanpa plugin.
       const msg = e instanceof Error ? e.message.toLowerCase() : ''
-      if (masukan.kind !== 'PDF' || signal.aborted || !/plugin|engine|native|file/.test(msg)) throw e
+      if (!pakaiPluginAwal || signal.aborted || !/plugin|engine|native|file/.test(msg)) throw e
       resp = await kirim(false)
     }
     const args = firstToolArguments(resp)

@@ -50,7 +50,9 @@
     "test:intake-api": "node prisma/check-intake-api.mjs",
     "test:intake-api-off": "node prisma/check-intake-api.mjs --flag-off",
     "test:attachment-retention": "node prisma/check-attachment-retention.mjs",
-    "test:tah-policy": "node prisma/check-tah-policy.mjs"
+    "test:tah-policy": "node prisma/check-tah-policy.mjs",
+    "test:tah-ledger": "node prisma/check-tah-ledger.mjs",
+    "test:tah-ledger-api": "node prisma/check-tah-ledger-api.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

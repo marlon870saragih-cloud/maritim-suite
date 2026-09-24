@@ -43,6 +43,7 @@ import { ekstrakPalsu } from './fake-extractor'
 import { requireIntake } from './intake-access'
 import type { KonfigurasiIntake } from './intake-gate'
 import { hashInput } from './intake-hash'
+import { gagalLedgerIntake, hashKeluaran, jalankanEkstraksi, mulaiLedgerIntake, selesaiLedgerIntake } from './intake-ledger'
 import * as P from './intake-policy'
 
 // ----------------------------------------------------------------- konstanta & util
@@ -484,54 +485,87 @@ export async function submitIntake(
     ekstrak = { kind: 'IMAGE', bytes: file.bytes, mimeType: mimeGambar(file.name, file.type) }
   }
 
+  // PRD-005 Step 3B — buku besar TAH. TAH Core mati → null (nol baris, perilaku lama).
+  // Aktif → satu AgentRun TEPAT SEBELUM ekstraksi; gagal membuatnya → melempar di sini,
+  // SEBELUM AI dipanggil. Semua gerbang biaya di atas tetap berurutan seperti semula.
+  const ledger = await mulaiLedgerIntake(ctx, { kind, hash })
+
   let mentah: unknown
   try {
-    mentah = await ekstrakDenganBatasWaktu(pengekstrakUji ?? pengekstrakUntuk(k), ekstrak, k.batasWaktuMs)
+    mentah = await jalankanEkstraksi(ledger, () => ekstrakDenganBatasWaktu(pengekstrakUji ?? pengekstrakUntuk(k), ekstrak, k.batasWaktuMs))
   } catch (e) {
     const kode = e instanceof GalatEkstraksi ? e.kode : 'AI_UNAVAILABLE'
     // Log hanya kode — tanpa pesan penyedia, tanpa isi dokumen (§23).
     console.error('[intake] ekstraksi gagal', { kode, kind })
+    await gagalLedgerIntake(ctx, ledger, kode)
     throw upstream('Pembacaan AI gagal. Tidak ada data yang dibuat — coba lagi nanti.', { code: kode })
   }
+  const hashKeluar = ledger ? hashKeluaran(mentah) : null
 
-  const { classification, proposal } = P.validasiEkstraksi(mentah, {
-    inputKind: kind,
-    sourceText: teksSumber,
-    hariIni: tanggalBisnis(new Date()),
-    norm: NORM,
-  })
-  const master = await muatMaster(ctx)
-  const matches = P.cocokkanSemua(proposal, master, NORM, null, new Set(), { konfirmasiSemua: P.inputVisual(kind) })
-  const dup = await hitungDuplikat(ctx, proposal, matches, null)
+  // Galat apa pun sebelum baris intake lahir → jalan ledger FAILED (INTERNAL), lalu dilempar ulang.
+  let classification: string
+  let proposal: P.Proposal
+  let dup: Awaited<ReturnType<typeof hitungDuplikat>>
+  let intake: VesselCallIntake
+  try {
+    ;({ classification, proposal } = P.validasiEkstraksi(mentah, {
+      inputKind: kind,
+      sourceText: teksSumber,
+      hariIni: tanggalBisnis(new Date()),
+      norm: NORM,
+    }))
+    const master = await muatMaster(ctx)
+    const matches = P.cocokkanSemua(proposal, master, NORM, null, new Set(), { konfirmasiSemua: P.inputVisual(kind) })
+    dup = await hitungDuplikat(ctx, proposal, matches, null)
 
-  const dibuat = await db.vesselCallIntake.createManyAndReturn({
-    data: [
-      {
-        tenantId: ctx.tenantId,
-        status: 'NEEDS_REVIEW',
+    const dibuat = await db.vesselCallIntake.createManyAndReturn({
+      data: [
+        {
+          tenantId: ctx.tenantId,
+          status: 'NEEDS_REVIEW',
+          classification,
+          inputKind: kind,
+          inputHash: hash,
+          activeHashKey: hash,
+          sourceFileName: file ? file.name.slice(0, 200) : null,
+          sourceSizeBytes: file ? file.bytes.length : Buffer.byteLength(teksNormal ?? '', 'utf8'),
+          extractorVersion: VERSI_PENGEKSTRAK_INTAKE,
+          proposal: json(proposal),
+          matches: json(matches),
+          duplicateLevel: dup.level,
+          duplicateCandidates: json(dup.candidates),
+          submittedByUserId: ctx.userId,
+        },
+      ],
+      skipDuplicates: true,
+    })
+    if (dibuat.length === 0) {
+      // Balapan dua submit identik: yang lain menang — kembalikan miliknya.
+      const menang = await db.vesselCallIntake.findFirst({ where: { activeHashKey: hash } })
+      if (!menang) throw conflict('Permintaan yang sama sedang diproses. Muat ulang daftar intake.')
+      await selesaiLedgerIntake(ctx, ledger, {
+        intakeId: menang.id,
+        duplikatBalapan: true,
         classification,
-        inputKind: kind,
-        inputHash: hash,
-        activeHashKey: hash,
-        sourceFileName: file ? file.name.slice(0, 200) : null,
-        sourceSizeBytes: file ? file.bytes.length : Buffer.byteLength(teksNormal ?? '', 'utf8'),
-        extractorVersion: VERSI_PENGEKSTRAK_INTAKE,
-        proposal: json(proposal),
-        matches: json(matches),
+        proposal,
         duplicateLevel: dup.level,
-        duplicateCandidates: json(dup.candidates),
-        submittedByUserId: ctx.userId,
-      },
-    ],
-    skipDuplicates: true,
-  })
-  if (dibuat.length === 0) {
-    // Balapan dua submit identik: yang lain menang — kembalikan miliknya.
-    const menang = await db.vesselCallIntake.findFirst({ where: { activeHashKey: hash } })
-    if (!menang) throw conflict('Permintaan yang sama sedang diproses. Muat ulang daftar intake.')
-    return { intake: await keDto(ctx, menang), reused: true, warnings: [] }
+        outputHash: hashKeluar,
+      })
+      return { intake: await keDto(ctx, menang), reused: true, warnings: [] }
+    }
+    intake = dibuat[0]
+  } catch (e) {
+    await gagalLedgerIntake(ctx, ledger, 'INTERNAL')
+    throw e
   }
-  let intake = dibuat[0]
+  await selesaiLedgerIntake(ctx, ledger, {
+    intakeId: intake.id,
+    duplikatBalapan: false,
+    classification,
+    proposal,
+    duplicateLevel: dup.level,
+    outputHash: hashKeluar,
+  })
 
   // Fase 8j / K183 — sesudah ekstraksi berhasil tersimpan.
   await catatPemakaian(ctx, 'INTAKE_EXTRACTED', { kind, classification })

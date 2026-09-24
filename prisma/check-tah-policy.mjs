@@ -524,7 +524,8 @@ bagian('10. SKEMA / MIGRASI / KUNCI SUMBER')
   const lain = readdirSync(join(AKAR, 'prisma/migrations')).filter((d) => !d.includes('prd005') && existsSync(join(AKAR, 'prisma/migrations', d, 'migration.sql')))
   cek('migrasi lama tak menyebut tabel TAH', lain.every((d) => !/AgentRun|AgentModelCall|TahApprovalRequest/.test(baca(`prisma/migrations/${d}/migration.sql`))))
 
-  const MURNI = ['src/services/tah/tah-policy.ts', 'src/services/tah/registry.ts', 'src/lib/ai/model-capabilities.ts']
+  // Step 3B: + ringkasan-intake.ts (ringkasan Q3, murni).
+  const MURNI = ['src/services/tah/tah-policy.ts', 'src/services/tah/registry.ts', 'src/services/tah/ringkasan-intake.ts', 'src/lib/ai/model-capabilities.ts']
   for (const f of MURNI) {
     const s = baca(f)
     const imporJalan = [...s.matchAll(/^import\s+(?!type\b).*$/gm)].map((x) => x[0])
@@ -533,7 +534,8 @@ bagian('10. SKEMA / MIGRASI / KUNCI SUMBER')
   }
   const dirTah = join(AKAR, 'src/services/tah')
   const berkasTah = readdirSync(dirTah).filter((f) => f.endsWith('.ts'))
-  cek('src/services/tah berisi hanya berkas Step 3A (tah-policy.ts, registry.ts)', berkasTah.sort().join() === 'registry.ts,tah-policy.ts', berkasTah.join())
+  // Step 3B memperluas lingkup yang disetujui: + agent-run.service.ts (buku besar), ringkasan-intake.ts (Q3).
+  cek('src/services/tah berisi hanya berkas Step 3A+3B', berkasTah.sort().join() === 'agent-run.service.ts,registry.ts,ringkasan-intake.ts,tah-policy.ts', berkasTah.join())
   for (const f of berkasTah) {
     const s = baca(`src/services/tah/${f}`)
     cek(`tah/${f}: tak mengimpor approval keuangan (D2)`, !/finance\/approval|approval-policy|approval\.service/.test(s))
@@ -541,7 +543,8 @@ bagian('10. SKEMA / MIGRASI / KUNCI SUMBER')
   }
 
   // Lingkup Step 3A: belum ada wiring intake, service persetujuan, route, inbox, atau UI.
-  const rujukTah = /AgentRun|agentRun|AgentModelCall|agentModelCall|TahApprovalRequest|tahApprovalRequest|model-capabilities|services\/tah/
+  // Step 3B: juga menangkap impor relatif `../tah/` dan perekam panggilan.
+  const rujukTah = /AgentRun|agentRun|AgentModelCall|agentModelCall|TahApprovalRequest|tahApprovalRequest|model-capabilities|perekam-panggilan|services\/tah|\.\.\/tah\//
   const dirs = ['src/services/intake', 'src/lib/ai', 'src/app', 'src/components']
   const semua = []
   const jelajah = (rel) => {
@@ -552,11 +555,25 @@ bagian('10. SKEMA / MIGRASI / KUNCI SUMBER')
     }
   }
   for (const d of dirs) jelajah(d)
-  const bocor = semua.filter((f) => f !== 'src/lib/ai/model-capabilities.ts' && rujukTah.test(baca(f)))
-  cek('Step 3A: intake / lib ai / route / UI BELUM merujuk TAH Core', bocor.length === 0, bocor.join(', '))
-  cek('Step 3A: belum ada route /api/tah', !existsSync(join(AKAR, 'src/app/api/tah')))
-  cek('Step 3A: belum ada halaman /automation/inbox', !existsSync(join(AKAR, 'src/app/(app)/automation/inbox')))
-  cek('Step 3A: belum ada unit systemd retensi TAH', !readdirSync(join(AKAR, 'deploy/systemd')).some((f) => /tah/i.test(f)))
+  // Step 3B — daftar izin PERSIS: hanya wiring buku besar intake. Route/UI/approve tetap nol.
+  const DIIZINKAN_3B = new Set([
+    'src/lib/ai/model-capabilities.ts',
+    'src/lib/ai/perekam-panggilan.ts',
+    'src/lib/ai/openrouter.ts',
+    'src/lib/ai/vessel-call-extract.ts',
+    'src/services/intake/fake-extractor.ts',
+    'src/services/intake/intake-access.ts',
+    'src/services/intake/intake-ledger.ts',
+    // submitIntake SAJA (titik integrasi F); fungsi persetujuan dikunci sidik jari di check-tah-ledger.mjs.
+    'src/services/intake/intake.service.ts',
+  ])
+  const bocor = semua.filter((f) => !DIIZINKAN_3B.has(f) && rujukTah.test(baca(f)))
+  cek('Step 3B: di luar daftar izin, intake / lib ai / route / UI TIDAK merujuk TAH Core', bocor.length === 0, bocor.join(', '))
+  cek('Step 3B: setiap berkas daftar izin memang ada', [...DIIZINKAN_3B].every((f) => existsSync(join(AKAR, f))))
+  cek('Step 3B: TahApprovalRequest belum dipakai kode aplikasi mana pun', semua.every((f) => !/tahApprovalRequest|TahApprovalRequest/.test(baca(f))))
+  cek('Step 3A/3B: belum ada route /api/tah', !existsSync(join(AKAR, 'src/app/api/tah')))
+  cek('Step 3A/3B: belum ada halaman /automation/inbox', !existsSync(join(AKAR, 'src/app/(app)/automation/inbox')))
+  cek('Step 3A/3B: belum ada unit systemd retensi TAH', !readdirSync(join(AKAR, 'deploy/systemd')).some((f) => /tah/i.test(f)))
 }
 
 // =====================================================================
