@@ -92,6 +92,11 @@ export const TENANT_MODELS: ReadonlySet<string> = new Set([
 
   // --- PRD-004 Step 3 — Vessel Call Intake (usulan voyage menunggu tinjauan) ---
   'VesselCallIntake',
+
+  // --- PRD-005 Step 3A — TAH Core (buku besar agen + gerbang persetujuan) ---
+  'AgentRun',
+  'AgentModelCall',
+  'TahApprovalRequest',
 ])
 
 /** Operasi yang aman disaring lewat `where`. */

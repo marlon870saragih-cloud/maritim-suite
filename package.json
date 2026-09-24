@@ -49,7 +49,8 @@
     "test:intake-policy": "node prisma/check-intake-policy.mjs",
     "test:intake-api": "node prisma/check-intake-api.mjs",
     "test:intake-api-off": "node prisma/check-intake-api.mjs --flag-off",
-    "test:attachment-retention": "node prisma/check-attachment-retention.mjs"
+    "test:attachment-retention": "node prisma/check-attachment-retention.mjs",
+    "test:tah-policy": "node prisma/check-tah-policy.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

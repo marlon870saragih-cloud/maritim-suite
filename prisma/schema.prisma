@@ -132,6 +132,11 @@ model Tenant {
 
   // --- PRD-004 Step 3 (Vessel Call Intake — usulan voyage yang menunggu tinjauan manusia) ---
   vesselCallIntakes VesselCallIntake[]
+
+  // --- PRD-005 Step 3A (TAH Core — buku besar eksekusi agen + gerbang persetujuan manusia) ---
+  agentRuns           AgentRun[]
+  agentModelCalls     AgentModelCall[]
+  tahApprovalRequests TahApprovalRequest[]
 }
 
 model Payment {
@@ -762,6 +767,11 @@ model Voyage {
   sourceIntakeId String?
   /// Intake yang menunjuk voyage ini (dibuat darinya, atau ditautkan ke voyage yang sudah ada).
   intakes        VesselCallIntake[]
+
+  // PRD-005 Step 3A — TAH Core. Hanya rujukan balik (FK SetNull di sisi TAH);
+  // tak ada kolom voyage yang berubah.
+  agentRuns           AgentRun[]
+  tahApprovalRequests TahApprovalRequest[]
 
   @@unique([tenantId, voyageNumber])
   @@unique([tenantId, sourceIntakeId])
@@ -2237,4 +2247,208 @@ model VesselCallIntake {
   @@index([tenantId, status, createdAt])
   @@index([tenantId, inputHash])
   @@index([voyageId])
+}
+// ============================================================================
+// PRD-005 Step 3A — TAH Core: buku besar eksekusi agen + gerbang persetujuan.
+//
+// Keputusan owner (Step 1/2): D1=C — tabel run fitur lama (MonitoringRun,
+// AisPollRun, VesselCallIntake) TIDAK diubah dan tidak di-backfill; AgentRun
+// hanya untuk eksekusi model/agen masa depan dan menunjuk subjek lama lewat
+// subjectType/subjectId TANPA FK. D2=B — gerbang persetujuan TAH tabelnya
+// sendiri; model `Approval` (keuangan) tidak disentuh. D3=B — prompt mentah,
+// respons penyedia mentah, dan rahasia TIDAK PERNAH disimpan (sengaja tak ada
+// kolomnya); `result`/`proposal` dibersihkan setelah 180 hari, metadata 24 bulan.
+//
+// Status & jenis = String tervalidasi kode (pola K55), bukan enum. Seluruh
+// kebijakan ada di src/services/tah/tah-policy.ts (murni, diuji
+// prisma/check-tah-policy.mjs).
+// ============================================================================
+
+model AgentRun {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  /// Kunci agen dari registry kode (mis. INTAKE) + versinya.
+  agentKey     String
+  agentVersion String
+  /// mis. EXTRACT.
+  runType      String
+
+  /// HUMAN | SCHEDULE | RETRY (EVENT dicadangkan).
+  triggerType       String
+  /// null untuk jalan terjadwal. String polos (pola AuditLog.userId).
+  triggeredByUserId String?
+  /// Rantai ulang: jalan baru menunjuk jalan yang diulang. Jalan tak pernah dibuka kembali.
+  parentRunId       String?
+  parentRun         AgentRun?  @relation("AgentRunUlang", fields: [parentRunId], references: [id], onDelete: SetNull)
+  retries           AgentRun[] @relation("AgentRunUlang")
+  correlationId     String
+  idempotencyKey    String?
+
+  /// RUNNING | SUCCEEDED | FAILED | CANCELLED | ABANDONED
+  status         String    @default("RUNNING")
+  /// Hanya bila SUCCEEDED, mis. PROPOSAL_CREATED | DUPLICATE_DISCARDED.
+  outcome        String?
+  /// true bila selesai SETELAH penyapu menandainya ABANDONED.
+  lateCompletion Boolean   @default(false)
+  startedAt      DateTime  @default(now())
+  finishedAt     DateTime?
+  durationMs     Int?
+
+  /// Subjek fitur lama — SENGAJA tanpa FK (D1), mis. VesselCallIntake.
+  subjectType String?
+  subjectId   String?
+  voyageId    String?
+  voyage      Voyage? @relation(fields: [voyageId], references: [id], onDelete: SetNull)
+
+  inputKind  String?
+  /// Sidik jari masukan (untuk intake = VesselCallIntake.inputHash). Isi tak disimpan.
+  inputHash  String?
+  /// sha256 JSON kanonik keluaran tool model — hash saja.
+  outputHash String?
+
+  /// ≤ 300 karakter, tanpa data pribadi & tanpa nilai field.
+  resultSummary  String?
+  /// Hasil tervalidasi berukuran terbatas; dikosongkan setelah 180 hari (D3).
+  result         Json?
+  resultPurgedAt DateTime?
+  errorCode      String?
+  /// ≤ 300 karakter, teks milik kita — TIDAK PERNAH teks penyedia.
+  errorDetail    String?
+
+  createdAt DateTime @default(now())
+
+  modelCalls       AgentModelCall[]
+  approvalRequests TahApprovalRequest[]
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, agentKey, createdAt])
+  @@index([tenantId, subjectType, subjectId])
+  @@index([status, startedAt])
+  @@index([resultPurgedAt, finishedAt])
+}
+
+/// Satu panggilan ke penyedia model di dalam satu AgentRun (1 run → N panggilan,
+/// mis. ulang tanpa plugin PDF). Metadata saja — tanpa prompt, tanpa respons mentah.
+model AgentModelCall {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agentRunId String
+  agentRun   AgentRun @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+  seq        Int
+
+  /// OPENROUTER | FAKE
+  provider          String
+  requestedModel    String
+  /// `model` dari respons bila ada.
+  servedModel       String?
+  /// `id` dari respons bila ada.
+  providerRequestId String?
+
+  promptId      String
+  promptVersion String
+  /// sha256 system prompt + skema tool (bukan teksnya).
+  promptHash    String
+  schemaId      String?
+  schemaVersion String?
+  /// Dari daftar izin saja: temperature, toolChoice, pdfEngine, timeoutMs, maxTokens.
+  params        Json
+
+  /// OK | ERROR | TIMEOUT
+  status    String
+  errorCode String?
+  latencyMs Int
+
+  /// Semua boleh null — metadata penyedia tak dijamin ada (§L Step 1).
+  inputTokens       Int?
+  outputTokens      Int?
+  cachedInputTokens Int?
+  reasoningTokens   Int?
+  /// Tetap null sampai spike verifikasi penyedia memastikan maknanya.
+  costAmount        Decimal? @db.Decimal(20, 10)
+  costCurrency      String?
+  /// PROVIDER_REPORTED | ESTIMATED
+  costSource        String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([agentRunId, seq])
+  @@index([tenantId, createdAt])
+}
+
+/// Permintaan persetujuan manusia TAH. Status KEPUTUSAN dan status EKSEKUSI
+/// adalah dua mesin terpisah: APPROVED tidak pernah berarti tindakannya berhasil.
+model TahApprovalRequest {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  /// Jenis dari registry kode; kelas risiko disalin saat dibuat (stabil untuk audit).
+  kind       String
+  actionRisk String
+
+  agentRunId  String?
+  agentRun    AgentRun? @relation(fields: [agentRunId], references: [id], onDelete: SetNull)
+  subjectType String?
+  subjectId   String?
+  voyageId    String?
+  voyage      Voyage?   @relation(fields: [voyageId], references: [id], onDelete: SetNull)
+
+  title         String
+  reason        String
+  impactSummary String
+  /// Daftar { code, severity } — kode, bukan teks bebas.
+  risks         Json
+
+  /// Usulan tervalidasi skema jenisnya; dikosongkan 180 hari setelah final (Q1).
+  proposal          Json?
+  proposalHash      String
+  humanEditedFields String[] @default([])
+  basisFingerprint  String
+
+  /// PENDING | APPROVED | REJECTED | REVISION_REQUESTED | EXPIRED | CANCELLED | SUPERSEDED
+  status           String               @default("PENDING")
+  version          Int                  @default(1)
+  /// Manusia yang memicu jalan agen — dasar aturan setuju-sendiri (D9).
+  originatorUserId String?
+  /// userId atau `system:<agentKey>`.
+  requestedBy      String
+  requiredRoles    String[]
+  expiresAt        DateTime
+  revisionOf       String?
+  revisionOfReq    TahApprovalRequest?  @relation("TahApprovalRevisi", fields: [revisionOf], references: [id], onDelete: SetNull)
+  revisions        TahApprovalRequest[] @relation("TahApprovalRevisi")
+  decidedByUserId  String?
+  decidedAt        DateTime?
+  decisionNote     String?
+
+  /// NOT_APPLICABLE | NOT_STARTED | RUNNING | SUCCEEDED | SUCCEEDED_WITH_WARNINGS | FAILED | CANCELLED
+  executionStatus    String    @default("NOT_APPLICABLE")
+  executionAttempts  Int       @default(0)
+  executionClaimedAt DateTime?
+  executedAt         DateTime?
+  executionErrorCode String?
+  /// Id saja, mis. { voyageId }.
+  resultRef          Json?
+  /// Diisi SEKALI saat keputusan final DAN eksekusi final/tak berlaku. Dasar retensi
+  /// (Q1): usulan dibersihkan 180 hari & baris dihapus 24 bulan SETELAH waktu ini.
+  /// Sengaja bukan `updatedAt` — pembersihan usulan sendiri memperbarui `updatedAt`.
+  finalizedAt        DateTime?
+  payloadPurgedAt    DateTime?
+
+  idempotencyKey String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, executionStatus])
+  @@index([tenantId, subjectType, subjectId])
+  @@index([status, expiresAt])
+  @@index([payloadPurgedAt, finalizedAt])
+  @@index([finalizedAt])
 }
