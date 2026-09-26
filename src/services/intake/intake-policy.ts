@@ -96,6 +96,7 @@ export type FlagField =
   | 'IMO_CHECK_DIGIT'
   | 'DATE_OUT_OF_RANGE'
   | 'DATE_NOT_IN_SOURCE'
+  | 'OCR_CORRECTED'
   | 'NAME_ONLY_MATCH'
 
 export type FieldUsulan<T = string> = {
@@ -148,6 +149,12 @@ export type Proposal = {
   contact: KontakUsulan | null
   /** Alasan sistem menimpa klasifikasi AI (null bila tidak ditimpa). */
   classificationReason: string | null
+  /**
+   * PRD-005 E5 Step 2 — jumlah entri kapal usulan AI yang DIBUANG validator karena tak satu pun
+   * identitasnya (nama/IMO/MMSI/call sign) terverifikasi di sumber. Hanya hitungan — nilai yang
+   * ditolak TIDAK disimpan di mana pun. Opsional: baris lama tanpa field ini = 0.
+   */
+  vesselsDropped?: number
 }
 
 export type StatusCocok = 'MATCHED' | 'AMBIGUOUS' | 'NOT_FOUND' | 'CONFLICT'
@@ -234,6 +241,22 @@ export const kompak = (s: string): string => s.toUpperCase().replace(/[^A-Z0-9]/
 function adaDiSumber(nilai: string, sumberKompak: string): boolean {
   const k = kompak(nilai)
   return k.length > 0 && sumberKompak.includes(k)
+}
+
+/**
+ * PRD-005 E5 Step 2 — lipatan salah-baca OCR, SEMPIT dan eksplisit. Hanya dipakai SESUDAH uji
+ * harfiah gagal, pada bentuk `kompak` (huruf besar, hanya A-Z0-9), di KEDUA sisi (nilai & sumber):
+ *   0 → O   ·   1 → I   ·   L → I   (huruf kecil 'l' sudah menjadi 'L' oleh kompak)
+ * Tidak ada jarak edit, kemiripan, atau koreksi ejaan: "BALIKPAPN" ≠ "BALIKPAPAN".
+ */
+export const LIPATAN_OCR: Readonly<Record<string, string>> = { '0': 'O', '1': 'I', L: 'I' }
+export const lipatOcr = (k: string): string => k.replace(/[01L]/g, (c) => LIPATAN_OCR[c])
+/** Nilai sependek ini terlalu mudah cocok kebetulan sesudah dilipat — jalur OCR ditolak. */
+export const MIN_PANJANG_OCR = 4
+
+function adaDiSumberOcr(nilai: string, sumberOcr: string): boolean {
+  const k = lipatOcr(kompak(nilai))
+  return k.length >= MIN_PANJANG_OCR && sumberOcr.includes(k)
 }
 
 /** Nama kapal: huruf besar, titik dibuang, tanda baca → spasi, awalan MV/MT/TB/… dibuang. */
@@ -507,12 +530,21 @@ export function validasiEkstraksi(raw: unknown, k: KonteksValidasi): HasilValida
   const o = isObj(raw) ? raw : {}
   const berteks = (INPUT_BERTEKS as readonly string[]).includes(k.inputKind) && !!k.sourceText
   const sumberKompak = berteks ? kompak(k.sourceText ?? '') : ''
+  const sumberOcr = berteks ? lipatOcr(sumberKompak) : ''
 
-  /** Identitas & nama: harus tertulis di sumber (teks) atau ditandai belum terverifikasi (PDF/gambar). */
-  const identitas = (nilai: string | null, pembanding = nilai): FieldUsulan => {
+  /**
+   * Identitas & nama: harus tertulis di sumber (teks) atau ditandai belum terverifikasi (PDF/gambar).
+   * Teks: uji harfiah DULU; hanya bila gagal, uji lipatan OCR → nilai dipertahankan dengan
+   * OCR_CORRECTED (kecocokan master darinya wajib dikonfirmasi — lihat cocokkanSemua).
+   * `ocrBoleh` = syarat tambahan deterministik untuk jalur OCR (mis. check digit IMO).
+   */
+  const identitas = (nilai: string | null, pembanding = nilai, ocrBoleh = true): FieldUsulan => {
     if (!nilai) return fieldKosong()
     if (berteks) {
-      return adaDiSumber(pembanding ?? nilai, sumberKompak) ? fieldDokumen(nilai) : fieldKosong(nilai, ['NOT_IN_SOURCE'])
+      const cari = pembanding ?? nilai
+      if (adaDiSumber(cari, sumberKompak)) return fieldDokumen(nilai)
+      if (ocrBoleh && adaDiSumberOcr(cari, sumberOcr)) return fieldDokumen(nilai, ['OCR_CORRECTED'])
+      return fieldKosong(nilai, ['NOT_IN_SOURCE'])
     }
     return fieldDokumen(nilai, ['UNVERIFIED_SOURCE'])
   }
@@ -533,11 +565,13 @@ export function validasiEkstraksi(raw: unknown, k: KonteksValidasi): HasilValida
 
   const kapalMentah = Array.isArray(o.vessels) ? o.vessels : []
   const vessels: KapalUsulan[] = []
+  let vesselsDropped = 0
   for (const kv of kapalMentah.slice(0, MAKS_KAPAL_INTAKE)) {
     const v = isObj(kv) ? kv : {}
     const imoMentah = teks(v.imo, 40)
     const imo = imoMentah ? k.norm.imo(imoMentah) : null
-    let imoField = identitas(imo, imo)
+    // Jalur OCR tak pernah melewati validasi IMO: IMO yang hanya cocok lewat lipatan wajib lolos check digit.
+    let imoField = identitas(imo, imo, !!imo && k.norm.imoSah(imo))
     if (imo && imoField.value && !k.norm.imoSah(imo)) imoField = { ...imoField, flags: [...imoField.flags, 'IMO_CHECK_DIGIT'] }
     const mmsiMentah = teks(v.mmsi, 40)
     const mmsi = mmsiMentah ? k.norm.mmsi(mmsiMentah) : null
@@ -553,6 +587,8 @@ export function validasiEkstraksi(raw: unknown, k: KonteksValidasi): HasilValida
       excluded: false,
     }
     if (kapal.name.value || kapal.imo.value || kapal.mmsi.value || kapal.callSign.value) vessels.push(kapal)
+    // Entri yang MEMBAWA identitas dari AI tapi semuanya ditolak → dibuang (F2 tetap tertutup), dihitung saja.
+    else if (kapal.name.extracted || kapal.imo.extracted || kapal.mmsi.extracted || kapal.callSign.extracted) vesselsDropped++
   }
 
   const cargoMentah = Array.isArray(o.cargoes) ? o.cargoes : []
@@ -593,6 +629,7 @@ export function validasiEkstraksi(raw: unknown, k: KonteksValidasi): HasilValida
     cargoes,
     contact: contact && (contact.name || contact.email || contact.phone) ? contact : null,
     classificationReason: null,
+    vesselsDropped,
   }
 
   let classification: Klasifikasi = (KLASIFIKASI as readonly string[]).includes(o.classification as string)
@@ -831,8 +868,10 @@ export function cocokkanSemua(
   opsi: { konfirmasiSemua?: boolean } = {},
 ): Matches {
   // Step 4F — masukan visual: kecocokan otomatis apa pun (termasuk IMO persis) wajib dikonfirmasi.
-  const wajib = (h: HasilCocok): HasilCocok =>
-    opsi.konfirmasiSemua && h.status === 'MATCHED' && !dipilihManusia(h) ? { ...h, requiresConfirmation: true } : h
+  // E5 Step 2 — begitu juga kecocokan yang memakai nilai OCR_CORRECTED (dipulihkan dari salah baca OCR).
+  const wajib = (h: HasilCocok, ocr = false): HasilCocok =>
+    (opsi.konfirmasiSemua || ocr) && h.status === 'MATCHED' && !dipilihManusia(h) ? { ...h, requiresConfirmation: true } : h
+  const ocr = (...f: FieldUsulan[]): boolean => f.some((x) => x.value !== null && x.flags.includes('OCR_CORRECTED'))
   const pertahankan = (lama: HasilCocok | undefined, kunci: string, ada: (id: string) => boolean): HasilCocok | null => {
     if (!lama || berubah.has(kunci)) return null
     if (lama.leftEmpty) return lama
@@ -847,17 +886,17 @@ export function cocokkanSemua(
       master.vessels,
       norm,
     )
-    return pertahankanKonfirmasi(sebelum?.vessels[i], wajib(baru), berubah.has(`vessel:${i}`))
+    return pertahankanKonfirmasi(sebelum?.vessels[i], wajib(baru, ocr(v.name, v.imo, v.mmsi, v.callSign)), berubah.has(`vessel:${i}`))
   })
   const principal =
     pertahankan(sebelum?.principal, 'principal', (id) => master.principals.some((x) => x.id === id)) ??
-    pertahankanKonfirmasi(sebelum?.principal, wajib(cocokkanPihak(p.principalName.value, master.principals)), berubah.has('principal'))
+    pertahankanKonfirmasi(sebelum?.principal, wajib(cocokkanPihak(p.principalName.value, master.principals), ocr(p.principalName)), berubah.has('principal'))
   const customer =
     pertahankan(sebelum?.customer, 'customer', (id) => master.customers.some((x) => x.id === id && x.isActive !== false)) ??
-    pertahankanKonfirmasi(sebelum?.customer, wajib(cocokkanPihak(p.customerName.value, master.customers)), berubah.has('customer'))
+    pertahankanKonfirmasi(sebelum?.customer, wajib(cocokkanPihak(p.customerName.value, master.customers), ocr(p.customerName)), berubah.has('customer'))
   const port =
     pertahankan(sebelum?.port, 'port', (id) => master.ports.some((x) => x.id === id)) ??
-    pertahankanKonfirmasi(sebelum?.port, wajib(cocokkanPort(p.portName.value, p.portUnlocode.value, master.ports)), berubah.has('port'))
+    pertahankanKonfirmasi(sebelum?.port, wajib(cocokkanPort(p.portName.value, p.portUnlocode.value, master.ports), ocr(p.portName, p.portUnlocode)), berubah.has('port'))
   return { vessels, principal, customer, port }
 }
 

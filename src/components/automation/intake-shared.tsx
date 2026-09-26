@@ -104,12 +104,16 @@ const LABEL_ASAL: Record<Lang, Record<string, string>> = {
     MASTER_MATCH: 'Dari data master', USER_EDITED: 'Diisi peninjau',
     SYSTEM_DERIVED: 'Diturunkan sistem', EMPTY: 'Tidak ada di dokumen', NOT_IN_SOURCE: 'Dibuang: tidak tertulis di dokumen',
     DATE_OUT_OF_RANGE: `Dibuang: tanggal di luar rentang yang diterima (maks ${TANGGAL_MUNDUR_HARI} hari ke belakang, ${TANGGAL_MAJU_HARI} hari ke depan)`, IMO_CHECK_DIGIT: 'Nomor IMO tampak salah ketik',
+    DATE_NOT_IN_SOURCE: 'Dibuang: tanggal lengkap (dengan tahun) tidak dapat diverifikasi dari field sumbernya',
+    OCR_CORRECTED: 'Dipulihkan dari salah baca OCR (mis. 0/O, 1/I) — cocokkan dengan dokumen lalu konfirmasi',
   },
   en: {
     SOURCE_DOCUMENT: 'Read by AI from the document', VISUAL: 'Read by AI from a PDF/image',
     MASTER_MATCH: 'From master data', USER_EDITED: 'Entered by reviewer',
     SYSTEM_DERIVED: 'Derived by system', EMPTY: 'Not in the document', NOT_IN_SOURCE: 'Discarded: not written in the document',
     DATE_OUT_OF_RANGE: `Discarded: date outside the accepted range (at most ${TANGGAL_MUNDUR_HARI} days back, ${TANGGAL_MAJU_HARI} days ahead)`, IMO_CHECK_DIGIT: 'IMO number looks mistyped',
+    DATE_NOT_IN_SOURCE: 'Discarded: a complete date (with year) could not be verified from its source field',
+    OCR_CORRECTED: 'Recovered from an OCR misread (e.g. 0/O, 1/I) — compare with the document, then confirm',
   },
 }
 
@@ -131,14 +135,18 @@ export function ProvenanceBadge({ f, lang, visual = false }: { f: FieldLike; lan
       : f.source === 'MASTER_MATCH'
         ? { Icon: Database, c: hijau, t: L.MASTER_MATCH }
         : f.source === 'SOURCE_DOCUMENT'
-          ? f.flags.includes('UNVERIFIED_SOURCE') || visual
-            ? { Icon: ShieldQuestion, c: kuning, t: L.VISUAL }
-            : { Icon: Bot, c: biru, t: L.SOURCE_DOCUMENT }
+          ? f.flags.includes('OCR_CORRECTED')
+            ? { Icon: ShieldQuestion, c: kuning, t: L.OCR_CORRECTED }
+            : f.flags.includes('UNVERIFIED_SOURCE') || visual
+              ? { Icon: ShieldQuestion, c: kuning, t: L.VISUAL }
+              : { Icon: Bot, c: biru, t: L.SOURCE_DOCUMENT }
           : f.flags.includes('NOT_IN_SOURCE')
             ? { Icon: AlertTriangle, c: kuning, t: L.NOT_IN_SOURCE }
-            : f.flags.includes('DATE_OUT_OF_RANGE')
-              ? { Icon: AlertTriangle, c: kuning, t: L.DATE_OUT_OF_RANGE }
-              : { Icon: CircleDashed, c: netral, t: f.source === 'SYSTEM_DERIVED' ? L.SYSTEM_DERIVED : L.EMPTY }
+            : f.flags.includes('DATE_NOT_IN_SOURCE')
+              ? { Icon: AlertTriangle, c: kuning, t: L.DATE_NOT_IN_SOURCE }
+              : f.flags.includes('DATE_OUT_OF_RANGE')
+                ? { Icon: AlertTriangle, c: kuning, t: L.DATE_OUT_OF_RANGE }
+                : { Icon: CircleDashed, c: netral, t: f.source === 'SYSTEM_DERIVED' ? L.SYSTEM_DERIVED : L.EMPTY }
   return (
     <span className="inline-flex flex-wrap gap-1">
       <span className={cn(pil, g.c)}>

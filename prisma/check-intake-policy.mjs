@@ -272,6 +272,118 @@ console.log('\n[2b] Bukti tanggal di sumber (label-anchored, PRD-005 E5 Step 1)'
   cek('intake-policy.ts tanpa regex lookbehind / grup bernama (aman untuk peramban lama)', !/\(\?<[!=a-zA-Z]/.test(baca('src/services/intake/intake-policy.ts')))
 }
 
+// =================================================================== 2c. OCR & kapal dibuang
+// PRD-005 E5 Step 2 — (B-1) verifikasi identitas tahan salah-baca OCR yang SEMPIT (0↔O, 1↔I, l/L↔I),
+// hanya sesudah uji harfiah gagal, ditandai OCR_CORRECTED + wajib konfirmasi; (C-1) hitungan kapal
+// usulan AI yang dibuang validator, tanpa menyimpan nilainya.
+console.log('\n[2c] Verifikasi OCR-aman & visibilitas kapal dibuang (PRD-005 E5 Step 2)')
+{
+  const OCR = 'N0MINATI0N\nVesse1 : MV SEA B0REAS\nIMO : 9O74729\nMMS1 : 99O 011 0O1\nP0rt : Balikpapn ( ID BPN )\nE T A : 16.10.2026\nPrinc1pal : PT Surya Perkasa Samudera'
+  const rawOcr = (v, x = {}) => ({ classification: 'NEW_NOMINATION', vessels: [v], portName: 'Balikpapan', portUnlocode: 'IDBPN', eta: '2026-10-16', cargoes: [], ...x })
+  const kapalOcr = (v) => validasi(rawOcr(v), 'TEXT', OCR).proposal.vessels[0]
+
+  // 1. nama
+  const n1 = kapalOcr({ name: 'MV SEA BOREAS' }).name
+  cek('1. "B0REAS" ↔ "BOREAS" → diterima HANYA lewat lipatan OCR → OCR_CORRECTED', n1.value === 'MV SEA BOREAS' && n1.source === 'SOURCE_DOCUMENT' && n1.flags.join() === 'OCR_CORRECTED', JSON.stringify(n1))
+  cek('1b. lipatOcr sempit & eksplisit: 0→O, 1→I, L→I saja', P.lipatOcr('B0REAS1LZ58') === 'BOREASIIZ58' && JSON.stringify(P.LIPATAN_OCR) === '{"0":"O","1":"I","L":"I"}')
+
+  // 2. IMO: lipatan OCR saja tidak cukup — check digit wajib lolos.
+  const i2 = kapalOcr({ name: 'MV SEA BOREAS', imo: '9074729' }).imo
+  cek('2. IMO "9O74729" ↔ 9074729 (check digit sah) → OCR_CORRECTED', i2.value === '9074729' && i2.flags.join() === 'OCR_CORRECTED', JSON.stringify(i2))
+  const i2b = validasi(rawOcr({ name: 'MV SEA BOREAS', imo: '9074728' }), 'TEXT', OCR.replace('9O74729', '9O74728')).proposal.vessels[0].imo
+  cek('2b. IMO "9O74728" ↔ 9074728 (check digit SALAH) → jalur OCR ditolak, dibuang NOT_IN_SOURCE', i2b.value === null && i2b.flags.join() === 'NOT_IN_SOURCE' && i2b.extracted === '9074728', JSON.stringify(i2b))
+  const i2c = validasi(rawOcr({ name: 'MV A', imo: '9074728' }), 'TEXT', 'MV A IMO 9074728 ke Balikpapan IDBPN ETA 16.10.2026').proposal.vessels[0].imo
+  cek('2c. IMO harfiah dengan check digit salah → perilaku lama (disimpan + IMO_CHECK_DIGIT, tanpa OCR_CORRECTED)', i2c.value === '9074728' && i2c.flags.join() === 'IMO_CHECK_DIGIT')
+
+  // 3. identitas numerik berspasi / rusak
+  const m3 = kapalOcr({ name: 'MV SEA BOREAS', mmsi: '990 011 001' }).mmsi
+  cek('3. MMSI "99O 011 0O1" (spasi + O) ↔ 990011001 → OCR_CORRECTED', m3.value === '990011001' && m3.flags.join() === 'OCR_CORRECTED', JSON.stringify(m3))
+  const m3b = validasi(rawOcr({ name: 'MV A', mmsi: '990011001' }), 'TEXT', 'MV A MMSI 990 011 001 ke Balikpapan IDBPN ETA 16.10.2026').proposal.vessels[0].mmsi
+  cek('3b. MMSI berspasi tanpa salah baca → cocok harfiah (tanpa OCR_CORRECTED)', m3b.value === '990011001' && m3b.flags.length === 0)
+
+  // 4–5. bukan koreksi ejaan / bukan kemiripan
+  const p4 = validasi(rawOcr({ name: 'MV SEA BOREAS' }), 'TEXT', OCR).proposal.portName
+  cek('4. "Balikpapn" ↔ "Balikpapan" → TIDAK lolos (bukan salah baca OCR) → NOT_IN_SOURCE', p4.value === null && p4.flags.join() === 'NOT_IN_SOURCE')
+  const n5 = kapalOcr({ name: 'MV SEA BOREAS', imo: '9074729', callSign: 'SEA BOREALIS' }).callSign
+  const r5b = validasi(rawOcr({ name: 'MV OCEAN STAR' }), 'TEXT', OCR).proposal
+  cek('5. nilai sekadar mirip ("SEA BOREALIS" vs "SEA B0REAS") → NOT_IN_SOURCE', n5.value === null && n5.flags.join() === 'NOT_IN_SOURCE', JSON.stringify(n5))
+  cek('5a. nama tak berkaitan ("MV OCEAN STAR") → kapal dibuang (tanpa identitas tersisa) & dihitung', r5b.vessels.length === 0 && r5b.vesselsDropped === 1)
+  cek('5b. nilai pendek (< 4 setelah dilipat) tak pernah lolos lewat OCR', validasi(rawOcr({ name: 'MV X', callSign: 'IO' }), 'TEXT', 'MV X call sign 10 ke Balikpapan IDBPN ETA 16.10.2026').proposal.vessels[0].callSign.value === null)
+
+  // 6. harfiah persis → sama seperti sebelumnya
+  const n6 = kapalOcr({ name: 'MV SEA B0REAS' }).name
+  cek('6. cocok harfiah persis → SOURCE_DOCUMENT tanpa flag (tak pernah OCR_CORRECTED)', n6.value === 'MV SEA B0REAS' && n6.flags.length === 0)
+  cek('6b. nominasi dasar (RAW_BAIK) tak menyentuh OCR_CORRECTED', !JSON.stringify(validasi(RAW_BAIK, 'TEXT', SUMBER).proposal).includes('OCR_CORRECTED'))
+  cek('6c. PDF tidak memakai jalur OCR (tetap UNVERIFIED_SOURCE)', validasi(rawOcr({ name: 'MV SEA BOREAS' }), 'PDF', null).proposal.vessels[0].name.flags.join() === 'UNVERIFIED_SOURCE')
+
+  // 7. wajib konfirmasi manusia lewat mekanisme yang ada (kecocokan master → requiresConfirmation).
+  const masterOcr = {
+    vessels: [{ id: 'vb', name: 'MV SEA BOREAS', imoNumber: '9074729', mmsi: null, mmsiVerifiedAt: null, callSign: null }],
+    principals: [{ id: 'p1', name: 'PT Surya Perkasa Samudera' }],
+    customers: [],
+    ports: [{ id: 'po1', name: 'Samarinda', unlocode: 'IDSRI' }, { id: 'po2', name: 'Balikpapan', unlocode: 'IDBPN' }],
+  }
+  const r7 = validasi(rawOcr({ name: 'MV SEA BOREAS', imo: '9074729' }, { principalName: 'PT Surya Perkasa Samudera' }), 'TEXT', OCR)
+  const m7 = P.cocokkanSemua(r7.proposal, masterOcr, NORM, null)
+  cek('7. kecocokan IMO persis dari nilai OCR_CORRECTED → requiresConfirmation (belum dikonfirmasi)', m7.vessels[0].status === 'MATCHED' && m7.vessels[0].basis === 'EXACT_IMO' && m7.vessels[0].requiresConfirmation === true && !m7.vessels[0].confirmed, JSON.stringify(m7.vessels[0]))
+  const dasar7 = { status: 'NEEDS_REVIEW', classification: r7.classification, proposal: r7.proposal, portalAccessCount: 0, duplicateLevel: 'NO_DUPLICATE',
+    keputusan: { duplicateDecision: null, decisionReason: null, duplicateConfirmed: false, portalExposureAck: false } }
+  const siap7 = { ...m7, principal: { ...m7.principal, confirmed: true }, customer: { ...m7.customer, leftEmpty: true } }
+  const s7 = P.syaratApproval({ ...dasar7, matches: siap7 })
+  cek('7b. approve DIBLOK sampai kapal OCR dikonfirmasi', s7.includes('VESSEL_CONFIRMATION_REQUIRED') && s7.includes('PRIMARY_VESSEL_UNRESOLVED'), s7.join(','))
+  const s7ok = P.syaratApproval({ ...dasar7, matches: { ...siap7, vessels: [{ ...siap7.vessels[0], confirmed: true }] } })
+  cek('7c. … sesudah dikonfirmasi → syarat kapal terpenuhi', !s7ok.includes('VESSEL_CONFIRMATION_REQUIRED') && !s7ok.includes('PRIMARY_VESSEL_UNRESOLVED'), s7ok.join(','))
+  const lit7 = validasi({ classification: 'NEW_NOMINATION', vessels: [{ name: 'MV SEA BOREAS', imo: '9074729' }], portUnlocode: 'IDBPN', eta: '2026-10-16', cargoes: [] }, 'TEXT', 'MV SEA BOREAS IMO 9074729 ke IDBPN ETA 16.10.2026')
+  cek('7d. kontrol: nilai harfiah yang sama → IMO persis TANPA wajib konfirmasi (perilaku lama)', P.cocokkanSemua(lit7.proposal, masterOcr, NORM, null).vessels[0].requiresConfirmation === false)
+  const port7 = validasi(rawOcr({ name: 'MV SEA BOREAS' }, { portName: 'Samarinda', portUnlocode: null }), 'TEXT', 'MV SEA B0REAS ke Pelabuhan SAMAR1NDA ETA 16.10.2026')
+  const mp7 = P.cocokkanSemua(port7.proposal, masterOcr, NORM, null).port
+  cek('7e. pelabuhan "SAMAR1NDA" → OCR_CORRECTED & kecocokan pelabuhan wajib dikonfirmasi', port7.proposal.portName.flags.join() === 'OCR_CORRECTED' && mp7.status === 'MATCHED' && mp7.requiresConfirmation === true)
+  const pr7 = validasi(rawOcr({ name: 'MV SEA BOREAS' }, { principalName: 'PT Surya Perkasa Samudera' }), 'TEXT', OCR.replace('Princ1pal : PT Surya Perkasa Samudera', 'Principal : PT Surya Perkasa Samudera'))
+  cek('7f. principal harfiah di sumber OCR → tanpa flag, tanpa wajib konfirmasi tambahan', pr7.proposal.principalName.flags.length === 0)
+
+  // 8–10. kapal yang dibuang validator: hanya hitungan, tak pernah kembali sebagai data tepercaya.
+  const E03 = '- Tug   : TB SNTLQC PERKASA 7 (call sign YQC7, MMSI 990010301)\n- Barge : BG SNTLQC JAYA 3001\n- Barge : BG SNTLQC JAYA 3002\nTujuan  : Pelabuhan Samarinda\nETA     : 11 Oktober 2026'
+  const r8 = validasi({
+    classification: 'NEW_NOMINATION',
+    vessels: [{ name: 'TB PERKASA 7', callSign: 'YQC7', mmsi: '990010301', role: 'TUG' }, { name: 'BG JAYA 3001', role: 'BARGE' }, { name: 'BG JAYA 3002', role: 'BARGE' }],
+    portName: 'Samarinda', eta: '2026-10-11', cargoes: [],
+  }, 'TEXT', E03)
+  cek('8. E03-like: 3 kapal usulan, 2 identitasnya ditolak → vesselsDropped = 2, 1 kapal aman tersisa', r8.proposal.vesselsDropped === 2 && r8.proposal.vessels.length === 1 && r8.proposal.vessels[0].mmsi.value === '990010301' && r8.proposal.vessels[0].role.value === 'TUG')
+  cek('8b. … nama tug yang terpotong tetap dibuang (bukan OCR, bukan dipulihkan)', r8.proposal.vessels[0].name.value === null && r8.proposal.vessels[0].name.flags.join() === 'NOT_IN_SOURCE')
+  cek('9. tak ada kapal dibuang → vesselsDropped = 0 (tak ada peringatan)', validasi(RAW_BAIK, 'TEXT', SUMBER).proposal.vesselsDropped === 0)
+  cek('9b. entri tanpa identitas sama sekali dari AI tidak dihitung', validasi({ ...RAW_BAIK, vessels: [...RAW_BAIK.vessels, { vesselType: 'Tug', role: 'TUG' }, {}] }, 'TEXT', SUMBER).proposal.vesselsDropped === 0)
+  cek('9c. PDF: kapal tak pernah dibuang karena sumber → vesselsDropped = 0', validasi(RAW_BAIK, 'PDF', null).proposal.vesselsDropped === 0)
+  const json8 = JSON.stringify(r8.proposal)
+  cek('10. nilai kapal yang dibuang TIDAK muncul lagi di proposal (tak ada "JAYA 3001/3002")', !/JAYA 300[12]/.test(json8) && r8.proposal.vessels.every((v) => !/JAYA/.test(v.name.value ?? '')))
+  cek('10b. F2 tetap tertutup: kapal karangan (tak ada di sumber, tak lolos lipatan) dibuang & dihitung', (() => {
+    const r = validasi({ ...RAW_BAIK, vessels: [...RAW_BAIK.vessels, { name: 'MV KARANGAN FIKTIF' }] }, 'TEXT', SUMBER).proposal
+    return r.vessels.length === 2 && r.vesselsDropped === 1 && !JSON.stringify(r).includes('FIKTIF')
+  })())
+  cek('10c. proposal lama tanpa vesselsDropped tetap sah (opsional, tanpa migrasi)', (() => {
+    const { vesselsDropped, ...lama } = validasi(RAW_BAIK, 'TEXT', SUMBER).proposal
+    return vesselsDropped === 0 && P.proposalSah(lama)
+  })())
+
+  // 11–12. tampilan (uji sumber; repo tak punya kerangka uji UI).
+  const review = baca('src/components/automation/IntakeReview.tsx')
+  const shared = baca('src/components/automation/intake-shared.tsx')
+  cek('11. UI tinjauan menampilkan peringatan bila vesselsDropped > 0 (id & en), tanpa nilai kapal',
+    /\{\(p\.vesselsDropped \?\? 0\) > 0 && \(/.test(review) &&
+      /vesselsDropped: 'AI mendeteksi \{n\} kapal tambahan, tetapi identitasnya tidak dapat diverifikasi terhadap dokumen sumber\. Periksa dokumen sebelum melanjutkan\.'/.test(review) &&
+      /vesselsDropped: 'AI detected \{n\} more vessel/.test(review) &&
+      /t\.vesselsDropped\.replace\('\{n\}', String\(p\.vesselsDropped\)\)/.test(review))
+  cek('12. DATE_NOT_IN_SOURCE punya label sendiri (bukan "Tidak ada di dokumen") & cabang lencana',
+    /DATE_NOT_IN_SOURCE: 'Dibuang: tanggal lengkap \(dengan tahun\) tidak dapat diverifikasi dari field sumbernya'/.test(shared) &&
+      /DATE_NOT_IN_SOURCE: 'Discarded: a complete date/.test(shared) &&
+      /f\.flags\.includes\('DATE_NOT_IN_SOURCE'\)\s*\?\s*\{ Icon: AlertTriangle, c: kuning, t: L\.DATE_NOT_IN_SOURCE \}/.test(shared))
+  cek('12b. OCR_CORRECTED punya label & lencana kuning yang menyebut konfirmasi (id & en)',
+    /OCR_CORRECTED: 'Dipulihkan dari salah baca OCR[^']*konfirmasi'/.test(shared) && /OCR_CORRECTED: 'Recovered from an OCR misread[^']*confirm'/.test(shared) &&
+      /f\.flags\.includes\('OCR_CORRECTED'\)\s*\?\s*\{ Icon: ShieldQuestion, c: kuning, t: L\.OCR_CORRECTED \}/.test(shared))
+
+  // 13. pagar tanggal Step 1 tetap utuh.
+  cek('13. Step 1 tetap: ETA "13/11" tanpa tahun → DATE_NOT_IN_SOURCE', validasi(rawOcr({ name: 'MV SEA BOREAS' }, { eta: '2026-11-13' }), 'TEXT', `${OCR}\nETA: 13/11`).proposal.eta.flags.join() === 'DATE_NOT_IN_SOURCE')
+}
+
 // =================================================================== 3. matching
 console.log('\n[3] Pencocokan master (deterministik)')
 const KAPAL = [

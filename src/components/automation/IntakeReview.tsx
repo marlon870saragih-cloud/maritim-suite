@@ -73,6 +73,7 @@ const STR: Record<Lang, Record<string, string>> = {
     visualKept: 'Buka dokumen asli dan cocokkan, lalu konfirmasi setiap kecocokan kapal, pelabuhan, dan pihak di bawah.',
     visualNotKept: 'Dokumen asli tidak disimpan di aplikasi. Karena itu setiap kecocokan kapal, pelabuhan, dan pihak di bawah wajib Anda konfirmasi sendiri — sistem tidak menganggapnya pasti.',
     vesselsTitle: 'Kapal', pairTitle: 'Tug + Tongkang', vessel: 'Kapal', tug: 'Tug', barge: 'Tongkang', primary: 'Kapal utama voyage',
+    vesselsDropped: 'AI mendeteksi {n} kapal tambahan, tetapi identitasnya tidak dapat diverifikasi terhadap dokumen sumber. Periksa dokumen sebelum melanjutkan.',
     excluded: 'Dikeluarkan dari usulan', exclude: 'Keluarkan', include: 'Sertakan lagi', addVessel: 'Tambah kapal',
     fName: 'Nama', fImo: 'IMO', fMmsi: 'MMSI', fCallSign: 'Call sign', fType: 'Tipe', fRole: 'Peran',
     partiesTitle: 'Pihak & pelabuhan', principal: 'Principal', customer: 'Customer (pihak ditagih)', port: 'Pelabuhan',
@@ -127,6 +128,7 @@ const STR: Record<Lang, Record<string, string>> = {
     visualKept: 'Open the original document and compare, then confirm each vessel, port and party match below.',
     visualNotKept: 'The original document is not kept in the app. Therefore every vessel, port and party match below must be confirmed by you — the system does not treat them as certain.',
     vesselsTitle: 'Vessels', pairTitle: 'Tug + Barge', vessel: 'Vessel', tug: 'Tug', barge: 'Barge', primary: 'Voyage primary vessel',
+    vesselsDropped: 'AI detected {n} more vessel(s), but their identity could not be verified against the source document. Check the document before continuing.',
     excluded: 'Excluded from proposal', exclude: 'Exclude', include: 'Include again', addVessel: 'Add vessel',
     fName: 'Name', fImo: 'IMO', fMmsi: 'MMSI', fCallSign: 'Call sign', fType: 'Type', fRole: 'Role',
     partiesTitle: 'Parties & port', principal: 'Principal', customer: 'Customer (billed party)', port: 'Port',
@@ -539,6 +541,12 @@ void patch({ cargoes: daftar })
             </button>
           )}
         </div>
+        {/* E5 Step 2 — kapal usulan AI yang dibuang validator: hanya hitungan, nilainya tak pernah ditampilkan. */}
+        {(p.vesselsDropped ?? 0) > 0 && (
+          <p role="note" className="mt-3 flex items-start gap-2 rounded border border-accent-amber/40 bg-accent-amber/10 px-3 py-2 text-sm text-text-primary">
+            <AlertTriangle className="mt-0.5 w-4 h-4 flex-shrink-0" aria-hidden="true" /> {t.vesselsDropped.replace('{n}', String(p.vesselsDropped))}
+          </p>
+        )}
         <div className="mt-3 space-y-4">
           {urutanKapal.map(({ v, i }) => (
             <div key={i} className={cn('rounded border border-border-muted p-3 min-w-0', v.excluded && 'opacity-60')}>

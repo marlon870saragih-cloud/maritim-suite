@@ -178,15 +178,23 @@ bagian('C. Keluaran SEMPURNA (dari GT) — tak boleh ada FATAL palsu')
   const { h } = nilai(K.E10, sempurna(K.E10))
   const koreksiRaw = h.RAW.baris.filter((b) => b.tanda.includes('KOREKSI_OCR')).map((b) => b.generik).sort()
   cek('C-K3a E10 RAW: nama, IMO, pelabuhan = CORRECT bertanda KOREKSI_OCR (bukan HALLUCINATED)', JSON.stringify(koreksiRaw) === JSON.stringify(['portName', 'vessels.imo', 'vessels.name']), koreksiRaw.join(','))
+  // PRD-005 E5 Step 2: verifikasi OCR-aman (0↔O, 1↔I, l↔I; IMO tetap wajib check digit) kini
+  // mempertahankan nama & IMO hasil koreksi OCR di POST dengan flag OCR_CORRECTED (wajib konfirmasi).
+  // "Balikpapn"→"BALIKPAPAN" bukan salah baca OCR (huruf hilang) → pelabuhan TETAP dibuang validator.
   const postMissing = h.POST.baris.filter((b) => b.hasil === 'MISSING')
   cek(
-    'C-K3b E10 POST: nama & pelabuhan MISSING, keparahan MAJOR, atribusi VALIDATOR, flag NOT_IN_SOURCE',
-    JSON.stringify(postMissing.map((b) => b.generik).sort()) === '["portName","vessels.name"]' &&
-      postMissing.every((b) => b.keparahan.tingkat === 'MAJOR' && b.atribusi === 'VALIDATOR' && b.flags.includes('NOT_IN_SOURCE')),
-    JSON.stringify(postMissing.map((b) => [b.jalur, b.atribusi, b.keparahan])),
+    'C-K3b E10 POST: hanya pelabuhan MISSING (MAJOR, VALIDATOR, NOT_IN_SOURCE); nama koreksi OCR bertahan CORRECT + OCR_CORRECTED',
+    JSON.stringify(postMissing.map((b) => b.generik).sort()) === '["portName"]' &&
+      postMissing.every((b) => b.keparahan.tingkat === 'MAJOR' && b.atribusi === 'VALIDATOR' && b.flags.includes('NOT_IN_SOURCE')) &&
+      h.POST.baris.some((b) => b.generik === 'vessels.name' && b.hasil === 'CORRECT' && b.flags.includes('OCR_CORRECTED')),
+    JSON.stringify(h.POST.baris.filter((b) => ['portName', 'vessels.name'].includes(b.generik)).map((b) => [b.jalur, b.hasil, b.atribusi, b.flags])),
   )
   const imoPost = h.POST.baris.find((b) => b.generik === 'vessels.imo')
-  cek('C-K3b2 E10 POST IMO dibuang validator → KOSONG (diterima GT) = CORRECT, atribusi VALIDATOR', imoPost.hasil === 'CORRECT' && imoPost.got === null && imoPost.atribusi === 'VALIDATOR')
+  cek(
+    'C-K3b2 E10 POST IMO koreksi OCR 9998054 (check digit sah) bertahan = CORRECT + OCR_CORRECTED',
+    imoPost.hasil === 'CORRECT' && imoPost.got === '9998054' && imoPost.flags.includes('OCR_CORRECTED'),
+    JSON.stringify([imoPost.hasil, imoPost.got, imoPost.atribusi, imoPost.flags]),
+  )
   cek('C-K3c E10 POST: 0 FATAL', h.POST.jumlah.FATAL === 0)
   const lit = mutasi('E10', (r) => {
     r.vessels[0].name = 'MV SNTLQJ B0REAS'
