@@ -134,7 +134,7 @@ const lapSempurna = await run()
   const s = slots.find((x) => x.blok === 'S5_RUN1' && x.kasus.id === 'T11')
   cek('lapisan terpisah: sumber (sidik), panggilan (metadata), RAW (objek), POST (proposal validator), nilai RAW & POST', !!s.sumber?.sha256_12 && s.panggilan.length === 1 && s.raw && s.post?.proposal && s.nilai?.RAW && s.nilai?.POST && s.raw !== s.post.proposal)
   cek('RAW tidak pernah ditimpa POST: RAW tetap argumen tool (string polos), POST berbentuk FieldUsulan', typeof s.raw.vessels[0].name === 'string' && typeof s.post.proposal.vessels[0].name === 'object')
-  cek('jalur produksi dipakai: perekam mencatat prompt v2 / skema v2 & model slot', s.perekam.length === 1 && s.perekam[0].promptVersion === '2' && s.perekam[0].schemaVersion === '2' && s.perekam[0].requestedModel === H.MODEL_S5)
+  cek('jalur produksi dipakai: perekam mencatat prompt v3 / skema v3 (versi produksi saat ini) & model slot', s.perekam.length === 1 && s.perekam[0].promptVersion === '3' && s.perekam[0].schemaVersion === '3' && s.perekam[0].requestedModel === H.MODEL_S5)
   cek('tanpa fallback: setiap panggilan meminta model slotnya & dilayani model itu', slots.every((x) => x.panggilan.every((p) => p.requestedModel === x.model && p.servedModel === x.model)))
   cek('laporan TIDAK memuat objek RAW/POST/nilai (hanya diagnostik)', !('raw' in lapSempurna.diagnostik[0]) && !('post' in lapSempurna.diagnostik[0]) && !JSON.stringify(lapSempurna).includes('"extracted"'))
 }

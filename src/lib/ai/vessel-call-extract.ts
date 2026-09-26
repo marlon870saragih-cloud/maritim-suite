@@ -53,7 +53,7 @@ export async function teksWorkbook(bytes: ArrayBuffer): Promise<string> {
 }
 
 /**
- * PRD-005 E5 Step 3 — kontrak ekstraksi v2 sebagai DATA terstruktur. SYSTEM_PROMPT disusun dari
+ * PRD-005 E5 Step 3 — kontrak ekstraksi sebagai DATA terstruktur (v2; v3 sejak E5 Step 12). SYSTEM_PROMPT disusun dari
  * aturan ini (urutan = nomor aturan). `contoh` dan `tabelMinimum` BUKAN hiasan: uji
  * (uji check-intake-prompt.mjs) mencocokkannya dengan pagar deterministik yang sesungguhnya
  * (syaratMinimumTerpenuhi, buktiTanggalDiSumber, lipatOcr/validasiEkstraksi), sehingga prompt dan
@@ -73,9 +73,27 @@ export type AturanPromptIntake = {
     /** Nilai yang DILARANG (mis. tebakan huruf yang hilang). */
     bukan?: string
   }[]
-  /** Hanya SYARAT_MINIMUM: tabel kebenaran yang wajib sama dengan syaratMinimumTerpenuhi(). */
-  tabelMinimum?: readonly { kapal: boolean; pelabuhan: boolean; eta: boolean; cukup: boolean }[]
+  /** Hanya SYARAT_MINIMUM: tabel kebenaran yang wajib sama dengan syaratMinimumTerpenuhi() — v3: DIKIRIM di teks. */
+  tabelMinimum?: readonly BarisTabelMinimum[]
 }
+
+/** v3: pelabuhan dipisah jadi nama & UN/LOCODE (kode saja sudah bukti tujuan), ETA = ETA bertahun. */
+export type BarisTabelMinimum = { kapal: boolean; namaPort: boolean; unlocode: boolean; eta: boolean; cukup: boolean }
+
+/** PRD-005 E5 Step 12 — tabel syarat minimum yang DIRENDER ke system prompt (bukan metadata uji saja). */
+const TABEL_MINIMUM: readonly BarisTabelMinimum[] = [
+  { kapal: true, namaPort: true, unlocode: false, eta: false, cukup: true },
+  { kapal: true, namaPort: false, unlocode: true, eta: false, cukup: true },
+  { kapal: true, namaPort: false, unlocode: false, eta: true, cukup: true },
+  { kapal: true, namaPort: true, unlocode: true, eta: true, cukup: true },
+  { kapal: true, namaPort: false, unlocode: false, eta: false, cukup: false },
+  { kapal: false, namaPort: true, unlocode: true, eta: true, cukup: false },
+]
+const ya = (b: boolean) => (b ? 'ada' : '-')
+/** Satu baris ringkas: "identitas kapal | nama pelabuhan | UN/LOCODE | ETA bertahun → hasil". */
+export const renderBarisTabelMinimum = (b: BarisTabelMinimum): string =>
+  `${ya(b.kapal)}|${ya(b.namaPort)}|${ya(b.unlocode)}|${ya(b.eta)} → ${b.cukup ? 'cukup' : 'INSUFFICIENT_INFORMATION'}`
+const TABEL_MINIMUM_TEKS = TABEL_MINIMUM.map(renderBarisTabelMinimum).join('; ')
 
 export const ATURAN_PROMPT_INTAKE: readonly AturanPromptIntake[] = [
   {
@@ -103,29 +121,46 @@ export const ATURAN_PROMPT_INTAKE: readonly AturanPromptIntake[] = [
     kode: 'KLASIFIKASI',
     teks:
       'classification: NEW_NOMINATION (principal/owner menunjuk agen untuk kunjungan baru), NEW_APPOINTMENT (surat penunjukan formal: appointment/SPK/LOI untuk kunjungan baru), ' +
-      'NOT_RELEVANT (bukan permintaan operasional kapal), INSUFFICIENT_INFORMATION (mungkin nominasi/appointment tetapi syarat minimum pada aturan berikut tidak terpenuhi), ' +
-      'UNSUPPORTED_REQUEST (perubahan voyage yang sudah ada, perubahan ETA, penggantian kapal, PDA/EPDA, invoice, vendor, atau lebih dari satu kunjungan terpisah).',
+      'NOT_RELEVANT (bukan permintaan operasional kapal), INSUFFICIENT_INFORMATION (mungkin nominasi/appointment tetapi syarat minimum pada aturan berikut TIDAK terpenuhi oleh bukti yang ADA di dokumen), ' +
+      'UNSUPPORTED_REQUEST (perubahan voyage yang sudah ada, perubahan ETA, penggantian kapal, PDA/EPDA, invoice, vendor, atau lebih dari satu kunjungan terpisah). ' +
+      'INSUFFICIENT_INFORMATION BUKAN untuk informasi opsional yang kosong atau menyusul: ETA yang kosong atau menyusul SAJA tidak pernah membuat permintaan yang memenuhi syarat minimum menjadi INSUFFICIENT_INFORMATION. ' +
+      'Memenuhi syarat minimum TIDAK otomatis berarti NEW_*: dokumen yang bukan permintaan keagenan tetap NOT_RELEVANT atau UNSUPPORTED_REQUEST.',
   },
   {
     kode: 'SYARAT_MINIMUM',
     teks:
-      'Syarat minimum nominasi/appointment = identitas kapal yang terpakai (nama, IMO, MMSI, atau call sign) DAN (pelabuhan — nama atau UN/LOCODE — ATAU ETA). ' +
-      'Pilih INSUFFICIENT_INFORMATION HANYA bila tidak ada identitas kapal yang terpakai, ATAU tidak ada pelabuhan maupun ETA. ' +
-      'ETA/ETB/ETC/ETD yang kosong, tanpa tahun, atau ambigu TIDAK BOLEH sendirian menjadi alasan INSUFFICIENT_INFORMATION bila identitas kapal dan pelabuhan ada — kosongkan saja field tanggalnya.',
-    tabelMinimum: [
-      { kapal: true, pelabuhan: true, eta: true, cukup: true },
-      { kapal: true, pelabuhan: true, eta: false, cukup: true },
-      { kapal: true, pelabuhan: false, eta: true, cukup: true },
-      { kapal: true, pelabuhan: false, eta: false, cukup: false },
-      { kapal: false, pelabuhan: true, eta: true, cukup: false },
-      { kapal: false, pelabuhan: false, eta: false, cukup: false },
+      'Syarat minimum nominasi/appointment = identitas kapal (minimal satu yang tertulis jelas: nama kapal, IMO 7 digit, MMSI 9 digit, atau call sign) DAN minimal SATU bukti tujuan: ' +
+      'nama pelabuhan, ATAU UN/LOCODE (kode saja sudah cukup), ATAU ETA yang tahunnya tertulis di field ETA itu sendiri. ETD/ETB/ETC BUKAN pengganti ETA. ' +
+      'Nilai yang dikosongkan oleh aturan lain (tak terbaca, bukan identitas kapal, tanggal tanpa tahun) TIDAK dihitung. ' +
+      'Pilih INSUFFICIENT_INFORMATION HANYA bila tidak ada identitas kapal, ATAU tidak ada satu pun dari nama pelabuhan, UN/LOCODE, dan ETA bertahun. ' +
+      'ETA/ETB/ETC/ETD yang kosong, tanpa tahun, atau ambigu TIDAK BOLEH sendirian menjadi alasan INSUFFICIENT_INFORMATION bila identitas kapal dan pelabuhan (nama atau UN/LOCODE) ada — kosongkan saja field tanggalnya. ' +
+      `Tabel minimum (identitas kapal | nama pelabuhan | UN/LOCODE | ETA bertahun → hasil): ${TABEL_MINIMUM_TEKS}. ` +
+      'Contoh: "MMSI 525001234 / Destination code: IDBIT" → portName kosong, portUnlocode IDBIT, syarat minimum TERPENUHI.',
+    contoh: [
+      { field: 'portUnlocode', sumber: 'MMSI 525001234 / Destination code: IDBIT', hasil: 'IDBIT' },
+      { field: 'portName', sumber: 'MMSI 525001234 / Destination code: IDBIT', hasil: null },
     ],
+    tabelMinimum: TABEL_MINIMUM,
+  },
+  {
+    kode: 'INFORMASI_MENYUSUL',
+    teks:
+      'Kalimat seperti "ETA menyusul", "ETA to follow", "nama menyusul", "name will be sent separately", atau "informasi belum lengkap" TIDAK otomatis berarti INSUFFICIENT_INFORMATION: ' +
+      'nilai syarat minimum dari bukti yang SUDAH ada di dokumen sekarang, dan kosongkan field yang memang belum ada.',
+  },
+  {
+    kode: 'SUBTIPE',
+    teks:
+      'Pilih NEW_APPOINTMENT HANYA bila dokumen sendiri menyatakan penunjukan formal (appointment letter, SPK, atau LOI). ' +
+      'Jangan memilih atau mengubah subtipe NEW_NOMINATION/NEW_APPOINTMENT karena syarat minimum terpenuhi, karena gaya atau tata letak dokumen, karena identitas pengirim, atau karena asumsi.',
   },
   {
     kode: 'KAPAL_SETIAP',
     teks:
       'vessels: SATU entri untuk SETIAP kapal yang ikut dalam kunjungan ini dan tertulis jelas di dokumen — satu tug + satu tongkang, satu tug + beberapa tongkang, beberapa tug + tongkang, atau susunan multi-kapal lain. ' +
-      'Jangan menganggap hanya ada sepasang tug–tongkang. Isi role TUG atau BARGE bila perannya tertulis.',
+      'Jangan menganggap hanya ada sepasang tug–tongkang. Isi role TUG atau BARGE bila perannya tertulis. ' +
+      'Setiap entri membawa identifier-nya SENDIRI: jangan menyalin IMO, MMSI, atau call sign satu kapal ke kapal lain, dan jangan menggabungkan tug dan tongkang menjadi satu entri. ' +
+      'Kapal peserta yang buktinya lebih sedikit (mis. hanya nama) TETAP dimasukkan dengan field yang tertulis saja; field yang tidak tertulis dikosongkan.',
   },
   {
     kode: 'KAPAL_RUJUKAN',
@@ -136,6 +171,16 @@ export const ATURAN_PROMPT_INTAKE: readonly AturanPromptIntake[] = [
     teks:
       'Nama kapal DISALIN UTUH persis seperti tertulis di dokumen: jangan membuang awalan (MV, TB, BG, …), akhiran, kata, bagian angka, atau token apa pun hanya karena tampak tidak biasa. ' +
       'Jangan menormalkan atau menyederhanakan nama kapal.',
+  },
+  {
+    kode: 'IDENTITAS_BUKAN_KAPAL',
+    teks:
+      'Hull No., Yard No., NB/Newbuilding No., PO/Order No., Ref, atau Voyage No. BUKAN nama kapal dan BUKAN IMO/MMSI/call sign walau berisi angka — jangan memasukkannya ke vessels. ' +
+      'Identitas kapal yang terselubung atau tak terbaca (mengandung #, ?, *, _ atau tanda "illegible") jangan ditebak, dilengkapi, atau dibersihkan menjadi identitas lain — kosongkan.',
+    contoh: [
+      { field: 'vessels.name', sumber: 'Hull No. 3318052', hasil: null },
+      { field: 'vessels.name', sumber: 'MV ##K#T ###L', hasil: null },
+    ],
   },
   {
     kode: 'OCR_SALAH_BACA',
@@ -176,6 +221,9 @@ const TOOL: ToolDef = {
         classification: {
           type: 'string',
           enum: ['NEW_NOMINATION', 'NEW_APPOINTMENT', 'NOT_RELEVANT', 'INSUFFICIENT_INFORMATION', 'UNSUPPORTED_REQUEST'],
+          description:
+            'Ikuti aturan KLASIFIKASI, SYARAT_MINIMUM, dan SUBTIPE. INSUFFICIENT_INFORMATION hanya bila syarat minimum tidak terpenuhi oleh bukti yang ada (bukan karena ETA atau informasi lain menyusul). ' +
+            'Memenuhi syarat minimum tidak otomatis berarti NEW_*: dokumen yang bukan permintaan keagenan tetap NOT_RELEVANT atau UNSUPPORTED_REQUEST; NEW_APPOINTMENT hanya dengan bukti penunjukan formal.',
         },
         vessels: {
           type: 'array',
@@ -185,7 +233,7 @@ const TOOL: ToolDef = {
             type: 'object',
             properties: {
               name: str('Nama kapal LENGKAP persis seperti tertulis (awalan, akhiran, kata, dan angka tidak dibuang)'),
-              imo: str('Nomor IMO 7 digit bila tertulis'),
+              imo: str('Nomor IMO 7 digit bila tertulis sebagai IMO. Hull No., Yard No., NB/Newbuilding, PO/Order/Ref/Voyage No. BUKAN IMO'),
               mmsi: str('MMSI 9 digit bila tertulis'),
               callSign: str('Call sign bila tertulis'),
               vesselType: str('Tipe kapal bila tertulis'),
@@ -196,7 +244,7 @@ const TOOL: ToolDef = {
         principalName: str('Principal / owner / pemberi order'),
         customerName: str('Pihak yang ditagih bila disebut terpisah dari principal'),
         portName: str('Pelabuhan tujuan kunjungan persis seperti tertulis (huruf yang hilang tidak dilengkapi)'),
-        portUnlocode: str('UN/LOCODE pelabuhan bila tertulis (mis. IDSRI)'),
+        portUnlocode: str('UN/LOCODE pelabuhan bila tertulis (mis. IDSRI). Kode saja, tanpa nama pelabuhan, sudah menjadi bukti pelabuhan untuk syarat minimum; jangan mengisi portName dari kode'),
         jetty: str('Jetty/dermaga bila tertulis'),
         eta: str('ETA, YYYY-MM-DD — hanya bila tahun tertulis di field ETA itu sendiri; bila tidak, kosongkan'),
         etb: str('ETB, YYYY-MM-DD — hanya bila tahun tertulis di field ETB itu sendiri; bila tidak, kosongkan'),
@@ -262,8 +310,11 @@ function galatDari(e: unknown, signal: AbortSignal): GalatEkstraksi {
 export const ID_PROMPT_INTAKE = 'vessel-call-extract'
 // v2 (PRD-005 E5 Step 3): kontrak klasifikasi = syarat minimum deterministik, larangan tahun
 // simpulan, panduan OCR sempit, setiap kapal peserta satu entri, nama kapal utuh.
-export const VERSI_PROMPT_INTAKE = '2'
-export const VERSI_SKEMA_INTAKE = '2'
+// v3 (PRD-005 E5 Step 12): tabel minimum DIKIRIM ke model (nama pelabuhan / UN/LOCODE / ETA bertahun),
+// informasi menyusul ≠ INSUFFICIENT, subtipe hanya dari bukti dokumen, identifier per kapal, cermin P0
+// (Hull/Yard/NB/terselubung), deskripsi skema classification/imo/portUnlocode. Enum & bentuk skema tetap.
+export const VERSI_PROMPT_INTAKE = '3'
+export const VERSI_SKEMA_INTAKE = '3'
 export const HASH_PROMPT_INTAKE = createHash('sha256').update(SYSTEM_PROMPT).update('\n').update(JSON.stringify(TOOL)).digest('hex')
 /** Hanya untuk uji kontrak (check-intake-prompt.mjs): teks & skema PERSIS yang dikirim ke penyedia. */
 export const SYSTEM_PROMPT_INTAKE = SYSTEM_PROMPT
