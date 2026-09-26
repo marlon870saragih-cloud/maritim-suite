@@ -54,7 +54,8 @@
     "test:tah-ledger": "node prisma/check-tah-ledger.mjs",
     "test:tah-ledger-api": "node prisma/check-tah-ledger-api.mjs",
     "test:intake-prompt": "node prisma/check-intake-prompt.mjs",
-    "test:eval2-gt": "node prisma/check-eval2-gt.mjs"
+    "test:eval2-gt": "node prisma/check-eval2-gt.mjs",
+    "test:eval2-runner": "node prisma/check-eval2-runner.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

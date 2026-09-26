@@ -97,3 +97,15 @@ Masalah E4: perbedaan tanda tangan E12/E14 tak bisa dijelaskan karena RAW tidak 
 4. **Tidak pernah disimpan**: kunci API, frasa otorisasi, teks dokumen, nilai kontak, JSON RAW utuh, nilai string identitas/nama/pihak.
 5. **Pemindaian sebelum persistensi**: pemindai Eval-1 (kunci, pola kunci, frasa, kontak, prompt/dokumen, rahasia env, badan dokumen) + pola sentinel Eval-2 + larangan nilai GT string apa pun muncul utuh. Satu temuan → laporan DITAHAN (hanya pemberitahuan minimal), sama seperti Eval-1.
 6. Perubahan runner yang dibutuhkan (Step berikutnya, bukan Step 4): runner Eval-2 terpisah (`spike-eval2-runner.mjs`) yang memakai ulang pagar Eval-1 (mode eksplisit, DB lokal, kunci uji khusus, pencegat biaya/allowlist) + fungsi `diagnostikRaw()` murni yang diuji luring dengan stub.
+
+## 7. Runner Eval-2 (Step 5 — luring, belum LIVE)
+
+| Berkas | Isi |
+|---|---|
+| `prisma/spike-eval2-penilai.mjs` | modul murni: rencana 80 slot + validasi gagal-tertutup, diagnostik tersanitasi, gerbang G1–G12/G9R (ambang & sifat keras dibaca dari `GERBANG_EVAL2` beku) |
+| `prisma/spike-eval2-runner.mjs` | runner: verifikasi beku Eval-2 & Eval-1, prasyarat (frasa `PRD-005-E5-EVAL2-LIVE`), pencegat Eval-1 dengan `BATAS_EVAL2`, pagar proyeksi biaya, served model per slot, jalur ekstraksi produksi, eksekutor LEDGER_E2E (T03, T12), laporan tersanitasi |
+| `prisma/check-eval2-runner.mjs` | uji luring (`npm run test:eval2-runner`), nol jaringan |
+
+- Lapisan per slot: A sumber (sidik) · B metadata respons · C argumen tool RAW (hanya di memori) · D validator · E POST · F penilai RAW & POST terpisah · G atribusi gerbang. Laporan hanya memuat diagnostik (§6).
+- Batas: 90 panggilan, lunak US$2,70, keras US$3,00 (beku); token = Eval-1. Pagar proyeksi menolak panggilan yang akan melewati batas keras. Tanpa fallback model; served ≠ requested atau model tak dilaporkan → slot gagal + run berhenti → FAIL.
+- Tanpa bukti ledger (tanpa DB lokal) G8 = null → verdict tak pernah PASS.
