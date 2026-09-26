@@ -251,6 +251,13 @@ export type IntakeDto = {
   voyageNumber: string | null
   createdAt: Date
   updatedAt: Date
+  /**
+   * PRD-005 E5 Step 10 — diturunkan deterministik dari proposal tervalidasi (tidak disimpan):
+   * syarat minimum kunjungan (P0) terpenuhi, dan — hanya selama NEEDS_REVIEW — klasifikasi
+   * INSUFFICIENT_INFORMATION yang menunggu peninjau memilih Nominasi/Appointment.
+   */
+  minimumSatisfied: boolean
+  subtypeReviewRequired: boolean
   /** Nama master yang dirujuk id terpilih/kandidat — untuk tampilan saja. */
   names: Record<string, string>
   review: {
@@ -340,6 +347,7 @@ async function keDto(ctx: TenantContext, row: BarisIntake): Promise<IntakeDto> {
     voyageNumber: voyage?.voyageNumber ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    ...P.turunanTinjauanIntake(row.status, row.classification, p),
     names,
     review,
   }
@@ -603,6 +611,7 @@ export async function submitIntake(
         inputHash: hash.slice(0, 12),
         classification,
         classificationReason: proposal.classificationReason,
+        minimumSatisfied: P.syaratMinimumTerpenuhi(proposal),
         duplicateLevel: dup.level,
         saveOriginal: masukan.saveOriginal === true,
         attachmentId: intake.attachmentId,

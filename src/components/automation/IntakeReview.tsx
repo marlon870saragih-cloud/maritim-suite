@@ -66,6 +66,8 @@ const STR: Record<Lang, Record<string, string>> = {
     back: '← Daftar intake', loading: 'Memuat…', errLoad: 'Gagal memuat intake.', errAction: 'Tindakan gagal.', refresh: 'Muat ulang',
     requestType: 'Jenis permintaan', reasonForced: 'ditetapkan sistem',
     CLASSIFICATION_INVALID: 'jawaban AI tidak dikenali', MINIMUM_FIELDS_MISSING: 'identitas kapal atau pelabuhan/ETA tidak ditemukan', TOO_MANY_VESSELS: 'terlalu banyak kapal dalam satu permintaan',
+    subtypeTitle: 'Data minimum terverifikasi — pilih jenis permintaan',
+    subtypeBody: 'Identitas kapal dan pelabuhan/ETA sudah terverifikasi terhadap dokumen sumber. Jenis permintaan (Nominasi atau Appointment) BELUM ditetapkan — AI tidak memastikannya. Pilih salah satu sebelum menyetujui.',
     setClass: 'Ini sebenarnya', sourceTitle: 'Sumber permintaan', kind: 'Diterima sebagai', received: 'Diterima', uploader: 'Dikirim oleh', file: 'Nama berkas',
     original: 'Dokumen asli', originalKept: 'Disimpan sebagai lampiran rahasia', originalNot: 'Tidak disimpan', openOriginal: 'Buka dokumen asli',
     reviewer: 'Terakhir ditinjau',
@@ -121,6 +123,8 @@ const STR: Record<Lang, Record<string, string>> = {
     back: '← Intakes', loading: 'Loading…', errLoad: 'Failed to load intake.', errAction: 'Action failed.', refresh: 'Reload',
     requestType: 'Request type', reasonForced: 'set by system',
     CLASSIFICATION_INVALID: 'AI answer not recognised', MINIMUM_FIELDS_MISSING: 'vessel identity or port/ETA not found', TOO_MANY_VESSELS: 'too many vessels in one request',
+    subtypeTitle: 'Minimum data verified — choose request type',
+    subtypeBody: 'Vessel identity and port/ETA were verified against the source document. The request type (Nomination or Appointment) has NOT been established — the AI did not determine it. Choose one before approving.',
     setClass: 'This is actually a', sourceTitle: 'Request source', kind: 'Received as', received: 'Received', uploader: 'Sent by', file: 'File name',
     original: 'Original document', originalKept: 'Kept as a confidential attachment', originalNot: 'Not kept', openOriginal: 'Open original document',
     reviewer: 'Last reviewed',
@@ -853,9 +857,15 @@ void patch({ cargoes: daftar })
           {d.duplicateLevel !== 'NO_DUPLICATE' && <DuplicateBadge level={d.duplicateLevel} lang={lang} />}
         </div>
         <p className="mt-2 text-sm text-text-primary">
-          {t.requestType}: <strong>{LABEL_KLASIFIKASI[lang][d.classification] ?? d.classification}</strong>
+          {t.requestType}: <strong>{d.subtypeReviewRequired ? t.subtypeTitle : LABEL_KLASIFIKASI[lang][d.classification] ?? d.classification}</strong>
           {p.classificationReason && <span className="text-text-secondary"> ({t.reasonForced}: {t[p.classificationReason] ?? p.classificationReason})</span>}
         </p>
+        {/* E5 Step 10 — minimum terverifikasi validator; subtipe TIDAK dipilih otomatis. */}
+        {d.subtypeReviewRequired && (
+          <p role="status" className="mt-2 flex items-start gap-2 rounded border border-accent-amber/40 bg-accent-amber/10 px-3 py-2 text-sm text-text-primary">
+            <AlertTriangle className="mt-0.5 w-4 h-4 flex-shrink-0" aria-hidden="true" /> {t.subtypeBody}
+          </p>
+        )}
         {bisaEdit && d.classification === 'INSUFFICIENT_INFORMATION' && (
           <div className="mt-2 flex flex-wrap gap-2">
             {(['NEW_NOMINATION', 'NEW_APPOINTMENT'] as const).map((c) => (

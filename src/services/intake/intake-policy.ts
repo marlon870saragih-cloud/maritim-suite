@@ -784,19 +784,70 @@ function angkaTakNegatif(v: unknown): number | null {
 }
 
 /**
+ * PRD-005 E5 Step 10B — aturan P0 tingkat-NILAI, diperiksa ULANG pada proposal tersimpan (tanpa dokumen
+ * sumber), sehingga proposal lama (sebelum P0, tanpa flag P0) tak dipercaya hanya karena flag-nya tak ada:
+ * nilai terselubung, "nama" berupa label pengenal + nomor / hanya angka, IMO bukan 7 digit / check digit
+ * salah (flag K2 sudah ada sebelum P0), MMSI bukan 9 digit. Nilai yang DIISI PENINJAU (USER_EDITED)
+ * adalah keputusan manusia dan tetap mengikuti aturan servis (IMO 7 digit, MMSI 9 digit) — tak diubah.
+ * Uji BUKTI SUMBER (token terselubung di dokumen) TIDAK bisa diulang: dokumen asli tak disimpan (D4).
+ */
+function nilaiIdentitasTepercaya(f: FieldUsulan, jenis: 'name' | 'imo' | 'mmsi' | 'callSign'): boolean {
+  if (typeof f.value !== 'string' || f.value.trim() === '') return false
+  if (f.source === 'USER_EDITED') return true
+  const v = f.value
+  if (nilaiTerselubung(v)) return false
+  if (jenis === 'name') return !bukanNamaKapal(v)
+  if (jenis === 'imo') return /^\d{7}$/.test(v) && !f.flags.includes('IMO_CHECK_DIGIT')
+  if (jenis === 'mmsi') return /^\d{9}$/.test(v)
+  return true
+}
+
+/**
  * PRD-005 E5 Step 8 (P0-3) — identitas kapal TEPERCAYA untuk syarat minimum. IMO dengan check digit
- * salah tetap tampil & ditandai (K2), tetapi TIDAK dihitung sebagai identitas.
+ * salah tetap tampil & ditandai (K2), tetapi TIDAK dihitung sebagai identitas. Step 10B: memakai aturan
+ * P0 tingkat-nilai yang diperiksa ulang (lihat nilaiIdentitasTepercaya), bukan sekadar ketiadaan flag.
  */
 export function identitasKapalTepercaya(v: KapalUsulan): boolean {
   if (v.excluded) return false
-  const imoTepercaya = !!v.imo.value && !v.imo.flags.includes('IMO_CHECK_DIGIT')
-  return !!(v.name.value || imoTepercaya || v.mmsi.value || v.callSign.value)
+  return (['name', 'imo', 'mmsi', 'callSign'] as const).some((j) => nilaiIdentitasTepercaya(v[j], j))
 }
 
 /** §7 — identitas kapal tepercaya DAN (pelabuhan atau ETA). */
 export function syaratMinimumTerpenuhi(p: Proposal): boolean {
   const adaKapal = p.vessels.some(identitasKapalTepercaya)
   return adaKapal && !!(p.portName.value || p.portUnlocode.value || p.eta.value)
+}
+
+/**
+ * PRD-005 E5 Step 10 (P1 opsi A) — alasan klasifikasi yang BOLEH memicu tinjauan subtipe:
+ * null (model sendiri menjawab INSUFFICIENT), CLASSIFICATION_INVALID (model tak mengklasifikasi), dan
+ * (Step 10B, keputusan owner) MINIMUM_FIELDS_MISSING — hanya bila proposal SAAT INI (mis. sesudah peninjau
+ * melengkapi field) memenuhi syarat minimum; subtipe asli model TIDAK dipulihkan. TOO_MANY_VESSELS TIDAK.
+ */
+export const ALASAN_TINJAUAN_SUBTIPE: readonly (string | null)[] = [null, 'CLASSIFICATION_INVALID', 'MINIMUM_FIELDS_MISSING']
+
+/**
+ * P1 opsi A — data minimum kunjungan TERVERIFIKASI validator (P0), tetapi model menjawab
+ * INSUFFICIENT_INFORMATION: peninjau wajib memilih Nominasi/Appointment. Murni & deterministik;
+ * TIDAK mengubah classification maupun classificationReason, dan TIDAK menebak subtipe.
+ */
+export function perluTinjauanSubtipe(classification: string, p: Proposal): boolean {
+  return (
+    classification === 'INSUFFICIENT_INFORMATION' &&
+    ALASAN_TINJAUAN_SUBTIPE.includes(p.classificationReason ?? null) &&
+    syaratMinimumTerpenuhi(p)
+  )
+}
+
+/**
+ * Status turunan untuk tampilan tinjauan (DTO) — deterministik dari proposal tervalidasi SAAT INI.
+ * subtypeReviewRequired hanya selama NEEDS_REVIEW (status terminal/lain tak menampilkan aksi subtipe).
+ */
+export function turunanTinjauanIntake(status: string, classification: string, p: Proposal): { minimumSatisfied: boolean; subtypeReviewRequired: boolean } {
+  return {
+    minimumSatisfied: syaratMinimumTerpenuhi(p),
+    subtypeReviewRequired: status === 'NEEDS_REVIEW' && perluTinjauanSubtipe(classification, p),
+  }
 }
 
 // ----------------------------------------------------------------- matching

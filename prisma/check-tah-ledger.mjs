@@ -67,12 +67,12 @@ bagian('1. KUNCI SUMBER — yang tak boleh berubah di Step 3B')
   const SIDIK = {
     chatCompletion: '02267f85f1d0102acbf7769aa80c5f308760b3d29ff1b7067c424d5c7aa7cfae',
     intakeSetelahSubmit: '9d3b261a5e6384b1fb91284a8980420c9580ad08ee7132aa56855a30e57ecbb7',
-    intakeSebelumSubmit: '6067824246e03a0efdb0683588bbb0fe66d0004fe8ecf3c328012ac3724243be',
+    intakeSebelumSubmit: '2a1c00f2f62d992de7a0c95b5b90929161238efc45f68efd9d49c3d21528fd10',
     'src/services/intake/intake-gate.ts': '98521d074c3aa0043ea4ce3c4c6e107313e96e5f82e4fd3ecd2a0a61b5255d9d',
     // Sidik Step 3A (c8781c27…f326) digantikan PRD-005 E5 Step 1 (81fab8cb…432e, pagar bukti tanggal),
     // lalu E5 Step 2 yang DISETUJUI OWNER (verifikasi OCR-aman + hitungan kapal dibuang).
     // Perubahan berikutnya pada berkas ini tetap harus memperbarui sidik ini secara eksplisit.
-    'src/services/intake/intake-policy.ts': 'ea5739219e2849afbcb0fa55cb5d2c167d3705e4e22a6c138aa03888e929cbbb',
+    'src/services/intake/intake-policy.ts': '4b82b8c7732bb3fe6565a1f61e3ddf514d45374304cef7dbdbec6586d2f62c96',
     'src/services/intake/intake-hash.ts': '862d3e086c24f578bdd4a07a70664de6fff96d6831e289dcb1d5ccd69e4525d3',
     'src/services/saas/quota.service.ts': '777e86317b23f3f1ebf3a4c0db9a941fa6159585d0071350f622019a844f29ce',
     'src/services/saas/usage.service.ts': '183fa3bbb9af7278d780d62431df5f91961130a8d84cd2392195b834cff0c23d',
@@ -81,7 +81,7 @@ bagian('1. KUNCI SUMBER — yang tak boleh berubah di Step 3B')
     // Sidik Step 3A (5ab1278d…e316) digantikan PRD-005 E5 Step 2 yang DISETUJUI OWNER: UI tinjauan
     // intake menampilkan label DATE_NOT_IN_SOURCE / OCR_CORRECTED dan peringatan kapal dibuang.
     // Rute API tidak berubah.
-    ruteDanUiIntake: 'f323c7461a99a37a6d0573aa775a431116a435fc2cb5ad24faac1cdd3eb62b70',
+    ruteDanUiIntake: '1177a29cf18492648c8c75e15f9f24bf4ce6254fb45dd7870a8120c2513f2a24',
   }
   const fungsi = (src, nama) => {
     const i = src.indexOf(`export async function ${nama}(`)

@@ -720,6 +720,192 @@ console.log('\n[2d] P0 identitas kapal: terselubung, bukan-nama, kepercayaan IMO
   cek('18d kapal yang dikeluarkan peninjau tidak dihitung identitas tepercaya', !P.identitasKapalTepercaya(ex.vessels[0]) && !P.syaratMinimumTerpenuhi(ex))
 }
 
+// =================================================================== 2e. P1 opsi A (E5 Step 10)
+console.log('\n[2e] P1 opsi A: minimum tervalidasi + tinjauan subtipe (PRD-005 E5 Step 10)')
+{
+  const KLS = ['NEW_NOMINATION', 'NEW_APPOINTMENT', 'NOT_RELEVANT', 'INSUFFICIENT_INFORMATION', 'UNSUPPORTED_REQUEST']
+  const ALASAN = [null, 'CLASSIFICATION_INVALID', 'MINIMUM_FIELDS_MISSING', 'TOO_MANY_VESSELS']
+  const PORT = '\nPelabuhan : Samarinda (IDSRI)'
+  const raw = (cls, vessels, extra = {}) => ({ classification: cls, vessels, portName: 'Samarinda', portUnlocode: 'IDSRI', cargoes: [], ...extra })
+  const pOk = validasi(raw('INSUFFICIENT_INFORMATION', [{ name: 'MV OCEAN 7' }]), 'TEXT', `Vessel : MV OCEAN 7${PORT}`).proposal
+  const pKosong = validasi(raw('INSUFFICIENT_INFORMATION', []), 'TEXT', `Mohon info${PORT}`).proposal
+  cek('prasyarat: proposal minimum-benar & minimum-salah', P.syaratMinimumTerpenuhi(pOk) && !P.syaratMinimumTerpenuhi(pKosong))
+
+  // ---- tabel kebenaran predikat: 5 klasifikasi × minimum × 4 alasan
+  const salahTabel = []
+  for (const kls of KLS) for (const [p0, min] of [[pOk, true], [pKosong, false]]) for (const al of ALASAN) {
+    const p = { ...p0, classificationReason: al }
+    const harap = kls === 'INSUFFICIENT_INFORMATION' && min && (al === null || al === 'CLASSIFICATION_INVALID' || al === 'MINIMUM_FIELDS_MISSING')
+    if (P.perluTinjauanSubtipe(kls, p) !== harap) salahTabel.push(`${kls}/${min}/${al}`)
+  }
+  cek('P1-1 tabel kebenaran lengkap (5 kelas × minimum × 4 alasan = 40 kombinasi) sesuai desain', salahTabel.length === 0, salahTabel.join(' '))
+  cek('P1-2 hanya INSUFFICIENT + minimum + alasan {null, CLASSIFICATION_INVALID, MINIMUM_FIELDS_MISSING} (Step 10B)', P.ALASAN_TINJAUAN_SUBTIPE.length === 3 && [null, 'CLASSIFICATION_INVALID', 'MINIMUM_FIELDS_MISSING'].every((a) => P.ALASAN_TINJAUAN_SUBTIPE.includes(a)) && !P.ALASAN_TINJAUAN_SUBTIPE.includes('TOO_MANY_VESSELS'))
+  cek('P1-3 tidak aktif: NOT_RELEVANT / UNSUPPORTED_REQUEST / TOO_MANY_VESSELS / minimum tidak terpenuhi',
+    !P.perluTinjauanSubtipe('NOT_RELEVANT', pOk) && !P.perluTinjauanSubtipe('UNSUPPORTED_REQUEST', pOk) &&
+    !P.perluTinjauanSubtipe('INSUFFICIENT_INFORMATION', { ...pOk, classificationReason: 'TOO_MANY_VESSELS' }) && !P.perluTinjauanSubtipe('INSUFFICIENT_INFORMATION', pKosong))
+
+  // ---- invarian: predikat tak mengubah apa pun, validator tak mengubah klasifikasi
+  const beku = JSON.stringify(pOk)
+  P.perluTinjauanSubtipe('INSUFFICIENT_INFORMATION', pOk)
+  cek('P1-4 predikat murni: proposal tak dimutasi, classificationReason tetap null', JSON.stringify(pOk) === beku && pOk.classificationReason === null)
+  const keluar = KLS.map((k) => validasi(raw(k, [{ name: 'MV OCEAN 7' }]), 'TEXT', `Vessel : MV OCEAN 7${PORT}`))
+  cek('P1-5 validator mempertahankan kelima klasifikasi model saat minimum terpenuhi (tanpa naik kelas)', keluar.every((r, i) => r.classification === KLS[i] && r.proposal.classificationReason === null), keluar.map((r) => r.classification).join(','))
+  cek('P1-6 INSUFFICIENT + minimum → klasifikasi TETAP INSUFFICIENT, tinjauan subtipe aktif', keluar[3].classification === 'INSUFFICIENT_INFORMATION' && P.perluTinjauanSubtipe(keluar[3].classification, keluar[3].proposal))
+  cek('P1-7 NEW_NOMINATION / NEW_APPOINTMENT tak pernah memicu tinjauan subtipe', !P.perluTinjauanSubtipe(keluar[0].classification, keluar[0].proposal) && !P.perluTinjauanSubtipe(keluar[1].classification, keluar[1].proposal))
+  const inv = validasi({ ...raw('BUKAN_KELAS', [{ name: 'MV OCEAN 7' }]) }, 'TEXT', `Vessel : MV OCEAN 7${PORT}`)
+  cek('P1-8 jawaban AI tak dikenali (CLASSIFICATION_INVALID) + minimum → INSUFFICIENT tetap + tinjauan subtipe aktif', inv.classification === 'INSUFFICIENT_INFORMATION' && inv.proposal.classificationReason === 'CLASSIFICATION_INVALID' && P.perluTinjauanSubtipe(inv.classification, inv.proposal))
+  const turun = validasi(raw('NEW_NOMINATION', [], { portName: null }), 'TEXT', 'Mohon info')
+  cek('P1-9 NEW tanpa minimum → INSUFFICIENT (MINIMUM_FIELDS_MISSING), tinjauan subtipe TIDAK aktif', turun.classification === 'INSUFFICIENT_INFORMATION' && turun.proposal.classificationReason === 'MINIMUM_FIELDS_MISSING' && !P.perluTinjauanSubtipe(turun.classification, turun.proposal))
+
+  // ---- interaksi P0: identitas tak tepercaya → minimum false → tinjauan false
+  const p0 = (vessels, sumber) => validasi(raw('INSUFFICIENT_INFORMATION', vessels), 'TEXT', `${sumber}${PORT}`).proposal
+  const kasusP0 = [
+    ['identitas terselubung saja', p0([{ name: 'MV ##K#T ###L' }], 'Vessel : MV ##K#T ###L')],
+    ['Hull No. saja', p0([{ name: 'Hull No. 3318052' }], 'Delivery Hull No. 3318052')],
+    ['Yard No saja', p0([{ name: 'Yard No 845' }], 'Yard No 845')],
+    ['NB saja', p0([{ name: 'NB 1207' }], 'NB 1207')],
+    ['IMO check digit salah saja', p0([{ imo: '1234568' }], 'IMO 1234568')],
+    ['IMO bentuk salah saja', p0([{ imo: '12345' }], 'IMO 12345')],
+  ]
+  for (const [nama, p] of kasusP0) cek(`P1-10 P0: ${nama} → minimumSatisfied=false, subtypeReviewRequired=false`, !P.syaratMinimumTerpenuhi(p) && !P.perluTinjauanSubtipe('INSUFFICIENT_INFORMATION', p))
+  const dua = p0([{ name: 'Hull No. 3318052', mmsi: '525001234' }], 'Hull No. 3318052 MMSI 525001234')
+  const duaImo = p0([{ name: 'MV OCEAN 7', imo: '1234568' }], 'MV OCEAN 7 IMO 1234568')
+  cek('P1-11 P0: identitas tepercaya kedua (MMSI / nama sah) → minimum true & tinjauan subtipe aktif', P.syaratMinimumTerpenuhi(dua) && P.perluTinjauanSubtipe('INSUFFICIENT_INFORMATION', dua) && P.perluTinjauanSubtipe('INSUFFICIENT_INFORMATION', duaImo))
+
+  // ---- bukti luring bentuk T19 / T21 / T10 (data sintetis, bentuk field sama)
+  const t19 = validasi({ classification: 'INSUFFICIENT_INFORMATION', vessels: [{ name: 'MV BAHARI TENGAH' }], portName: 'Bitung', portUnlocode: 'IDBIT', principalName: 'CV Laut Jaya', cargoes: [] }, 'TEXT',
+    'Mohon disiapkan keagenan untuk MV BAHARI TENGAH di Pelabuhan Bitung (IDBIT).\nETA belum ada.\nPrincipal: CV Laut Jaya')
+  cek('P1-12 bentuk T19 (nama + nama pelabuhan + UN/LOCODE, tanpa ETA, model INSUFFICIENT) → minimum true, tinjauan subtipe true, kelas tetap',
+    t19.classification === 'INSUFFICIENT_INFORMATION' && P.syaratMinimumTerpenuhi(t19.proposal) && P.perluTinjauanSubtipe(t19.classification, t19.proposal))
+  const t21 = validasi({ classification: 'INSUFFICIENT_INFORMATION', vessels: [{ mmsi: '525002233', callSign: 'PQRS9' }], portUnlocode: 'IDBIT', cargoes: [] }, 'TEXT',
+    'Pre-arrival notice\nMMSI 525002233 / C/S PQRS9\nDestination code: IDBIT\nName and ETA will follow.')
+  cek('P1-13 bentuk T21 (MMSI + call sign + UN/LOCODE saja, model INSUFFICIENT) → minimum true, tinjauan subtipe true',
+    t21.classification === 'INSUFFICIENT_INFORMATION' && P.syaratMinimumTerpenuhi(t21.proposal) && P.perluTinjauanSubtipe(t21.classification, t21.proposal))
+  const SUMBER_T10 = 'Kapal : MV SEGARA BIRU, MMSI 525003344\nPelabuhan : Bitung (IDBIT)\nRencana tiba : 26/10\nRencana berangkat : 26 Oktober 2026'
+  const raw10 = (cls) => ({ classification: cls, vessels: [{ name: 'MV SEGARA BIRU', mmsi: '525003344' }], portName: 'Bitung', portUnlocode: 'IDBIT', etd: '2026-10-26', cargoes: [] })
+  const t10a = validasi(raw10('INSUFFICIENT_INFORMATION'), 'TEXT', SUMBER_T10)
+  const t10b = validasi(raw10('NEW_NOMINATION'), 'TEXT', SUMBER_T10)
+  cek('P1-14 bentuk T10, model INSUFFICIENT → minimum true, tinjauan subtipe true', t10a.classification === 'INSUFFICIENT_INFORMATION' && P.syaratMinimumTerpenuhi(t10a.proposal) && P.perluTinjauanSubtipe(t10a.classification, t10a.proposal))
+  cek('P1-15 bentuk T10, model NEW_NOMINATION → tetap NEW_NOMINATION, tinjauan subtipe false', t10b.classification === 'NEW_NOMINATION' && !P.perluTinjauanSubtipe(t10b.classification, t10b.proposal))
+  cek('P1-16 deterministik: field tervalidasi identik → minimumSatisfied identik antar-run (T10 run1 vs run2)', P.syaratMinimumTerpenuhi(t10a.proposal) === P.syaratMinimumTerpenuhi(t10b.proposal) && JSON.stringify(t10a.proposal) === JSON.stringify(t10b.proposal))
+
+  // ---- keselamatan approval (fungsi yang sama yang dipakai approveIntake/retry di server)
+  const SUMBER_A = 'MV SEA STAR IMO 9074729 ke Samarinda IDSRI ETA 2026-09-20, principal PT Surya Perkasa Samudera'
+  const vA = validasi({ classification: 'INSUFFICIENT_INFORMATION', vessels: [{ name: 'MV SEA STAR', imo: '9074729' }], principalName: 'PT Surya Perkasa Samudera', portUnlocode: 'IDSRI', eta: '2026-09-20', cargoes: [] }, 'TEXT', SUMBER_A)
+  const masterA = { vessels: KAPAL, principals: [{ id: 'p1', name: 'PT Surya Perkasa Samudera' }], customers: [], ports: [{ id: 'po1', name: 'Samarinda', unlocode: 'IDSRI' }] }
+  const mA0 = P.cocokkanSemua(vA.proposal, masterA, NORM, null)
+  const mA = { ...mA0, principal: { ...mA0.principal, confirmed: true }, customer: { ...mA0.customer, leftEmpty: true } }
+  const dasarA = { status: 'NEEDS_REVIEW', proposal: vA.proposal, matches: mA, duplicateLevel: 'NO_DUPLICATE', portalAccessCount: 0,
+    keputusan: { duplicateDecision: null, decisionReason: null, duplicateConfirmed: false, portalExposureAck: false } }
+  const sIns = P.syaratApproval({ ...dasarA, classification: vA.classification })
+  cek('P1-17 INSUFFICIENT + minimumSatisfied + subtypeReviewRequired TETAP tak bisa di-approve → CLASSIFICATION_NOT_SUPPORTED (satu-satunya syarat tersisa)',
+    P.perluTinjauanSubtipe(vA.classification, vA.proposal) && sIns.length === 1 && sIns[0] === 'CLASSIFICATION_NOT_SUPPORTED', sIns.join(','))
+  cek('P1-18 … sesudah peninjau memilih NEW_NOMINATION / NEW_APPOINTMENT → syarat klasifikasi hilang',
+    ['NEW_NOMINATION', 'NEW_APPOINTMENT'].every((c) => P.syaratApproval({ ...dasarA, classification: c }).length === 0))
+  cek('P1-19 retry (FAILED) juga memblokir INSUFFICIENT', P.syaratApproval({ ...dasarA, classification: 'INSUFFICIENT_INFORMATION', status: 'FAILED', statusDiharapkan: 'FAILED' }).includes('CLASSIFICATION_NOT_SUPPORTED'))
+
+  // ---- kunci sumber: service, rute, UI
+  const svc = baca('src/services/intake/intake.service.ts')
+  const ui = baca('src/components/automation/IntakeReview.tsx')
+  const keDto = svc.slice(svc.indexOf('async function keDto('), svc.indexOf('export async function submitIntake('))
+  cek('P1-20 DTO: kedua field dari turunanTinjauanIntake(status, classification, proposal tervalidasi SAAT INI)',
+    /\.\.\.P\.turunanTinjauanIntake\(row\.status, row\.classification, p\),/.test(keDto) && /minimumSatisfied: boolean\n\s+subtypeReviewRequired: boolean/.test(svc))
+  cek('P1-21 DTO: classification tetap row.classification (tak diturunkan/diubah)', /classification: row\.classification,/.test(keDto))
+  cek('P1-22 audit CREATE membawa minimumSatisfied tanpa menimpa classification / classificationReason',
+    /classification,\n\s+classificationReason: proposal\.classificationReason,\n\s+minimumSatisfied: P\.syaratMinimumTerpenuhi\(proposal\),/.test(svc))
+  cek('P1-23 predikat/turunan hanya dipakai untuk DTO — tak ada jalur servis yang menulis klasifikasi darinya', !svc.includes('perluTinjauanSubtipe') && (svc.match(/turunanTinjauanIntake/g) ?? []).length === 1 && !/turunanTinjauanIntake[^\n]*classification\s*=/.test(svc))
+  const upd = svc.slice(svc.indexOf('export async function updateIntake('), svc.indexOf('export async function approveIntake('))
+  cek('P1-24 updateIntake: pilihan subtipe hanya dari INSUFFICIENT & minimum wajib (MINIMUM_NOT_MET) — aturan tetap',
+    /row\.classification !== 'INSUFFICIENT_INFORMATION' \|\| !\(P\.KLASIFIKASI_PILOT as readonly string\[\]\)\.includes\(c\)/.test(upd) && /if \(!P\.syaratMinimumTerpenuhi\(p\)\) throw validation\('Lengkapi identitas kapal dan pelabuhan\/ETA lebih dulu\.', \{ code: 'MINIMUM_NOT_MET' \}\)/.test(upd))
+  cek('P1-25 approveIntake dipanggil HANYA dari rute POST approve (tanpa jalur approve otomatis)',
+    baca('src/app/api/automation/intakes/[id]/approve/route.ts').includes('approveIntake(') && !/approveIntake\(/.test(svc.replace('export async function approveIntake(', '')))
+  cek('P1-26 UI ID: "Data minimum terverifikasi — pilih jenis permintaan" + penjelasan subtipe belum ditetapkan', ui.includes("subtypeTitle: 'Data minimum terverifikasi — pilih jenis permintaan'") && /subtypeBody: 'Identitas kapal[^']*BELUM ditetapkan — AI tidak memastikannya/.test(ui))
+  cek('P1-27 UI EN: "Minimum data verified — choose request type" + NOT established', ui.includes("subtypeTitle: 'Minimum data verified — choose request type'") && /subtypeBody: 'Vessel identity[^']*has NOT been established — the AI did not determine it/.test(ui))
+  cek('P1-28 UI: judul "Informasi belum cukup" DIGANTI saat subtypeReviewRequired (bukan ditambah)', ui.includes('{d.subtypeReviewRequired ? t.subtypeTitle : LABEL_KLASIFIKASI[lang][d.classification] ?? d.classification}'))
+  cek('P1-29 UI: tombol Nominasi/Appointment yang ada tetap (INSUFFICIENT + bisaEdit)', /\{bisaEdit && d\.classification === 'INSUFFICIENT_INFORMATION' && \(\n\s+<div className="mt-2 flex flex-wrap gap-2">\n\s+\{\(\['NEW_NOMINATION', 'NEW_APPOINTMENT'\] as const\)\.map/.test(ui))
+  cek('P1-30 UI: tidak ada pemilihan subtipe otomatis (patch klasifikasi hanya dari onClick)',
+    (ui.match(/patch\(\{ classification/g) ?? []).length === 1 && /onClick=\{\(\) => void patch\(\{ classification: c \}\)\}/.test(ui) &&
+    ui.split('\n').filter((l) => l.includes('subtypeReviewRequired')).length === 2 && ui.split('\n').filter((l) => l.includes('subtypeReviewRequired')).every((l) => !l.includes('patch(') && !l.includes('useEffect')))
+}
+
+// =================================================================== 2f. P1 koreksi owner (E5 Step 10B)
+console.log('\n[2f] P1 koreksi owner: MINIMUM_FIELDS_MISSING, NEEDS_REVIEW, proposal lama (PRD-005 E5 Step 10B)')
+{
+  const PORT = '\nPelabuhan : Samarinda (IDSRI)'
+  // Model NEW tanpa pelabuhan/ETA → validator menurunkan ke INSUFFICIENT (MINIMUM_FIELDS_MISSING).
+  const r = validasi({ classification: 'NEW_APPOINTMENT', vessels: [{ name: 'MV OCEAN 7' }], cargoes: [] }, 'TEXT', 'Appointment untuk MV OCEAN 7, jadwal menyusul')
+  const turun = (p, st = 'NEEDS_REVIEW', kls = r.classification) => P.turunanTinjauanIntake(st, kls, p)
+  const d1 = turun(r.proposal)
+  cek('10B-1 MINIMUM_FIELDS_MISSING + minimum false → subtypeReviewRequired=false', r.proposal.classificationReason === 'MINIMUM_FIELDS_MISSING' && d1.minimumSatisfied === false && d1.subtypeReviewRequired === false)
+  // Peninjau melengkapi pelabuhan (fieldDiedit = jalur edit servis).
+  const diperbaiki = { ...r.proposal, portName: P.fieldDiedit(r.proposal.portName, 'Samarinda') }
+  const d2 = turun(diperbaiki)
+  cek('10B-2 MINIMUM_FIELDS_MISSING + peninjau melengkapi field + minimum SAAT INI true → subtypeReviewRequired=true', d2.minimumSatisfied === true && d2.subtypeReviewRequired === true)
+  cek('10B-3 klasifikasi tetap INSUFFICIENT di kedua keadaan', r.classification === 'INSUFFICIENT_INFORMATION')
+  cek('10B-4 classificationReason tetap MINIMUM_FIELDS_MISSING (bukti historis tak ditimpa)', r.proposal.classificationReason === 'MINIMUM_FIELDS_MISSING' && diperbaiki.classificationReason === 'MINIMUM_FIELDS_MISSING')
+  const beku = JSON.stringify(diperbaiki)
+  const d2b = turun(diperbaiki)
+  cek('10B-5 tak ada pemulihan otomatis NEW_APPOINTMENT asli model: turunan tak memuat/mengubah klasifikasi, proposal tak dimutasi',
+    JSON.stringify(Object.keys(d2b).sort()) === '["minimumSatisfied","subtypeReviewRequired"]' && JSON.stringify(diperbaiki) === beku && !beku.includes('NEW_APPOINTMENT'))
+  cek('10B-6 NEEDS_REVIEW + syarat terpenuhi → subtypeReviewRequired=true', turun(diperbaiki, 'NEEDS_REVIEW').subtypeReviewRequired === true)
+  const terminal = ['REJECTED', 'COMPLETED', 'LINKED_EXISTING', 'CREATING', 'FAILED'].map((st) => turun(diperbaiki, st))
+  cek('10B-7 REJECTED / COMPLETED / LINKED_EXISTING / CREATING / FAILED → subtypeReviewRequired=false (minimumSatisfied tetap fakta)', terminal.every((x) => x.subtypeReviewRequired === false && x.minimumSatisfied === true))
+  const src = (vessels, sumber) => validasi({ classification: 'INSUFFICIENT_INFORMATION', vessels, portName: 'Samarinda', portUnlocode: 'IDSRI', cargoes: [] }, 'TEXT', `${sumber}${PORT}`).proposal
+  cek('10B-8 P0 identitas terselubung saja → minimumSatisfied=false', turun(src([{ name: 'MV ##K#T ###L' }], 'Vessel : MV ##K#T ###L'), 'NEEDS_REVIEW', 'INSUFFICIENT_INFORMATION').minimumSatisfied === false)
+  cek('10B-9 P0 Hull/Yard/NB saja → minimumSatisfied=false', ['Hull No. 3318052', 'Yard No 845', 'NB 1207'].every((n) => turun(src([{ name: n }], n), 'NEEDS_REVIEW', 'INSUFFICIENT_INFORMATION').minimumSatisfied === false))
+  cek('10B-10 P0 IMO check digit salah saja → minimumSatisfied=false', turun(src([{ imo: '1234568' }], 'IMO 1234568'), 'NEEDS_REVIEW', 'INSUFFICIENT_INFORMATION').minimumSatisfied === false)
+
+  // ---- proposal LAMA (sebelum P0): dibentuk seperti validator lama menyimpannya — nilai SOURCE_DOCUMENT tanpa flag P0.
+  const dok = (v, flags = []) => ({ value: v, source: 'SOURCE_DOCUMENT', flags, extracted: v, confirmed: false })
+  const kosongF = () => P.fieldKosong()
+  const kapalLama = (o) => ({ name: kosongF(), imo: kosongF(), mmsi: kosongF(), callSign: kosongF(), vesselType: kosongF(), role: kosongF(), excluded: false, ...o })
+  const lama = (vessels) => ({ ...src([{ name: 'MV OCEAN 7' }], 'Vessel : MV OCEAN 7'), vessels, classificationReason: null })
+  const tidakAman = [
+    ['nama terselubung', kapalLama({ name: dok('MV ##R#A ###R') })],
+    ['nama "Hull No."', kapalLama({ name: dok('Hull No. 2211047') })],
+    ['nama Yard/NB/digit', kapalLama({ name: dok('NB 1207') })],
+    ['nama hanya angka', kapalLama({ name: dok('4471') })],
+    ['IMO terselubung (lama: hanya IMO_CHECK_DIGIT)', kapalLama({ imo: dok('99#8##4', ['IMO_CHECK_DIGIT']) })],
+    ['IMO bukan 7 digit tanpa flag', kapalLama({ imo: dok('12345') })],
+    ['MMSI terselubung', kapalLama({ mmsi: dok('5#3##1234') })],
+    ['call sign terselubung', kapalLama({ callSign: dok('Y#?B') })],
+    ['penanda [illegible]', kapalLama({ name: dok('MV [illegible]') })],
+  ]
+  const bocor = tidakAman.filter(([, k]) => { const p = lama([k]); return P.syaratMinimumTerpenuhi(p) || P.turunanTinjauanIntake('NEEDS_REVIEW', 'INSUFFICIENT_INFORMATION', p).subtypeReviewRequired })
+  cek('10B-11 proposal lama (tanpa flag P0) dengan identitas tak aman TIDAK memperoleh minimumSatisfied / tinjauan subtipe', bocor.length === 0, bocor.map(([n]) => n).join(', '))
+  const aman = [
+    ['nama sah', kapalLama({ name: dok('MV OCEAN 7') })],
+    ['IMO sah', kapalLama({ imo: dok('9074729') })],
+    ['MMSI sah', kapalLama({ mmsi: dok('525001234') })],
+    ['call sign sah', kapalLama({ callSign: dok('PQRS9') })],
+    ['nama OCR_CORRECTED', kapalLama({ name: dok('MV BOREAS', ['OCR_CORRECTED']) })],
+    ['PDF UNVERIFIED_SOURCE', kapalLama({ name: dok('MV OCEAN 7', ['UNVERIFIED_SOURCE']) })],
+    ['nama tak aman + MMSI sah', kapalLama({ name: dok('Hull No. 2211047'), mmsi: dok('525001234') })],
+  ]
+  const rusak = aman.filter(([, k]) => { const p = lama([k]); return !P.syaratMinimumTerpenuhi(p) || !P.turunanTinjauanIntake('NEEDS_REVIEW', 'INSUFFICIENT_INFORMATION', p).subtypeReviewRequired })
+  cek('10B-12 proposal lama dengan bukti tepercaya TETAP berfungsi (nama/IMO/MMSI/call sign sah, OCR, PDF, identitas kedua)', rusak.length === 0, rusak.map(([n]) => n).join(', '))
+  const ed = (f, v) => P.fieldDiedit(f, v)
+  const kReviewer = kapalLama({ name: ed(dok('MV ##R#A ###R'), 'MV RATU KENCANA') })
+  const kReviewerLabel = kapalLama({ name: ed(dok('MV ##R#A ###R'), 'NB 1207') })
+  cek('10B-13 identitas yang DIISI PENINJAU (USER_EDITED) tetap keputusan manusia → minimum dihitung, termasuk nilai yang akan ditolak bila berasal dari AI (aturan servis tak diubah)',
+    P.syaratMinimumTerpenuhi(lama([kReviewer])) && P.syaratMinimumTerpenuhi(lama([kReviewerLabel])) && !P.syaratMinimumTerpenuhi(lama([kapalLama({ name: dok('NB 1207') })])))
+  cek('10B-14 kapal dikeluarkan peninjau tak dihitung, termasuk yang diisi peninjau', !P.syaratMinimumTerpenuhi(lama([{ ...kReviewer, excluded: true }])))
+
+  // ---- idempoten: aturan tingkat-nilai tak mengubah hasil validator untuk proposal BARU
+  const baru = [
+    validasi({ classification: 'NEW_NOMINATION', vessels: [{ name: 'MV BOREAS', imo: '9074729' }], portName: 'Samarinda', cargoes: [] }, 'TEXT', `Vessel : MV B0REAS IMO 9O74729${PORT}`),
+    validasi({ classification: 'NEW_NOMINATION', vessels: [{ mmsi: '990 011 001' }], portUnlocode: 'IDSRI', cargoes: [] }, 'TEXT', `MMSI 990 011 001${PORT}`),
+    validasi({ classification: 'NEW_NOMINATION', vessels: [{ name: 'MV OCEAN #2' }], portName: 'Samarinda', cargoes: [] }, 'TEXT', `Vessel : MV OCEAN #2${PORT}`),
+  ]
+  cek('10B-15 proposal BARU yang sah tetap NEW & minimum true (OCR, MMSI berspasi, nomor "#2")', baru.every((x) => x.classification === 'NEW_NOMINATION' && P.syaratMinimumTerpenuhi(x.proposal)), baru.map((x) => x.classification).join(','))
+
+  // ---- invarian approval tetap
+  const pSetuju = { ...diperbaiki }
+  cek('10B-16 INSUFFICIENT (alasan MINIMUM_FIELDS_MISSING) + tinjauan subtipe aktif TETAP diblok CLASSIFICATION_NOT_SUPPORTED',
+    P.syaratApproval({ status: 'NEEDS_REVIEW', classification: 'INSUFFICIENT_INFORMATION', proposal: pSetuju, matches: P.cocokkanSemua(pSetuju, { vessels: [], principals: [], customers: [], ports: [] }, NORM, null), duplicateLevel: 'NO_DUPLICATE', portalAccessCount: 0,
+      keputusan: { duplicateDecision: null, decisionReason: null, duplicateConfirmed: false, portalExposureAck: false } }).includes('CLASSIFICATION_NOT_SUPPORTED'))
+}
+
 // =================================================================== 6. hash & batas waktu
 console.log('\n[6] Hash input & batas waktu AI')
 {
