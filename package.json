@@ -56,6 +56,8 @@
     "test:intake-prompt": "node prisma/check-intake-prompt.mjs",
     "test:eval2-gt": "node prisma/check-eval2-gt.mjs",
     "test:eval3-gt": "node prisma/check-eval3-gt.mjs",
+    "test:eval3-runner": "node prisma/check-eval3-runner.mjs",
+    "test:eval3-ledger-db": "node prisma/check-eval3-ledger-db.mjs",
     "test:eval2-runner": "node prisma/check-eval2-runner.mjs"
   },
   "dependencies": {
