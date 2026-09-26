@@ -153,6 +153,125 @@ const RAW_BAIK = {
   })())
 }
 
+// =================================================================== 2b. bukti tanggal
+// PRD-005 E5 Step 1 — tanggal dari masukan berteks wajib dibuktikan field-nya SENDIRI di sumber,
+// dengan tahun eksplisit. Temuan E4: Sonnet 4.5 menyimpulkan tahun untuk "ETA : 13/11" (F4).
+console.log('\n[2b] Bukti tanggal di sumber (label-anchored, PRD-005 E5 Step 1)')
+{
+  const KAPAL_BPN = 'Kapal MV SEA STAR (IMO 9074729) ke Pelabuhan Balikpapan (IDBPN).'
+  const raw = (x) => ({ classification: 'NEW_NOMINATION', vessels: [{ name: 'MV SEA STAR', imo: '9074729' }], portName: 'Balikpapan', portUnlocode: 'IDBPN', cargoes: [], ...x })
+  const cobaEta = (baris, eta = '2026-11-13') => validasi(raw({ eta }), 'TEXT', `${KAPAL_BPN}\n${baris}`).proposal.eta
+
+  // 1 + 10 — pola E15: ETA tanpa tahun, tanggal surat & ETD bertahun, ETD jatuh di tanggal yang SAMA.
+  const E15 = `Tanggal surat: 26/09/2026\n\nKepada Agen,\n${KAPAL_BPN}\nPerkiraan tiba (ETA)      : 13/11\nPerkiraan sandar (ETB)    : awal minggu depan\nPerkiraan berangkat (ETD) : 13-Nov-26`
+  const r15 = validasi(raw({ eta: '2026-11-13', etb: '2026-11-13', etd: '2026-11-13', requestDate: '2026-09-26' }), 'TEXT', E15)
+  const p15 = r15.proposal
+  cek('1/10. E15: ETA "13/11" + tahun di ETD/tanggal surat → ETA simpulan DIBUANG', p15.eta.value === null && p15.eta.flags.includes('DATE_NOT_IN_SOURCE') && p15.eta.extracted === '2026-11-13', JSON.stringify(p15.eta))
+  cek('… ETB "awal minggu depan" → dibuang', p15.etb.value === null && p15.etb.flags.includes('DATE_NOT_IN_SOURCE'))
+  cek('… ETD 13-Nov-26 (bertahun, field-nya sendiri) → bertahan', p15.etd.value === '2026-11-13' && p15.etd.flags.length === 0)
+  cek('… tanggal surat 26/09/2026 → bertahan', p15.requestDate.value === '2026-09-26')
+  cek('… kapal & pelabuhan terverifikasi tetap utuh', p15.vessels[0].name.value === 'MV SEA STAR' && p15.vessels[0].imo.value === '9074729' && p15.portName.value === 'Balikpapan' && p15.portUnlocode.value === 'IDBPN')
+  cek('… syarat minimum (kapal + pelabuhan) tetap terpenuhi → klasifikasi tak diturunkan', r15.classification === 'NEW_NOMINATION' && p15.classificationReason === null)
+  cek('… buktiTanggalDiSumber(eta) kosong, (etd) = 2026-11-13', P.buktiTanggalDiSumber('eta', E15).length === 0 && P.buktiTanggalDiSumber('etd', E15).join() === '2026-11-13')
+
+  // 2–8 — bentuk tanggal lengkap yang sah bertahan.
+  for (const [nama, baris] of [
+    ['2. 13-Nov-26', 'ETA: 13-Nov-26'],
+    ['3. 13-Nov-2026', 'ETA: 13-Nov-2026'],
+    ['4. 13/11/2026', 'ETA: 13/11/2026'],
+    ['5. 13.11.2026', 'ETA: 13.11.2026'],
+    ['6. 2026-11-13', 'ETA: 2026-11-13'],
+    ['7. bulan Indonesia "13 November 2026"', 'ETA: 13 November 2026'],
+    ['8. label berspasi "E T A : 13/11/2026"', 'E T A : 13/11/2026'],
+    ['bulan Inggris "13 November 2026"', 'Arrival: 13 November 2026'],
+    ['bulan Inggris urutan bulan-dulu "November 13, 2026"', 'Vessel arriving November 13, 2026'],
+    ['prosa Indonesia "tiba ... 13 November 2026"', 'Kapal diperkirakan tiba di Balikpapan pada 13 November 2026.'],
+    ['label berdiri sendiri, nilai di baris berikutnya', 'ETA:\n13/11/2026'],
+    ['label "Kedatangan: 13 November 2026"', 'Kedatangan: 13 November 2026'],
+    ['label "Rencana kedatangan kapal: 13/11/2026"', 'Rencana kedatangan kapal: 13/11/2026'],
+  ]) {
+    const f = cobaEta(baris)
+    cek(`${nama} → bertahan`, f.value === '2026-11-13' && f.source === 'SOURCE_DOCUMENT' && f.flags.length === 0, JSON.stringify(f))
+  }
+  cek('7b. "13 Okt 2026" → 2026-10-13 bertahan', cobaEta('ETA: 13 Okt 2026', '2026-10-13').value === '2026-10-13')
+
+  // 9 — tahun hanya di tanggal surat.
+  const f9 = validasi(raw({ eta: '2026-11-13' }), 'TEXT', `Tanggal surat: 2026-09-26\n${KAPAL_BPN}\nETA: 13 Nov`).proposal.eta
+  cek('9. ETA tanpa tahun, tahun hanya di tanggal surat → dibuang', f9.value === null && f9.flags.includes('DATE_NOT_IN_SOURCE'))
+  cek('kedatangan tanpa tahun ("Kedatangan: 13 November", tanggal surat 2026) → dibuang', (() => {
+    const f = validasi(raw({ eta: '2026-11-13' }), 'TEXT', `Tanggal surat: 26/09/2026\n${KAPAL_BPN}\nKedatangan: 13 November`).proposal.eta
+    return f.value === null && f.flags.includes('DATE_NOT_IN_SOURCE')
+  })())
+  cek('kedatangan bukan bukti field lain (ETD/requestDate)', P.buktiTanggalDiSumber('etd', 'Kedatangan: 13 November 2026').length === 0 && P.buktiTanggalDiSumber('requestDate', 'Kedatangan: 13 November 2026').length === 0)
+  cek('kop surat "Samarinda, 26 September 2026" TIDAK menjadi bukti requestDate (keputusan owner #4)', P.buktiTanggalDiSumber('requestDate', 'Samarinda, 26 September 2026\nKepada Yth. Agen').length === 0)
+  cek('9b. tahun 2026 di mana-mana tapi ETA "13/11" → dibuang', cobaEta('Kontrak 2026, Q4 2026.\nETA 13/11 (tahun 2026)').value === null)
+
+  // 11 — tanggal salah terhadap ETA eksplisit.
+  const f11 = cobaEta('ETA: 13/11/2026', '2026-11-14')
+  cek('11. ETA eksplisit 13/11/2026 tapi AI 2026-11-14 → dibuang', f11.value === null && f11.flags.includes('DATE_NOT_IN_SOURCE') && f11.extracted === '2026-11-14')
+  cek('11b. hari-dulu: "03/11/2026" = 3 Nov; AI 2026-03-11 (bulan-dulu) → dibuang', cobaEta('ETA: 03/11/2026', '2026-11-03').value === '2026-11-03' && cobaEta('ETA: 03/11/2026', '2027-03-11').value === null)
+
+  // Anchoring ke field yang benar.
+  cek('ETA & ETD sebaris: tanggal ETD tak membuktikan ETA', cobaEta('ETA: 13/11   ETD: 13/11/2026').value === null)
+  cek('ETA/ETB berbagi satu tanggal ("ETA/ETB: 13/11/2026") → keduanya berbukti',
+    P.buktiTanggalDiSumber('eta', 'ETA/ETB: 13/11/2026').join() === '2026-11-13' && P.buktiTanggalDiSumber('etb', 'ETA/ETB: 13/11/2026').join() === '2026-11-13')
+  cek('ETD tak dibuktikan oleh tanggal ETA', validasi(raw({ eta: '2026-11-13', etd: '2026-11-13' }), 'TEXT', `${KAPAL_BPN}\nETA: 13/11/2026\nETD: TBA`).proposal.etd.value === null)
+  cek('"Date of arrival: 13/11/2026" → ETA berbukti', cobaEta('Date of arrival: 13/11/2026').value === '2026-11-13')
+  cek('requestDate: "Date: 26 September 2026" & "Dated 26-Sep-2026"', P.buktiTanggalDiSumber('requestDate', 'Date: 26 September 2026').join() === '2026-09-26' && P.buktiTanggalDiSumber('requestDate', 'Dated 26-Sep-2026').join() === '2026-09-26')
+  cek('label di dalam kata tak terbaca ("BETA", "METAL", "update") → tanpa bukti', ['BETA 13/11/2026', 'METAL 13/11/2026'].every((s) => P.buktiTanggalDiSumber('eta', s).length === 0) && P.buktiTanggalDiSumber('requestDate', 'update 13/11/2026').length === 0)
+  cek('"etc." dalam prosa tak menghasilkan bukti ETA', P.buktiTanggalDiSumber('eta', 'coal, bunkers, etc. 13/11/2026').length === 0)
+
+  // Tabel (Excel/CSV): kolom berjudul label.
+  const XLS = 'Vessel | ETA | ETD\nMV SEA STAR | 13/11/2026 | 15/11/2026'
+  cek('Excel: kolom "ETA" → 13/11/2026 berbukti; tanggal kolom ETD tidak', P.buktiTanggalDiSumber('eta', XLS).join() === '2026-11-13' && P.buktiTanggalDiSumber('etd', XLS).join() === '2026-11-15')
+  cek('Excel (validasi WORKBOOK): ETA 15/11 dari kolom ETD → dibuang', validasi(raw({ eta: '2026-11-15' }), 'WORKBOOK', `${KAPAL_BPN}\n${XLS}`).proposal.eta.value === null)
+  cek('CSV "vessel,eta" → berbukti', validasi(raw({ eta: '2026-11-13' }), 'CSV', `${KAPAL_BPN}\nvessel,eta\nMV SEA STAR,2026-11-13`).proposal.eta.value === '2026-11-13')
+  cek('Excel baris label–nilai "ETA | 13/11/2026" → berbukti', P.buktiTanggalDiSumber('eta', 'ETA | 13/11/2026').join() === '2026-11-13')
+
+  // Negatif format: tanpa tahun eksplisit → tak ada bukti.
+  cek('tanggalEksplisit: tanpa tahun / tahun 2 digit numerik → kosong', ['13/11', '13 Nov', '13-11', '13/11/26', 'awal minggu depan', 'November 13'].every((s) => P.tanggalEksplisit(s).length === 0))
+  cek('tanggalEksplisit: tanggal mustahil (31/11/2026, 30 Feb 2026) → kosong', P.tanggalEksplisit('31/11/2026 30 Februari 2026').length === 0)
+
+  // 12 — pagar rentang tetap: tanggal berbukti tapi di luar rentang tetap DATE_OUT_OF_RANGE.
+  const f12 = cobaEta('ETA: 01/01/2028', '2028-01-01')
+  cek('12. tanggal berbukti di luar rentang → tetap DATE_OUT_OF_RANGE (bukan DATE_NOT_IN_SOURCE)', f12.value === null && f12.flags.join() === 'DATE_OUT_OF_RANGE')
+  cek('12b. format rusak tetap DATE_OUT_OF_RANGE walau ada di sumber', cobaEta('ETA: 13/11/2026', '13/11/2026').flags.join() === 'DATE_OUT_OF_RANGE')
+
+  // Syarat minimum TIDAK diubah: ETA yang dibuang tak bisa lagi memenuhi "pelabuhan ATAU ETA".
+  const rMin = validasi({ classification: 'NEW_NOMINATION', vessels: [{ name: 'MV SEA STAR' }], eta: '2026-11-13', cargoes: [] }, 'TEXT', 'MV SEA STAR ETA 13/11')
+  cek('ETA dibuang + tanpa pelabuhan → INSUFFICIENT (MINIMUM_FIELDS_MISSING)', rMin.classification === 'INSUFFICIENT_INFORMATION' && rMin.proposal.classificationReason === 'MINIMUM_FIELDS_MISSING')
+
+  // Masukan visual tidak berubah (E-2 di luar Step 1).
+  const pdf = validasi(raw({ eta: '2026-11-13' }), 'PDF', null).proposal.eta
+  cek('PDF: tanggal tak diuji sumber (perilaku lama, E-2 belum)', pdf.value === '2026-11-13' && pdf.flags.length === 0)
+
+  // 13 — regresi fixture Eval-1 (beku, hanya dibaca): setiap tanggal GT di kasus TEKS tetap berbukti,
+  // dan satu-satunya tanggal tanpa bukti adalah ETA E15.
+  const F = await import('./fixtures/spike-intake/eval1-cases.mjs')
+  const kasus = F.bangunKasusEval1(new Date(`${HARI_INI}T00:00:00Z`))
+  const hilang = []
+  let dicek = 0
+  for (const k of kasus.filter((x) => x.kind === 'TEXT')) {
+    const src = P.normalisasiTeksSumber(k.teks)
+    for (const f of P.FIELD_TANGGAL_BERLABEL) {
+      const g = k.gt[f]
+      if (!g || !('status' in g)) continue
+      const nilai = (g.status === 'PRESENT' ? [g.value] : g.status === 'ACCEPTABLE' ? g.values : []).filter((v) => typeof v === 'string')
+      for (const v of nilai) {
+        dicek++
+        if (!P.buktiTanggalDiSumber(f, src).includes(v)) hilang.push(`${k.id}.${f}=${v}`)
+      }
+    }
+  }
+  cek('13. Eval-1 (TEKS): semua tanggal GT tetap berbukti', dicek >= 8 && hilang.length === 0, `${dicek} tanggal dicek${hilang.length ? '; hilang: ' + hilang.join(', ') : ''}`)
+  const k15 = kasus.find((x) => x.id === 'E15')
+  cek('13b. Eval-1 E15: ETA tanpa bukti (GT: hanya kosong)', P.buktiTanggalDiSumber('eta', P.normalisasiTeksSumber(k15.teks)).length === 0)
+
+  // intake-policy.ts ikut dibundel ke peramban (IntakeReview/IntakeList): lookbehind & grup bernama
+  // tak bisa ditranspilasi dan membuat Safari < 16.4 gagal mengurai seluruh bundel.
+  cek('intake-policy.ts tanpa regex lookbehind / grup bernama (aman untuk peramban lama)', !/\(\?<[!=a-zA-Z]/.test(baca('src/services/intake/intake-policy.ts')))
+}
+
 // =================================================================== 3. matching
 console.log('\n[3] Pencocokan master (deterministik)')
 const KAPAL = [

@@ -255,13 +255,17 @@ harapFatal(
   })
   cek('D07a E07 kapal/pelabuhan karangan + NEW_*: RAW → F2 (kapal karangan) + F3 (pelabuhan ABSENT terisi) + F9', JSON.stringify(kodeFatal(d7.h.RAW)) === '["F2","F3","F9"]', kodeFatal(d7.h.RAW).join(','))
   cek('D07b E07 POST: validator membuang karangan → INSUFFICIENT, 0 FATAL', d7.h.POST.jumlah.FATAL === 0 && d7.h.POST.klasifikasi.got === 'INSUFFICIENT_INFORMATION')
+  // PRD-005 E5 Step 1 (disetujui owner): ETA karangan kini dibuang pagar bukti tanggal → syarat
+  // minimum tak terpenuhi → klasifikasi diturunkan ke INSUFFICIENT, jadi F9 hilang di POST.
+  // RAW tidak berubah; F2 ("bulk carrier" tertulis sebagai kapal) tetap lolos POST.
   harapFatal(
-    'D07c E07 "bulk carrier" (tertulis) sebagai kapal + ETA karangan + NEW_* → lolos POST',
+    'D07c E07 "bulk carrier" (tertulis) sebagai kapal + ETA karangan + NEW_* → F2 lolos POST, ETA & F9 tertutup',
     mutasi('E07', (r) => {
       r.classification = 'NEW_NOMINATION'
       r.vessels = [{ name: 'bulk carrier' }]
       r.eta = '2026-10-25'
     }),
+    ['F2'],
     ['F2', 'F9'],
   )
 }
@@ -306,7 +310,9 @@ harapFatal('D13b E13 token "USD 3,000" di clientReference', mutasi('E13', (r) =>
   })
   cek('D13c K7: uang di kunci non-operasional (debug/gema sumber) → TIDAK F7', d13c.h.RAW.jumlah.FATAL === 0 && d13c.h.POST.jumlah.FATAL === 0)
 }
-harapFatal('D15 E15 ETA 13/11 diberi tahun hasil simpulan', mutasi('E15', (r) => (r.eta = K.E15.tanggal.ETA.iso)), ['F4'])
+// PRD-005 E5 Step 1 (disetujui owner): tahun simpulan terdeteksi di RAW (F4) dan kini DIBUANG
+// sebelum POST oleh pagar bukti tanggal ("ETA : 13/11" tanpa tahun → DATE_NOT_IN_SOURCE).
+harapFatal('D15 E15 ETA 13/11 diberi tahun hasil simpulan → F4 di RAW, dibuang di POST', mutasi('E15', (r) => (r.eta = K.E15.tanggal.ETA.iso)), [], ['F4'])
 harapFatal(
   'D16 E16 operasi dua parcel tertukar',
   mutasi('E16', (r) => {

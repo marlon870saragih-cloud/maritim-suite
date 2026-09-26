@@ -90,7 +90,13 @@ export const OPERASI_CARGO = ['LOAD', 'DISCHARGE'] as const
 // ----------------------------------------------------------------- tipe
 
 export type SumberField = 'SOURCE_DOCUMENT' | 'MASTER_MATCH' | 'USER_EDITED' | 'SYSTEM_DERIVED' | 'EMPTY'
-export type FlagField = 'NOT_IN_SOURCE' | 'UNVERIFIED_SOURCE' | 'IMO_CHECK_DIGIT' | 'DATE_OUT_OF_RANGE' | 'NAME_ONLY_MATCH'
+export type FlagField =
+  | 'NOT_IN_SOURCE'
+  | 'UNVERIFIED_SOURCE'
+  | 'IMO_CHECK_DIGIT'
+  | 'DATE_OUT_OF_RANGE'
+  | 'DATE_NOT_IN_SOURCE'
+  | 'NAME_ONLY_MATCH'
 
 export type FieldUsulan<T = string> = {
   value: T | null
@@ -296,6 +302,159 @@ export function dalamRentangTanggal(ymd: string, hariIni: string): boolean {
   return d >= -TANGGAL_MUNDUR_HARI && d <= TANGGAL_MAJU_HARI
 }
 
+// ----------------------------------------------------------------- bukti tanggal (PRD-005 E5 Step 1)
+//
+// Tanggal hasil AI dari masukan berteks (TEXT/CSV/WORKBOOK) hanya bertahan bila sumber
+// memuat tanggal LENGKAP (dengan tahun eksplisit) di field yang BERSESUAIAN: sesudah label
+// field itu di baris yang sama (atau baris berikutnya bila labelnya berdiri sendiri), atau
+// di kolom tabel yang judulnya label itu. Tahun TIDAK PERNAH diterima dari tempat lain
+// (tanggal surat, ETD, tahun berjalan, konteks) — lihat E15: "ETA : 13/11" + "ETD :
+// 13-Nov-26" → ETA 2026-11-13 DIBUANG walau ETD kebetulan jatuh di tanggal yang sama.
+// Hari lebih dulu (DD/MM). Umum untuk semua model — tak ada logika per model.
+
+export const FIELD_TANGGAL_BERLABEL = ['eta', 'etb', 'etc', 'etd', 'requestDate'] as const
+export type FieldTanggalBerlabel = (typeof FIELD_TANGGAL_BERLABEL)[number]
+
+/** Singkatan berhuruf dengan pemisah opsional: "ETA", "E T A", "E.T.A". */
+const sgk = (h: string): string => h.split('').join('[ .]?')
+
+const LABEL_TANGGAL: Readonly<Record<FieldTanggalBerlabel, string>> = {
+  eta: `${sgk('eta')}|tiba(?:nya)?|kedatangan|arriv(?:al|e|es|ing)?`,
+  etb: `${sgk('etb')}|sandar|berth(?:ing|ed)?`,
+  etc: `${sgk('etc')}|selesai`,
+  etd: `${sgk('etd')}|berangkat|depart(?:ure|s|ing)?|sailing`,
+  requestDate: 'tanggal surat|tgl\\.? surat|date(?:d)?',
+}
+
+// Tanpa lookbehind / grup bernama: modul ini ikut dibundel ke peramban (IntakeReview/IntakeList),
+// dan lookbehind tak bisa ditranspilasi (Safari < 16.4 gagal mengurai seluruh bundel).
+// Grup 1 = awalan (awal baris / bukan huruf-angka); grup 2.. = satu per field, urut FIELD_TANGGAL_BERLABEL.
+const POLA_LABEL = new RegExp(
+  `(^|[^a-z0-9])(?:${FIELD_TANGGAL_BERLABEL.map((f) => `(${LABEL_TANGGAL[f]})`).join('|')})(?![a-z0-9])`,
+  'gi',
+)
+const labelUtuh = (f: FieldTanggalBerlabel): RegExp =>
+  new RegExp(`^(?:${LABEL_TANGGAL[f]})\\.?\\s*(?:\\([^)]*\\))?\\s*:?$`, 'i')
+
+const BULAN: Readonly<Record<string, number>> = {
+  jan: 1, januari: 1, january: 1,
+  feb: 2, februari: 2, pebruari: 2, february: 2,
+  mar: 3, maret: 3, march: 3,
+  apr: 4, april: 4,
+  mei: 5, may: 5,
+  jun: 6, juni: 6, june: 6,
+  jul: 7, juli: 7, july: 7,
+  agu: 8, agt: 8, agus: 8, agustus: 8, aug: 8, august: 8,
+  sep: 9, sept: 9, september: 9,
+  okt: 10, oktober: 10, oct: 10, october: 10,
+  nov: 11, nopember: 11, november: 11,
+  des: 12, desember: 12, dec: 12, december: 12,
+}
+
+const ymd = (y: number, m: number, d: number): string | null =>
+  tanggalSah(`${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`)
+
+/**
+ * Semua tanggal LENGKAP (tahun eksplisit) di satu potongan teks, sebagai 'YYYY-MM-DD'.
+ * Didukung: YYYY-MM-DD (juga / .), DD/MM/YYYY, DD.MM.YYYY, DD-MM-YYYY, DD-Mon-YY, DD-Mon-YYYY,
+ * DD <bulan Inggris/Indonesia> YYYY, <bulan Inggris> DD, YYYY. Tanpa tahun → tak ada hasil.
+ */
+export function tanggalEksplisit(potongan: string): string[] {
+  const s = potongan.toLowerCase()
+  const hasil = new Set<string>()
+  const tambah = (v: string | null) => {
+    if (v) hasil.add(v)
+  }
+  // Grup 1 setiap pola = awalan pengganti lookbehind (lihat POLA_LABEL).
+  for (const m of Array.from(s.matchAll(/(^|\D)(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?!\d)/g))) tambah(ymd(+m[2], +m[3], +m[4]))
+  for (const m of Array.from(s.matchAll(/(^|\D)(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})(?!\d)/g))) tambah(ymd(+m[4], +m[3], +m[2]))
+  // DD <bulan> YYYY  |  DD-Mon-YY(YY) — tahun 2 digit hanya dengan pemisah '-' / '/' di kedua sisi.
+  for (const m of Array.from(s.matchAll(/(^|[^a-z0-9])(\d{1,2})(?:st|nd|rd|th)?([\s\-/.]+)([a-z]+)\.?([\s\-/.,]+)(\d{4}|\d{2})(?![0-9])/g))) {
+    const bln = BULAN[m[4]]
+    if (!bln) continue
+    if (m[6].length === 2 && !(/^[-/]$/.test(m[3]) && /^[-/]$/.test(m[5]))) continue
+    tambah(ymd(m[6].length === 2 ? 2000 + +m[6] : +m[6], bln, +m[2]))
+  }
+  for (const m of Array.from(s.matchAll(/(^|[^a-z])([a-z]+)\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})(?!\d)/g))) {
+    const bln = BULAN[m[2]]
+    if (bln) tambah(ymd(+m[4], bln, +m[3]))
+  }
+  return Array.from(hasil)
+}
+
+type TemuanLabel = { field: FieldTanggalBerlabel; awal: number; akhir: number }
+
+function labelDiBaris(baris: string): TemuanLabel[] {
+  const out: TemuanLabel[] = []
+  for (const m of Array.from(baris.matchAll(POLA_LABEL))) {
+    const field = FIELD_TANGGAL_BERLABEL.find((_, i) => m[i + 2] !== undefined)
+    const awal = (m.index ?? 0) + m[1].length
+    if (field) out.push({ field, awal, akhir: (m.index ?? 0) + m[0].length })
+  }
+  return out
+}
+
+const hanyaPemisah = (t: string): boolean => /^[\s:=\-–—|.,;/()&]*$/.test(t)
+const PEMISAH_SEL = ['|', '\t', ';', ','] as const
+
+/**
+ * Tanggal lengkap yang dibuktikan sumber UNTUK field tertentu — tak pernah dari field lain.
+ * (a) Sebaris: teks sesudah label field sampai label field lain berikutnya. Label yang hanya
+ *     dipisahkan tanda baca ("ETA/ETB: …") berbagi potongan sesudahnya. Bila sisa baris hanya
+ *     tanda baca, potongan diambil dari baris tak-kosong berikutnya (sampai label pertamanya).
+ * (b) Tabel: pada baris tanpa tanggal, sel yang isinya PERSIS label field (mis. "ETA", "ETA (LT)")
+ *     menjadi judul kolom; sel di kolom yang sama pada baris-baris berikutnya (jumlah sel sama)
+ *     menjadi potongannya.
+ */
+export function buktiTanggalDiSumber(field: FieldTanggalBerlabel, sumber: string): string[] {
+  const bukti = new Set<string>()
+  const ambil = (t: string) => {
+    for (const v of tanggalEksplisit(t)) bukti.add(v)
+  }
+  const baris = sumber.replace(/\r\n?/g, '\n').split('\n')
+  const utuh = labelUtuh(field)
+
+  for (let i = 0; i < baris.length; i++) {
+    const b = baris[i]
+
+    // (b) judul kolom tabel — baris yang memuat tanggal bukan judul (mis. "ETA | 13/11/2026").
+    const pemisah = PEMISAH_SEL.find((p) => b.includes(p))
+    if (pemisah && tanggalEksplisit(b).length === 0) {
+      const sel = b.split(pemisah).map((x) => x.trim())
+      const kolom = sel.length >= 2 ? sel.findIndex((x) => utuh.test(x)) : -1
+      if (kolom >= 0) {
+        for (let j = i + 1; j < baris.length; j++) {
+          if (!baris[j].trim()) break
+          const isi = baris[j].split(pemisah).map((x) => x.trim())
+          if (isi.length !== sel.length) break
+          ambil(isi[kolom])
+        }
+        continue // baris judul tidak diperlakukan sebagai label sebaris
+      }
+    }
+
+    // (a) sebaris
+    const label = labelDiBaris(b)
+    for (let k = 0; k < label.length; k++) {
+      if (label[k].field !== field) continue
+      let n = k + 1
+      while (n < label.length && hanyaPemisah(b.slice(label[n - 1].akhir, label[n].awal))) n++
+      const dari = label[n - 1].akhir
+      const potongan = b.slice(dari, n < label.length ? label[n].awal : b.length)
+      if (!hanyaPemisah(potongan)) {
+        ambil(potongan)
+        continue
+      }
+      // Label berdiri sendiri di ujung baris → nilai di baris tak-kosong berikutnya.
+      const j = baris.findIndex((x, idx) => idx > i && x.trim() !== '')
+      if (j < 0) continue
+      const lanjut = labelDiBaris(baris[j])
+      ambil(lanjut.length ? baris[j].slice(0, lanjut[0].awal) : baris[j])
+    }
+  }
+  return Array.from(bukti)
+}
+
 // ----------------------------------------------------------------- lifecycle
 
 const TRANSISI: Readonly<Record<StatusIntake, readonly StatusIntake[]>> = {
@@ -358,11 +517,13 @@ export function validasiEkstraksi(raw: unknown, k: KonteksValidasi): HasilValida
     return fieldDokumen(nilai, ['UNVERIFIED_SOURCE'])
   }
   const biasa = (nilai: string | null): FieldUsulan => (nilai ? fieldDokumen(nilai) : fieldKosong())
-  const tanggal = (v: unknown): FieldUsulan => {
+  /** Tanggal: format + rentang (tetap), lalu untuk masukan berteks WAJIB berbukti di field-nya sendiri. */
+  const tanggal = (v: unknown, field: FieldTanggalBerlabel): FieldUsulan => {
     const mentah = teks(v, 40)
     if (!mentah) return fieldKosong()
     const t = tanggalSah(mentah)
     if (!t || !dalamRentangTanggal(t, k.hariIni)) return fieldKosong(mentah, ['DATE_OUT_OF_RANGE'])
+    if (berteks && !buktiTanggalDiSumber(field, k.sourceText ?? '').includes(t)) return fieldKosong(mentah, ['DATE_NOT_IN_SOURCE'])
     return fieldDokumen(t)
   }
   const pilih = <T extends string>(v: unknown, daftar: readonly T[]): FieldUsulan<T> => {
@@ -422,13 +583,13 @@ export function validasiEkstraksi(raw: unknown, k: KonteksValidasi): HasilValida
     portName: identitas(teks(o.portName)),
     portUnlocode: identitas(unlocode),
     jetty: biasa(teks(o.jetty)),
-    eta: tanggal(o.eta),
-    etb: tanggal(o.etb),
-    etc: tanggal(o.etc),
-    etd: tanggal(o.etd),
+    eta: tanggal(o.eta, 'eta'),
+    etb: tanggal(o.etb, 'etb'),
+    etc: tanggal(o.etc, 'etc'),
+    etd: tanggal(o.etd, 'etd'),
     agencyType: pilih(o.agencyType, JENIS_KEAGENAN),
     clientReference: biasa(teks(o.clientReference)),
-    requestDate: tanggal(o.requestDate),
+    requestDate: tanggal(o.requestDate, 'requestDate'),
     cargoes,
     contact: contact && (contact.name || contact.email || contact.phone) ? contact : null,
     classificationReason: null,

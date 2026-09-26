@@ -69,7 +69,10 @@ bagian('1. KUNCI SUMBER — yang tak boleh berubah di Step 3B')
     intakeSetelahSubmit: '9d3b261a5e6384b1fb91284a8980420c9580ad08ee7132aa56855a30e57ecbb7',
     intakeSebelumSubmit: '6067824246e03a0efdb0683588bbb0fe66d0004fe8ecf3c328012ac3724243be',
     'src/services/intake/intake-gate.ts': '98521d074c3aa0043ea4ce3c4c6e107313e96e5f82e4fd3ecd2a0a61b5255d9d',
-    'src/services/intake/intake-policy.ts': 'c8781c27ecd1b9398db98514265679d1379e040f17f6395aa52aa460c3f1f326',
+    // Sidik Step 3A (c8781c27…f326) DIGANTIKAN oleh pagar bukti tanggal PRD-005 E5 Step 1 yang
+    // DISETUJUI OWNER (tanggal AI dari masukan berteks wajib berbukti di field-nya sendiri).
+    // Perubahan berikutnya pada berkas ini tetap harus memperbarui sidik ini secara eksplisit.
+    'src/services/intake/intake-policy.ts': '81fab8cb4d72215e3aa6070e4c850ae637e96ed46fc9b4d52fa5e4c2a7e1432e',
     'src/services/intake/intake-hash.ts': '862d3e086c24f578bdd4a07a70664de6fff96d6831e289dcb1d5ccd69e4525d3',
     'src/services/saas/quota.service.ts': '777e86317b23f3f1ebf3a4c0db9a941fa6159585d0071350f622019a844f29ce',
     'src/services/saas/usage.service.ts': '183fa3bbb9af7278d780d62431df5f91961130a8d84cd2392195b834cff0c23d',
