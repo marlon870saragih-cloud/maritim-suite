@@ -2,7 +2,8 @@
 //
 // Eval-1 (spike-eval1*.mjs) TIDAK disentuh; runner ini MEMAKAI ULANG ekspornya:
 //   • pencegat penyedia (buatPencegat): host tunggal, allowlist model, batas panggilan/biaya/token,
-//     usage.cost wajib, served model = requested (SERVED_MODEL_BERBEDA → berhenti);
+//     usage.cost wajib, served model (pencocok Eval-1 longgar; Eval-2 menambah pagarServedPersis:
+//     served === requested persis, selain itu SERVED_MODEL_BERBEDA → berhenti);
 //   • pemindai privasi (pindaiPrivasiEval1) + penulis laporan (tulisLaporan, jalur di luar repo);
 //   • pengurai CLI, pemeriksa jalur laporan, pengurai DB lokal (spike-eval1-runner.mjs).
 // Khas Eval-2: verifikasi beku Eval-2, rencana 80 slot, gerbang G1–G12/G9R (spike-eval2-penilai),
@@ -171,6 +172,31 @@ export function buatPenyediaStubEval2(kasus, jawab = (k) => jawabanSempurna(k), 
 }
 
 /**
+ * Pencocokan served model Eval-2: KETAT, served === requested. Tidak ada akhiran yang diterima
+ * (`-mini`, `-fast`, `:x`, `@x`, snapshot bertanggal, dst.) — pencocok Eval-1 yang longgar
+ * (H.modelTerlayaniCocok) sengaja TIDAK dipakai di Eval-2.
+ */
+export const modelTerlayaniPersis = (diminta, dilayani) => typeof diminta === 'string' && diminta.length > 0 && typeof dilayani === 'string' && dilayani === diminta
+
+/**
+ * Pagar served model KETAT di BELAKANG pencegat Eval-1 (yang longgar): setelah respons, setiap
+ * panggilan SUKSES baru yang served model-nya tidak persis sama dengan requested → berhenti
+ * SERVED_MODEL_BERBEDA, sehingga slot berikutnya tidak dijalankan.
+ */
+export function pagarServedPersis(pencegat, keadaan) {
+  return async (url, init) => {
+    const idx = keadaan.panggilan.length
+    try {
+      return await pencegat(url, init)
+    } finally {
+      if (keadaan.panggilan.slice(idx).some((p) => p.http === 'SUKSES' && !modelTerlayaniPersis(p.requestedModel, p.servedModel))) {
+        keadaan.berhenti = keadaan.berhenti ?? 'SERVED_MODEL_BERBEDA'
+      }
+    }
+  }
+}
+
+/**
  * Pagar proyeksi biaya di DEPAN pencegat: panggilan berikutnya DITOLAK bila biaya berjalan +
  * biaya panggilan termahal yang sudah teramati akan melewati batas keras. Mencegah melampaui
  * US$3,00 (pencegat Eval-1 hanya menolak sesudah batas terlewati).
@@ -271,7 +297,7 @@ async function eksekusiLedgerE2E({ muat, slotLedger, petaKasus, keadaan, db, pin
         ev.submit === 'OK' && ev.intake?.status === 'NEEDS_REVIEW' && ev.jumlahRun === 1 && ev.run?.status === 'SUCCEEDED' && ev.run?.outcome === 'PROPOSAL_CREATED' &&
         ev.run?.agentKey === 'INTAKE' && ev.run?.subjekCocok && ev.run?.selesai && panggilan.length >= 1 && mc.length === panggilan.length &&
         mc.every((c, i) => c.seq === i + 1 && c.requestedModel === r.model && c.promptHash === X.HASH_PROMPT_INTAKE && c.promptVersion === X.VERSI_PROMPT_INTAKE) &&
-        mc.filter((c) => c.status === 'OK').every((c) => H.modelTerlayaniCocok(r.model, c.servedModel)) && ev.auditRun.includes('CREATE') && ev.auditRun.includes('UPDATE')
+        mc.filter((c) => c.status === 'OK').every((c) => modelTerlayaniPersis(r.model, c.servedModel)) && ev.auditRun.includes('CREATE') && ev.auditRun.includes('UPDATE')
       bukti.slot.push({ seq: r.seq, kasus: r.kasus, ...ev })
       hasilSlot.set(r.seq, { status: galat ? `GAGAL:${galat}` : ev.lengkap ? 'OK' : 'GAGAL:BUKTI_LEDGER_TIDAK_LENGKAP', panggilan })
       log(`  ${String(r.seq).padStart(2)} LEDGER_E2E    ${r.kasus} → ${ev.submit}; run=${ev.run?.status ?? '-'}; modelCall=${mc.length}/${panggilan.length}; lengkap=${ev.lengkap}`)
@@ -424,7 +450,7 @@ export async function jalankanRunnerEval2({
   const fetchSebelum = globalThis.fetch
   let jaringanTerblokir = 0
   const { pencegat, keadaan } = H.buatPencegat(fetchTransport, batas)
-  const jalurPenyedia = pagarProyeksiBiaya(pencegat, keadaan, batas)
+  const jalurPenyedia = pagarProyeksiBiaya(pagarServedPersis(pencegat, keadaan), keadaan, batas)
   const slots = []
   let ledger = { status: 'TIDAK_DIJALANKAN', alasan: db ? null : 'SPIKE_DATABASE_URL_TIDAK_DISET', g8: null, bukti: null }
   let galatFatal = null
@@ -475,7 +501,7 @@ export async function jalankanRunnerEval2({
       // Tanpa fallback model: setiap percobaan WAJIB meminta model slot & dilayani model itu.
       if (slot.panggilan.some((p) => p.requestedModel !== r.model)) slot.status = 'GAGAL:MODEL_DIMINTA_BERBEDA'
       else if (slot.panggilan.some((p) => p.http === 'SUKSES' && !p.servedModel)) slot.status = 'GAGAL:SERVED_MODEL_TIDAK_DILAPORKAN'
-      else if (slot.panggilan.some((p) => p.http === 'SUKSES' && !H.modelTerlayaniCocok(r.model, p.servedModel))) slot.status = 'GAGAL:SERVED_MODEL_BERBEDA'
+      else if (slot.panggilan.some((p) => p.http === 'SUKSES' && !modelTerlayaniPersis(r.model, p.servedModel))) slot.status = 'GAGAL:SERVED_MODEL_BERBEDA'
       if (slot.status) {
         slot.raw = /SERVED_MODEL|MODEL_DIMINTA/.test(slot.status) ? null : slot.raw
       }

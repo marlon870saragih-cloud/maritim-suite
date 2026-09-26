@@ -262,6 +262,47 @@ bagian('H. BATAS PANGGILAN / BIAYA & SERVED MODEL')
   const sS = slotDari(lapS)
   cek('served ≠ requested → slot GAGAL:SERVED_MODEL_BERBEDA (tak dinilai), run berhenti, verdict FAIL', sS.some((s) => s.status === 'GAGAL:SERVED_MODEL_BERBEDA') && lapS.berhenti === 'SERVED_MODEL_BERBEDA' && lapS.operasional.servedCocok === false && reEvaluasi(lapS).verdict === 'FAIL')
   cek('tanpa fallback model: slot S5 yang dilayani model lain TIDAK dinilai sebagai S5', sS.filter((s) => s.blok !== 'S45_KONTROL').every((s) => s.nilai === null))
+
+  // Served model KETAT (Step 6A blocker fix): served === requested; tak ada akhiran yang diterima.
+  const P5 = R.modelTerlayaniPersis
+  cek('ketat #1: requested === served → LULUS', P5(H.MODEL_S5, H.MODEL_S5) === true && P5(H.MODEL_S45, H.MODEL_S45) === true)
+  cek('ketat #2: `-mini` → GAGAL', P5(H.MODEL_S5, `${H.MODEL_S5}-mini`) === false)
+  cek('ketat #3: `-fast` → GAGAL', P5(H.MODEL_S5, `${H.MODEL_S5}-fast`) === false)
+  cek('ketat #4: akhiran `-` sembarang (termasuk tanggal) → GAGAL', [`${H.MODEL_S5}-x`, `${H.MODEL_S5}-20260101`, `${H.MODEL_S5}-`].every((m) => P5(H.MODEL_S5, m) === false))
+  cek('ketat #5: `:suffix` → GAGAL', [`${H.MODEL_S5}:anything`, `${H.MODEL_S5}:`].every((m) => P5(H.MODEL_S5, m) === false))
+  cek('ketat #6: `@suffix` → GAGAL', [`${H.MODEL_S5}@anything`, `${H.MODEL_S5}@`].every((m) => P5(H.MODEL_S5, m) === false))
+  cek('ketat #7: served model hilang (null/undefined/""/bukan string) → GAGAL', [null, undefined, '', 0, {}].every((m) => P5(H.MODEL_S5, m) === false) && P5('', '') === false && P5(undefined, undefined) === false)
+  cek('ketat #8: Sonnet 4.5 dilayani untuk permintaan Sonnet 5 → GAGAL', P5(H.MODEL_S5, H.MODEL_S45) === false)
+  cek('… juga menolak variasi huruf/spasi & awalan', [H.MODEL_S5.toUpperCase(), ` ${H.MODEL_S5}`, `${H.MODEL_S5} `, H.MODEL_S5.replace('anthropic/', '')].every((m) => P5(H.MODEL_S5, m) === false))
+  cek('Eval-1 tak diubah: pencocok Eval-1 masih longgar (dokumentasi beda perilaku)', H.modelTerlayaniCocok(H.MODEL_S5, `${H.MODEL_S5}-mini`) === true)
+  // Runner-level: setiap varian akhiran pada slot S5 → slot gagal, run berhenti, verdict FAIL.
+  const idxS5Pertama = slotDari(lapS).findIndex((s) => s.blok !== 'S45_KONTROL')
+  for (const akhiran of ['-mini', '-fast', '-x', ':x', '@x']) {
+    const lapV = await run({ opsiStub: { served: (m) => (m === H.MODEL_S5 ? `${m}${akhiran}` : m) } })
+    const sV = slotDari(lapV)
+    const pertamaS5 = sV[idxS5Pertama]
+    cek(`runner: served \`${H.MODEL_S5}${akhiran}\` → GAGAL:SERVED_MODEL_BERBEDA, berhenti seketika, verdict FAIL`,
+      pertamaS5?.status === 'GAGAL:SERVED_MODEL_BERBEDA' && pertamaS5.nilai === null && lapV.berhenti === 'SERVED_MODEL_BERBEDA' &&
+      lapV.panggilanTransport === idxS5Pertama + 1 && sV.slice(idxS5Pertama + 1).every((s) => s.status !== 'OK') &&
+      lapV.operasional.servedCocok === false && lapV.verdict === 'FAIL' && reEvaluasi(lapV).verdict === 'FAIL',
+      `status=${pertamaS5?.status} berhenti=${lapV.berhenti} transport=${lapV.panggilanTransport}`)
+  }
+  const lapN = await run({ opsiStub: { served: () => null } })
+  const sN = slotDari(lapN)
+  cek('runner: served model tidak dilaporkan → slot pertama GAGAL:SERVED_MODEL_TIDAK_DILAPORKAN, 1 panggilan, verdict FAIL',
+    sN[0]?.status === 'GAGAL:SERVED_MODEL_TIDAK_DILAPORKAN' && lapN.panggilanTransport === 1 && lapN.verdict === 'FAIL' && reEvaluasi(lapN).verdict === 'FAIL',
+    `status=${sN[0]?.status} berhenti=${lapN.berhenti} transport=${lapN.panggilanTransport}`)
+  // Pagar ketat berdiri sendiri: pencegat longgar menerima `-mini`, pagarServedPersis tetap menghentikan.
+  {
+    const { pencegat: pc, keadaan: kd } = H.buatPencegat(async () => new Response(JSON.stringify({ model: `${H.MODEL_S5}-mini`, usage: { prompt_tokens: 1, completion_tokens: 1, cost: 0.001 }, choices: [] }), { status: 200 }), R.BATAS_EVAL2)
+    const jalur = R.pagarServedPersis(pc, kd)
+    await jalur(H.URL_OPENROUTER, { method: 'POST', body: JSON.stringify({ model: H.MODEL_S5 }) }).catch(() => {})
+    const kedua = await jalur(H.URL_OPENROUTER, { method: 'POST', body: JSON.stringify({ model: H.MODEL_S5 }) }).then(() => 'lolos', () => 'ditolak')
+    cek('pagarServedPersis: pencegat Eval-1 longgar lolos `-mini`, pagar Eval-2 menghentikan → panggilan berikutnya ditolak', kd.berhenti === 'SERVED_MODEL_BERBEDA' && kedua === 'ditolak' && kd.panggilan.length === 1, `berhenti=${kd.berhenti} kedua=${kedua} n=${kd.panggilan.length}`)
+    const { pencegat: pcOk, keadaan: kdOk } = H.buatPencegat(async () => new Response(JSON.stringify({ model: H.MODEL_S5, usage: { prompt_tokens: 1, completion_tokens: 1, cost: 0.001 }, choices: [] }), { status: 200 }), R.BATAS_EVAL2)
+    await R.pagarServedPersis(pcOk, kdOk)(H.URL_OPENROUTER, { method: 'POST', body: JSON.stringify({ model: H.MODEL_S5 }) }).catch(() => {})
+    cek('pagarServedPersis: served persis sama → tidak berhenti', !kdOk.berhenti && kdOk.panggilan.length === 1 && kdOk.panggilan[0].http === 'SUKSES', `berhenti=${kdOk.berhenti}`)
+  }
   // Batas panggilan keras pencegat (dipakai ulang dari Eval-1) dengan batas Eval-2.
   const { pencegat, keadaan } = H.buatPencegat(async () => new Response(JSON.stringify({ model: H.MODEL_S5, usage: { prompt_tokens: 1, completion_tokens: 1, cost: 0.001 }, choices: [] }), { status: 200 }), R.BATAS_EVAL2)
   const body = JSON.stringify({ model: H.MODEL_S5 })
