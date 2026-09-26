@@ -201,7 +201,7 @@ async function modeOn(expectedModel) {
   cek('tepat 1 AgentModelCall (seq 1)', mc.length === 1 && mc[0].seq === 1)
   cek('model call: provider FAKE, requestedModel sesuai resolusi', mc[0]?.provider === 'FAKE' && mc[0]?.requestedModel === expectedModel, mc[0]?.requestedModel)
   cek('model call: served/id/usage terekam', mc[0]?.servedModel === 'fake/deterministic' && mc[0]?.providerRequestId === 'fake-req-1' && mc[0]?.inputTokens === 120 && mc[0]?.outputTokens === 30)
-  cek('model call: identitas prompt & skema', mc[0]?.promptId === 'vessel-call-extract' && mc[0]?.promptVersion === '1' && /^[0-9a-f]{64}$/.test(mc[0]?.promptHash ?? '') && mc[0]?.schemaId === 'isi_intake_kunjungan')
+  cek('model call: identitas prompt & skema', mc[0]?.promptId === 'vessel-call-extract' && mc[0]?.promptVersion === '2' && /^[0-9a-f]{64}$/.test(mc[0]?.promptHash ?? '') && mc[0]?.schemaId === 'isi_intake_kunjungan')
   cek('model call: params hanya daftar izin', Object.keys(mc[0]?.params ?? {}).every((k) => ['temperature', 'toolChoice', 'pdfEngine', 'timeoutMs', 'maxTokens'].includes(k)))
   cek('model call: biaya null (belum diverifikasi)', mc[0]?.costAmount === null && mc[0]?.costSource === null)
 
