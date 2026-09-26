@@ -615,6 +615,111 @@ console.log('\n[5b] Bantuan tampilan (Step 4F)')
   cek('formatJumlah memakai pemisah ribuan', P.formatJumlah(12000) === '12.000' && P.formatJumlah(12.5) === '12,5' && P.formatJumlah(null) === '')
 }
 
+// =================================================================== 2d. P0 keselamatan identitas (E5 Step 8)
+console.log('\n[2d] P0 identitas kapal: terselubung, bukan-nama, kepercayaan IMO (PRD-005 E5 Step 8)')
+{
+  // Data SINTETIS umum (bukan kasus Eval-2). Kelas kegagalan: identitas faks tak terbaca (T05-like) & Hull No. (T26-like).
+  const IMO_SAH = '9074729'
+  const IMO_CD_SALAH = '1234568'
+  cek('prasyarat: IMO uji sah / check digit salah', imoCheckDigitSah(IMO_SAH) && !imoCheckDigitSah(IMO_CD_SALAH))
+  const port = '\nPelabuhan : Samarinda (IDSRI)\nETA : 10/10/2026'
+  const raw = (vessels, extra = {}) => ({ classification: 'NEW_NOMINATION', vessels, portName: 'Samarinda', portUnlocode: 'IDSRI', eta: '2026-10-10', cargoes: [], ...extra })
+  const fl = (f) => f.flags.join(',')
+
+  // ---- P0-1 terselubung
+  const SUMBER_SELUBUNG = `Vessel : MV ##K#T ###L\nIMO : 91#2##3\nMMSI : 5#3##1234\nC/S : Y#?B${port}`
+  const r1 = validasi(raw([{ name: 'MV ##K#T ###L' }]), 'TEXT', SUMBER_SELUBUNG)
+  cek('1  nama terselubung disalin harfiah → ILLEGIBLE_VALUE, kapal dibuang & dihitung, NEW → INSUFFICIENT (minimum)',
+    r1.proposal.vessels.length === 0 && r1.proposal.vesselsDropped === 1 && r1.classification === 'INSUFFICIENT_INFORMATION' && r1.proposal.classificationReason === 'MINIMUM_FIELDS_MISSING' && !P.syaratMinimumTerpenuhi(r1.proposal))
+  cek('1b kapal yang dibuang hanya DIHITUNG (perilaku vesselsDropped yang ada): nilai terselubung tidak masuk proposal', r1.proposal.vesselsDropped === 1 && !JSON.stringify(r1.proposal).includes('##K#T'))
+  const r1c = validasi(raw([{ name: 'MV K T L' }]), 'TEXT', SUMBER_SELUBUNG)
+  const r1d = validasi(raw([{ name: 'MV' }]), 'TEXT', SUMBER_SELUBUNG)
+  cek('1c nama yang MEMBUANG penyelubungnya sendiri ("MV K T L", "MV") → tetap ditolak (bersentuhan token terselubung)', r1c.proposal.vessels.length === 0 && r1c.proposal.vesselsDropped === 1 && r1d.proposal.vessels.length === 0)
+  const imoF = (v, sumber = SUMBER_SELUBUNG) => validasi(raw([{ name: 'MV SAMUDRA JAYA', imo: v }]), 'TEXT', `Vessel : MV SAMUDRA JAYA\n${sumber}`).proposal.vessels[0]?.imo
+  cek('2  IMO terselubung "91#2##3" → kosong + ILLEGIBLE_VALUE (nilai asli tetap di extracted)', imoF('91#2##3').value === null && fl(imoF('91#2##3')) === 'ILLEGIBLE_VALUE' && imoF('91#2##3').extracted === '91#2##3')
+  cek('2b IMO terselubung yang dibuang penyelubungnya ("9123") → bukan 7 digit → IMO_FORMAT_INVALID', imoF('9123').value === null && fl(imoF('9123')) === 'IMO_FORMAT_INVALID')
+  const mm = validasi(raw([{ name: 'MV SAMUDRA JAYA', mmsi: '5#3##1234' }]), 'TEXT', `Vessel : MV SAMUDRA JAYA\n${SUMBER_SELUBUNG}`).proposal.vessels[0].mmsi
+  cek('3  MMSI terselubung → kosong + ILLEGIBLE_VALUE', mm.value === null && fl(mm) === 'ILLEGIBLE_VALUE')
+  const cs = validasi(raw([{ name: 'MV SAMUDRA JAYA', callSign: 'Y#?B' }]), 'TEXT', `Vessel : MV SAMUDRA JAYA\n${SUMBER_SELUBUNG}`).proposal.vessels[0].callSign
+  cek('4  call sign terselubung → kosong + ILLEGIBLE_VALUE', cs.value === null && fl(cs) === 'ILLEGIBLE_VALUE')
+  const r5 = validasi(raw([{ name: 'MV ##K#T ###L', imo: '91#2##3', mmsi: '5#3##1234', callSign: 'Y#?B' }]), 'TEXT', SUMBER_SELUBUNG)
+  cek('5  semua identitas terselubung → kapal dibuang (1), minimum gagal, INSUFFICIENT', r5.proposal.vessels.length === 0 && r5.proposal.vesselsDropped === 1 && r5.classification === 'INSUFFICIENT_INFORMATION')
+  const r6 = validasi(raw([{ name: 'MV ##K#T ###L', mmsi: '525001234' }]), 'TEXT', `Vessel : MV ##K#T ###L\nMMSI : 525001234${port}`)
+  cek('6  nama terselubung + MMSI terbaca → kapal DIPERTAHANKAN lewat MMSI, nama kosong ILLEGIBLE_VALUE, minimum terpenuhi, NEW tetap',
+    r6.proposal.vessels.length === 1 && r6.proposal.vessels[0].mmsi.value === '525001234' && fl(r6.proposal.vessels[0].name) === 'ILLEGIBLE_VALUE' && r6.proposal.vesselsDropped === 0 && r6.classification === 'NEW_NOMINATION')
+  for (const [nama, v] of [['"[illegible]"', 'MV [illegible]'], ['"tidak terbaca"', 'tidak terbaca'], ['elipsis', 'MV SAMU...'], ['U+FFFD', 'MV SAM�DRA']]) {
+    const r = validasi(raw([{ name: v }]), 'TEXT', `Vessel : ${v}${port}`)
+    cek(`1d penanda tak terbaca ${nama} di nilai → ditolak, kapal dibuang`, r.proposal.vessels.length === 0 && r.proposal.vesselsDropped === 1)
+  }
+  const rPdf = validasi(raw([{ name: 'MV ##K#T ###L' }]), 'PDF', null)
+  cek('1e PDF/gambar: nilai terselubung juga ditolak (bukan hanya teks)', rPdf.proposal.vessels.length === 0 && rPdf.proposal.vesselsDropped === 1)
+
+  // ---- P0-2 bukan nama kapal
+  const bukan = (nama, sumber) => {
+    const r = validasi(raw([{ name: nama }]), 'TEXT', `${sumber}${port}`)
+    return r.proposal.vessels.length === 0 && r.proposal.vesselsDropped === 1 && r.classification === 'INSUFFICIENT_INFORMATION'
+  }
+  cek('7  "Hull No. 3318052" → NOT_A_VESSEL_NAME, dibuang, INSUFFICIENT', bukan('Hull No. 3318052', 'Delivery - Hull No. 3318052 (unnamed)') && P.bukanNamaKapal('Hull No. 3318052'))
+  cek('7b Hull No + nomor: variasi (HULL 3318052, Hull Number 55, Hull#5)', ['HULL 3318052', 'Hull Number 55', 'Hull#5'].every(P.bukanNamaKapal))
+  cek('8  Yard No + nomor', bukan('Yard No 845', 'Yard No 845 delivery') && ['Yard No. 845', 'YARD 845', 'Yard Nr 12'].every(P.bukanNamaKapal))
+  cek('9  NB / Newbuilding + nomor', bukan('NB 1207', 'Vessel: NB 1207') && ['NB-1207', 'Newbuilding No. 77', 'New Building 3'].every(P.bukanNamaKapal))
+  cek('10 Ref / PO / Order / Voyage / Voy + nomor', ['Ref 2026/445', 'REF: SNT/OPS/12', 'PO 4500123', 'Order No. 991', 'Purchase Order No 7', 'Voyage No 12', 'Voy. No. 3', 'Reference No 55', 'IMO 9074729', 'MMSI 525001234'].every(P.bukanNamaKapal) && bukan('PO 4500123', 'PO 4500123'))
+  cek('11 nama hanya angka ("4471", "MV 4471") → bukan nama', bukan('4471', 'Vessel 4471') && P.bukanNamaKapal('MV 4471'))
+  const sah = ['MV OCEAN 7', 'BINTANG 12', 'KM NUSA 3', 'TB PERKASA 2201', 'VOYAGE STAR 1', 'ORDER OF THE SEA 2', 'REFERENCE POINT', 'HULL', 'NB PIONEER', 'PACIFIC VOYAGE 3', 'NUSANTARA 88']
+  cek('12 nama kapal asli yang memuat angka / kata label TETAP sah', sah.every((n) => !P.bukanNamaKapal(n)), sah.filter(P.bukanNamaKapal).join(','))
+  const r12 = validasi(raw([{ name: 'MV OCEAN 7' }]), 'TEXT', `Vessel : MV OCEAN 7${port}`)
+  cek('12b "MV OCEAN 7" lewat validator: dipertahankan tanpa flag, NEW tetap', r12.proposal.vessels.length === 1 && r12.proposal.vessels[0].name.value === 'MV OCEAN 7' && fl(r12.proposal.vessels[0].name) === '' && r12.classification === 'NEW_NOMINATION')
+  const r7b = validasi(raw([{ name: 'Hull No. 3318052', mmsi: '525001234' }]), 'TEXT', `Hull No. 3318052, MMSI 525001234${port}`)
+  cek('7c Hull No. sebagai nama + MMSI sah → kapal dipertahankan lewat MMSI, nama NOT_A_VESSEL_NAME', r7b.proposal.vessels.length === 1 && fl(r7b.proposal.vessels[0].name) === 'NOT_A_VESSEL_NAME' && r7b.proposal.vessels[0].name.extracted === 'Hull No. 3318052' && r7b.classification === 'NEW_NOMINATION')
+  cek('7d PDF: label + nomor sebagai nama juga ditolak', validasi(raw([{ name: 'Hull No. 3318052' }]), 'PDF', null).proposal.vessels.length === 0)
+
+  // ---- P0-3 kepercayaan IMO
+  const sIMO = (v) => `Vessel IMO ${v}${port}`
+  const imoSaja = (v, extra) => validasi(raw([{ imo: v }], extra), 'TEXT', sIMO(v))
+  const r13 = validasi(raw([{ imo: '12345' }]), 'TEXT', sIMO('12345'))
+  const r13b = validasi(raw([{ imo: '98A7654' }]), 'TEXT', sIMO('98A7654'))
+  cek('13 IMO bukan 7 digit / berhuruf → kosong + IMO_FORMAT_INVALID, bukan identitas, kapal dibuang',
+    r13.proposal.vessels.length === 0 && r13.proposal.vesselsDropped === 1 && r13b.proposal.vessels.length === 0 && r13.classification === 'INSUFFICIENT_INFORMATION')
+  const r14 = imoSaja(IMO_CD_SALAH)
+  const v14 = r14.proposal.vessels[0]
+  cek('14 IMO 7 digit check digit salah: DIPERTAHANKAN (K2) + IMO_CHECK_DIGIT', r14.proposal.vessels.length === 1 && v14.imo.value === IMO_CD_SALAH && v14.imo.flags.includes('IMO_CHECK_DIGIT') && r14.proposal.vesselsDropped === 0)
+  cek('14b … TIDAK dihitung identitas tepercaya → minimum gagal → NEW diturunkan ke INSUFFICIENT', !P.identitasKapalTepercaya(v14) && !P.syaratMinimumTerpenuhi(r14.proposal) && r14.classification === 'INSUFFICIENT_INFORMATION' && r14.proposal.classificationReason === 'MINIMUM_FIELDS_MISSING')
+  const r14c = validasi(raw([{ name: 'MV SAMUDRA JAYA', imo: IMO_CD_SALAH }]), 'TEXT', `Vessel MV SAMUDRA JAYA IMO ${IMO_CD_SALAH}${port}`)
+  cek('14c check digit salah + nama sah → minimum lewat nama, IMO tetap ditandai', P.syaratMinimumTerpenuhi(r14c.proposal) && r14c.classification === 'NEW_NOMINATION' && r14c.proposal.vessels[0].imo.flags.includes('IMO_CHECK_DIGIT'))
+  const r15 = imoSaja(IMO_SAH)
+  cek('15 IMO sah tetap tepercaya: tanpa flag, minimum terpenuhi, NEW tetap', r15.proposal.vessels[0].imo.value === IMO_SAH && fl(r15.proposal.vessels[0].imo) === '' && P.identitasKapalTepercaya(r15.proposal.vessels[0]) && r15.classification === 'NEW_NOMINATION')
+  cek('15b "IMO#9074729" / "IMO: 9074729" di sumber tetap bukti sah (tanda # nomor bukan penyelubung)', validasi(raw([{ imo: IMO_SAH }]), 'TEXT', `IMO#${IMO_SAH}${port}`).proposal.vessels[0]?.imo.value === IMO_SAH)
+
+  // ---- 16 OCR_CORRECTED tetap
+  const o1 = validasi(raw([{ name: 'MV BOREAS' }]), 'TEXT', `Vessel : MV B0REAS${port}`).proposal.vessels[0]?.name
+  const o2 = validasi(raw([{ imo: IMO_SAH }]), 'TEXT', `IMO : 9O74729${port}`).proposal.vessels[0]?.imo
+  const o3 = validasi(raw([{ name: 'MV B0REAS' }]), 'TEXT', `Vessel : MV B0REAS${port}`).proposal.vessels[0]?.name
+  cek('16 OCR O/0 & I/1 tetap: B0REAS→BOREAS OCR_CORRECTED, IMO 9O74729 OCR_CORRECTED, harfiah tanpa flag', fl(o1) === 'OCR_CORRECTED' && fl(o2) === 'OCR_CORRECTED' && o2.value === IMO_SAH && fl(o3) === '')
+  const bb = validasi(raw([{ name: 'MV BALIKPAPAN STAR' }]), 'TEXT', `Vessel : MV BALIKPAPN STAR${port}`)
+  cek('16b tetap tanpa koreksi ejaan: huruf hilang → NOT_IN_SOURCE (bukan ILLEGIBLE)', bb.proposal.vessels.length === 0 && bb.proposal.vesselsDropped === 1)
+
+  // ---- tanda baca biasa bukan penyelubung
+  const tb = (sumber) => validasi(raw([{ name: 'MV OCEAN 7' }]), 'TEXT', `${sumber}${port}`).proposal.vessels[0]?.name
+  cek('16c tanda baca biasa BUKAN penyelubung: "MV OCEAN 7??", "**MV OCEAN 7**", "???", "____", email ber-underscore',
+    ['Bisa handle MV OCEAN 7?? mohon info', '**MV OCEAN 7** mohon disiapkan', 'Kapal MV OCEAN 7 ??? belum pasti', 'Vessel: MV OCEAN 7 Jetty: ____', 'MV OCEAN 7 — hubungi ops_desk@contoh.invalid'].every((x) => fl(tb(x) ?? { flags: ['X'] }) === ''))
+
+  // ---- 17 vesselsDropped
+  const r17 = validasi(raw([{ name: 'MV ##K#T ###L' }, { name: 'Hull No. 3318052' }, { name: 'MV OCEAN 7' }, { imo: '12345' }]), 'TEXT', `MV ##K#T ###L, Hull No. 3318052, MV OCEAN 7, IMO 12345${port}`)
+  cek('17 vesselsDropped menghitung setiap entri tanpa identitas tepercaya (3), kapal sah tetap (1)', r17.proposal.vesselsDropped === 3 && r17.proposal.vessels.length === 1 && r17.proposal.vessels[0].name.value === 'MV OCEAN 7')
+
+  // ---- 18 gagal-aman: tidak ada naik kelas (P1 belum diizinkan)
+  const r18 = validasi(raw([{ name: 'MV OCEAN 7' }], { classification: 'INSUFFICIENT_INFORMATION' }), 'TEXT', `Vessel : MV OCEAN 7${port}`)
+  cek('18 INSUFFICIENT dari model + minimum terpenuhi → TETAP INSUFFICIENT (tanpa naik kelas; P1 belum)', r18.classification === 'INSUFFICIENT_INFORMATION' && P.syaratMinimumTerpenuhi(r18.proposal) && r18.proposal.classificationReason === null)
+  const r18b = validasi(raw([{ name: 'MV ##K#T ###L' }], { classification: 'NOT_RELEVANT' }), 'TEXT', SUMBER_SELUBUNG)
+  const r18c = validasi(raw([{ imo: IMO_CD_SALAH }], { classification: 'UNSUPPORTED_REQUEST' }), 'TEXT', sIMO(IMO_CD_SALAH))
+  cek('18b NOT_RELEVANT / UNSUPPORTED tidak diubah oleh P0', r18b.classification === 'NOT_RELEVANT' && r18c.classification === 'UNSUPPORTED_REQUEST')
+  const r18d = validasi(raw([{ name: 'MV ##K#T ###L' }, { name: 'MV OCEAN 7' }]), 'TEXT', `MV ##K#T ###L lalu MV OCEAN 7${port}`)
+  cek('18c satu kapal terselubung + satu kapal sah → minimum tetap terpenuhi oleh yang sah (tanpa menurunkan yang sah)', r18d.classification === 'NEW_NOMINATION' && r18d.proposal.vessels.length === 1 && r18d.proposal.vesselsDropped === 1)
+  const ex = structuredClone(r15.proposal)
+  ex.vessels[0].excluded = true
+  cek('18d kapal yang dikeluarkan peninjau tidak dihitung identitas tepercaya', !P.identitasKapalTepercaya(ex.vessels[0]) && !P.syaratMinimumTerpenuhi(ex))
+}
+
 // =================================================================== 6. hash & batas waktu
 console.log('\n[6] Hash input & batas waktu AI')
 {

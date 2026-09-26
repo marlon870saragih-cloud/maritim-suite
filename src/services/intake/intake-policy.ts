@@ -98,6 +98,9 @@ export type FlagField =
   | 'DATE_NOT_IN_SOURCE'
   | 'OCR_CORRECTED'
   | 'NAME_ONLY_MATCH'
+  | 'ILLEGIBLE_VALUE'
+  | 'NOT_A_VESSEL_NAME'
+  | 'IMO_FORMAT_INVALID'
 
 export type FieldUsulan<T = string> = {
   value: T | null
@@ -257,6 +260,86 @@ export const MIN_PANJANG_OCR = 4
 function adaDiSumberOcr(nilai: string, sumberOcr: string): boolean {
   const k = lipatOcr(kompak(nilai))
   return k.length >= MIN_PANJANG_OCR && sumberOcr.includes(k)
+}
+
+/**
+ * PRD-005 E5 Step 8 (P0-1) — identitas kapal yang TERSELUBUNG/tak terbaca. `kompak` membuang semua
+ * non-alfanumerik, sehingga "MV ##R#A ###R" (faks tak terbaca) menjadi "MVRAR" dan lolos uji sumber.
+ * Dua sisi, keduanya umum (tanpa daftar kasus):
+ *   • nilai dari AI memuat karakter penyelubung (# ? * _ �) atau penanda tak terbaca → ditolak;
+ *   • bukti di sumber tak boleh BERSENTUHAN dengan token sumber yang terselubung (nilai yang
+ *     membuang penyelubungnya sendiri, mis. "RAR" / "MV" dari "MV ##R#A ###R").
+ * Satu '#' pembuka nomor ("#5", "No#12", "IMO#9876543") bukan penyelubung.
+ */
+export const KARAKTER_PENYELUBUNG = /[#?*_\uFFFD]/
+const KARAKTER_PENYELUBUNG_G = /[#?*_\uFFFD]/g
+const KATA_TAK_TERBACA = 'ILLEGIBLE|UNREADABLE|UNCLEAR|TIDAK TERBACA|TAK TERBACA|TIDAK JELAS'
+const PENANDA_KATA = new RegExp(`\\b(?:${KATA_TAK_TERBACA})\\b`, 'i')
+/** Nilai AI: kata penanda tak terbaca, atau elipsis (nilai terpotong). */
+const PENANDA_NILAI = new RegExp(`\\b(?:${KATA_TAK_TERBACA})\\b|\\.{3,}|\\u2026`, 'i')
+const NOMOR_BERTANDA = /^[A-Z]*#\d+$/i
+/** Penanda yang dipakai di bentuk kompak sumber untuk token terselubung (bukan A-Z0-9). */
+const TANDA_SELUBUNG = '~'
+
+export function nilaiTerselubung(v: string): boolean {
+  if (PENANDA_NILAI.test(v)) return true
+  // Satu '#' pembuka nomor ("#5", "No#12", "IMO#9876543") bukan penyelubung.
+  return KARAKTER_PENYELUBUNG.test(v.trim().replace(/(^|\s)[A-Z]*#(?=\d)/gi, '$1'))
+}
+
+/**
+ * Token sumber (dipisah spasi) yang terselubung. Tanda baca biasa BUKAN penyelubung: "7??", "**MV X**",
+ * "???" berdiri sendiri, "____" (isian kosong), "#5", "IMO#9876543", email.
+ */
+function tokenTerselubung(token: string): boolean {
+  if (token.includes('@') || token.includes('://')) return false
+  if (token.includes('\uFFFD') || PENANDA_KATA.test(token)) return true
+  const inti = token.replace(/^[?*_!.,:;()[\]"']+|[?*_!.,:;()[\]"']+$/g, '')
+  const jumlah = (inti.match(KARAKTER_PENYELUBUNG_G) ?? []).length
+  if (jumlah === 0 || NOMOR_BERTANDA.test(inti)) return false
+  if (jumlah >= 2) return true
+  // Satu penyelubung: hanya bila diapit alfanumerik (R#A, 99?4).
+  return /[A-Za-z0-9][#?*_][A-Za-z0-9]/.test(inti)
+}
+
+/** Bentuk kompak sumber dengan setiap token terselubung diganti TANDA_SELUBUNG (untuk identitas kapal). */
+export function kompakBerselubung(sumber: string): string {
+  const bertanda = sumber
+    .replace(new RegExp(`\\[(?:${KATA_TAK_TERBACA})\\]`, 'gi'), ` ${TANDA_SELUBUNG} `)
+    .split(/(\s+)/)
+    .map((t) => (tokenTerselubung(t) ? TANDA_SELUBUNG : t))
+    .join('')
+  return bertanda.toUpperCase().replace(/[^A-Z0-9~]/g, '')
+}
+
+/** Ada kemunculan `k` di `sumber` yang TIDAK bersentuhan dengan token terselubung. */
+function adaTanpaSelubung(k: string, sumber: string): boolean {
+  if (k.length === 0) return false
+  for (let i = sumber.indexOf(k); i >= 0; i = sumber.indexOf(k, i + 1)) {
+    if (sumber[i - 1] !== TANDA_SELUBUNG && sumber[i + k.length] !== TANDA_SELUBUNG) return true
+  }
+  return false
+}
+
+/**
+ * PRD-005 E5 Step 8 (P0-2) — nilai yang BUKAN nama kapal walau tertulis harfiah di sumber:
+ *   • hanya angka (sesudah awalan MV/TB/… dibuang);
+ *   • label pengenal non-kapal + nomor: Hull/Yard/NB/Newbuilding/PO/Ref/IMO/MMSI (+ No) diikuti token
+ *     berangka, atau label umum (Reference/Order/Voyage/Voy/Job/Contract/Project/Building) yang
+ *     WAJIB diikuti "No/Nr/Number/Nomor" lalu token berangka.
+ * Nama asli yang memuat angka ("OCEAN 7", "BINTANG 12") tetap sah.
+ */
+const LABEL_PENGENAL_KUAT = 'HULL|YARD|NB|NEWBUILDING|NEW BUILDING|PO|REF|IMO|MMSI'
+const LABEL_PENGENAL_UMUM = 'REFERENCE|ORDER|PURCHASE ORDER|VOYAGE|VOY|JOB|CONTRACT|PROJECT|BUILDING'
+const SEBUTAN_NOMOR = 'NO|NR|NUMBER|NOMOR|NUM'
+const POLA_BUKAN_NAMA = new RegExp(
+  `^(?:(?:${LABEL_PENGENAL_KUAT})(?: (?:${SEBUTAN_NOMOR}))?|(?:${LABEL_PENGENAL_UMUM}) (?:${SEBUTAN_NOMOR}))(?: [A-Z0-9]+)*$`,
+)
+export function bukanNamaKapal(v: string): boolean {
+  const n = normalisasiNamaKapal(v)
+  if (!n) return false
+  if (/^[0-9 ]+$/.test(n)) return true
+  return POLA_BUKAN_NAMA.test(n) && /\d/.test(n.replace(new RegExp(`^(?:${LABEL_PENGENAL_KUAT}|${LABEL_PENGENAL_UMUM})`), ''))
 }
 
 /** Nama kapal: huruf besar, titik dibuang, tanda baca → spasi, awalan MV/MT/TB/… dibuang. */
@@ -531,6 +614,9 @@ export function validasiEkstraksi(raw: unknown, k: KonteksValidasi): HasilValida
   const berteks = (INPUT_BERTEKS as readonly string[]).includes(k.inputKind) && !!k.sourceText
   const sumberKompak = berteks ? kompak(k.sourceText ?? '') : ''
   const sumberOcr = berteks ? lipatOcr(sumberKompak) : ''
+  // P0-1: bentuk bukti KHUSUS identitas kapal — token terselubung ditandai, bukan dibuang diam-diam.
+  const sumberKapal = berteks ? kompakBerselubung(k.sourceText ?? '') : ''
+  const sumberKapalOcr = berteks ? lipatOcr(sumberKapal) : ''
 
   /**
    * Identitas & nama: harus tertulis di sumber (teks) atau ditandai belum terverifikasi (PDF/gambar).
@@ -544,6 +630,24 @@ export function validasiEkstraksi(raw: unknown, k: KonteksValidasi): HasilValida
       const cari = pembanding ?? nilai
       if (adaDiSumber(cari, sumberKompak)) return fieldDokumen(nilai)
       if (ocrBoleh && adaDiSumberOcr(cari, sumberOcr)) return fieldDokumen(nilai, ['OCR_CORRECTED'])
+      return fieldKosong(nilai, ['NOT_IN_SOURCE'])
+    }
+    return fieldDokumen(nilai, ['UNVERIFIED_SOURCE'])
+  }
+  /**
+   * Identitas KAPAL (nama/IMO/MMSI/call sign): nilai terselubung ditolak (ILLEGIBLE_VALUE), dan bukti
+   * sumber tak boleh bersentuhan dengan token terselubung. Selebihnya sama dengan `identitas`.
+   */
+  const identitasKapal = (nilai: string | null, ocrBoleh = true): FieldUsulan => {
+    if (!nilai) return fieldKosong()
+    if (nilaiTerselubung(nilai)) return fieldKosong(nilai, ['ILLEGIBLE_VALUE'])
+    if (berteks) {
+      const kk = kompak(nilai)
+      if (adaTanpaSelubung(kk, sumberKapal)) return fieldDokumen(nilai)
+      const ko = lipatOcr(kk)
+      if (ocrBoleh && ko.length >= MIN_PANJANG_OCR && adaTanpaSelubung(ko, sumberKapalOcr)) return fieldDokumen(nilai, ['OCR_CORRECTED'])
+      // Tertulis di sumber, tetapi hanya bersentuhan dengan token terselubung → tak terbaca, bukan "tidak tertulis".
+      if (sumberKompak.includes(kk) || (ocrBoleh && ko.length >= MIN_PANJANG_OCR && sumberOcr.includes(ko))) return fieldKosong(nilai, ['ILLEGIBLE_VALUE'])
       return fieldKosong(nilai, ['NOT_IN_SOURCE'])
     }
     return fieldDokumen(nilai, ['UNVERIFIED_SOURCE'])
@@ -570,18 +674,37 @@ export function validasiEkstraksi(raw: unknown, k: KonteksValidasi): HasilValida
     const v = isObj(kv) ? kv : {}
     const imoMentah = teks(v.imo, 40)
     const imo = imoMentah ? k.norm.imo(imoMentah) : null
+    // P0-3: IMO wajib tepat 7 digit (terselubung → ILLEGIBLE_VALUE; bentuk lain → IMO_FORMAT_INVALID).
     // Jalur OCR tak pernah melewati validasi IMO: IMO yang hanya cocok lewat lipatan wajib lolos check digit.
-    let imoField = identitas(imo, imo, !!imo && k.norm.imoSah(imo))
+    let imoField = !imo
+      ? fieldKosong()
+      : nilaiTerselubung(imo)
+        ? fieldKosong(imo, ['ILLEGIBLE_VALUE'])
+        : !/^\d{7}$/.test(imo)
+          ? fieldKosong(imo, ['IMO_FORMAT_INVALID'])
+          : identitasKapal(imo, k.norm.imoSah(imo))
+    // K2 tetap: check digit salah → nilai DIPERTAHANKAN + ditandai (tidak dihitung syarat minimum).
     if (imo && imoField.value && !k.norm.imoSah(imo)) imoField = { ...imoField, flags: [...imoField.flags, 'IMO_CHECK_DIGIT'] }
     const mmsiMentah = teks(v.mmsi, 40)
     const mmsi = mmsiMentah ? k.norm.mmsi(mmsiMentah) : null
-    const mmsiField = mmsi && k.norm.mmsiSah(mmsi) ? identitas(mmsi) : mmsiMentah ? fieldKosong(mmsiMentah) : fieldKosong()
-    const cs = k.norm.callSign(teks(v.callSign, 40))
+    const mmsiField =
+      mmsiMentah && nilaiTerselubung(mmsiMentah)
+        ? fieldKosong(mmsiMentah, ['ILLEGIBLE_VALUE'])
+        : mmsi && k.norm.mmsiSah(mmsi)
+          ? identitasKapal(mmsi)
+          : mmsiMentah
+            ? fieldKosong(mmsiMentah)
+            : fieldKosong()
+    const csMentah = teks(v.callSign, 40)
+    const cs = csMentah && nilaiTerselubung(csMentah) ? null : k.norm.callSign(csMentah)
+    const namaMentah = teks(v.name)
+    // P0-2: label pengenal non-kapal + nomor / hanya angka → bukan nama kapal (apa pun jenis masukannya).
+    const nameField = namaMentah && !nilaiTerselubung(namaMentah) && bukanNamaKapal(namaMentah) ? fieldKosong(namaMentah, ['NOT_A_VESSEL_NAME']) : identitasKapal(namaMentah)
     const kapal: KapalUsulan = {
-      name: identitas(teks(v.name)),
+      name: nameField,
       imo: imoField,
       mmsi: mmsiField,
-      callSign: identitas(cs),
+      callSign: csMentah && !cs ? fieldKosong(csMentah, ['ILLEGIBLE_VALUE']) : identitasKapal(cs),
       vesselType: biasa(teks(v.vesselType, 80)),
       role: pilih(v.role, PERAN_KAPAL),
       excluded: false,
@@ -660,9 +783,19 @@ function angkaTakNegatif(v: unknown): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null
 }
 
-/** §7 — identitas kapal apa pun DAN (pelabuhan atau ETA). */
+/**
+ * PRD-005 E5 Step 8 (P0-3) — identitas kapal TEPERCAYA untuk syarat minimum. IMO dengan check digit
+ * salah tetap tampil & ditandai (K2), tetapi TIDAK dihitung sebagai identitas.
+ */
+export function identitasKapalTepercaya(v: KapalUsulan): boolean {
+  if (v.excluded) return false
+  const imoTepercaya = !!v.imo.value && !v.imo.flags.includes('IMO_CHECK_DIGIT')
+  return !!(v.name.value || imoTepercaya || v.mmsi.value || v.callSign.value)
+}
+
+/** §7 — identitas kapal tepercaya DAN (pelabuhan atau ETA). */
 export function syaratMinimumTerpenuhi(p: Proposal): boolean {
-  const adaKapal = p.vessels.some((v) => !v.excluded && (v.name.value || v.imo.value || v.mmsi.value || v.callSign.value))
+  const adaKapal = p.vessels.some(identitasKapalTepercaya)
   return adaKapal && !!(p.portName.value || p.portUnlocode.value || p.eta.value)
 }
 

@@ -72,7 +72,7 @@ bagian('1. KUNCI SUMBER — yang tak boleh berubah di Step 3B')
     // Sidik Step 3A (c8781c27…f326) digantikan PRD-005 E5 Step 1 (81fab8cb…432e, pagar bukti tanggal),
     // lalu E5 Step 2 yang DISETUJUI OWNER (verifikasi OCR-aman + hitungan kapal dibuang).
     // Perubahan berikutnya pada berkas ini tetap harus memperbarui sidik ini secara eksplisit.
-    'src/services/intake/intake-policy.ts': '8022f76d8886fc99321eeb6f7a62a02c353874b14ec9517ba9ceabf1121ce38b',
+    'src/services/intake/intake-policy.ts': 'ea5739219e2849afbcb0fa55cb5d2c167d3705e4e22a6c138aa03888e929cbbb',
     'src/services/intake/intake-hash.ts': '862d3e086c24f578bdd4a07a70664de6fff96d6831e289dcb1d5ccd69e4525d3',
     'src/services/saas/quota.service.ts': '777e86317b23f3f1ebf3a4c0db9a941fa6159585d0071350f622019a844f29ce',
     'src/services/saas/usage.service.ts': '183fa3bbb9af7278d780d62431df5f91961130a8d84cd2392195b834cff0c23d',
