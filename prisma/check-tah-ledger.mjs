@@ -70,7 +70,9 @@ bagian('1. KUNCI SUMBER — yang tak boleh berubah di Step 3B')
     // flag validasi + konfirmasi peninjau; jalankanPembuatan melewati muatan belum tepercaya.
     // Lalu PRD-005 Eval-4 final (OWNER D10): linkExistingIntake menolak klasifikasi non-keagenan sebelum menulis.
     intakeSetelahSubmit: 'c04de3624ff694306589be63a3d135e6537d9abf7b7ae81ee6551ca2924c2fb5',
-    intakeSebelumSubmit: '2a1c00f2f62d992de7a0c95b5b90929161238efc45f68efd9d49c3d21528fd10',
+    // PRD-005 promosi sempit (D-P1, DISETUJUI OWNER): pengekstrakUntuk memilih ekstrakIntakeProduksi (rute per jenis input;
+    // tanpa TAH_INTAKE_MODEL = ekstrakLewatOpenRouter v3 persis) (2a1c00f2… → baru). Hanya satu baris itu yang berubah.
+    intakeSebelumSubmit: 'a39e27b90ad2ae4a3fa105cdf780d6cfb97dcf918a1419efef84f50860cd1fe9',
     'src/services/intake/intake-gate.ts': '98521d074c3aa0043ea4ce3c4c6e107313e96e5f82e4fd3ecd2a0a61b5255d9d',
     // Sidik Step 3A (c8781c27…f326) digantikan PRD-005 E5 Step 1 (81fab8cb…432e, pagar bukti tanggal),
     // lalu E5 Step 2 yang DISETUJUI OWNER (verifikasi OCR-aman + hitungan kapal dibuang).
@@ -356,6 +358,87 @@ const MC = muat('src/lib/ai/model-capabilities.ts')
   permintaan.length = 0
   const eF = await PR.jalankanDenganKonteks({ model: 'vendor/tanpa-tool', kemampuan: { acceptsTemperature: true, supportsForcedToolChoice: false, supportsPdfNative: true } }, () => X.ekstrakDenganBatasWaktu(X.ekstrakLewatOpenRouter, teksMasukan, 5000)).catch((err) => err)
   cek('model tanpa tool paksa: gagal AI_UNAVAILABLE TANPA panggilan jaringan', eF?.kode === 'AI_UNAVAILABLE' && permintaan.length === 0)
+
+  // 5h. PRD-005 D-P1 — RUTE PRODUKSI per jenis input lewat jalankanEkstraksi + ekstrakIntakeProduksi ASLI.
+  const LG = muat('src/services/intake/intake-ledger.ts')
+  const S5 = 'anthropic/claude-sonnet-5'
+  const V4 = X.PROMPT_INTAKE_V4
+  const V3 = X.PROMPT_INTAKE_V3
+  const envAwal = process.env.TAH_INTAKE_MODEL
+  const setel = (v) => { if (v === undefined) delete process.env.TAH_INTAKE_MODEL; else process.env.TAH_INTAKE_MODEL = v }
+  const suksesDari = (served) => jawab({ id: 'gen-s5-1', ...(served === undefined ? {} : { model: served }), usage: { prompt_tokens: 6000, completion_tokens: 250 }, choices: [{ message: { tool_calls: [{ function: { name: 'isi_intake_kunjungan', arguments: argsOk } }] } }] })
+  const lewatLedger = async (jenis, masukan, served) => {
+    const ledger = { run: null, panggilan: [] }
+    stub = () => suksesDari(served)
+    permintaan.length = 0
+    let galat = null
+    let hasil = null
+    try {
+      hasil = await LG.jalankanEkstraksi(ledger, jenis, () => X.ekstrakDenganBatasWaktu(X.ekstrakIntakeProduksi, masukan, 5000))
+    } catch (err) {
+      galat = err
+    }
+    return { hasil, galat, catat: ledger.panggilan, badan: permintaan.map((q) => JSON.parse(q.init.body)) }
+  }
+  const punya = (o, k) => Object.prototype.hasOwnProperty.call(o, k)
+  setel(S5)
+  const t5 = await lewatLedger('TEXT', teksMasukan, S5)
+  const bt = t5.badan[0]
+  cek('5h TEXT + TAH_INTAKE_MODEL=sonnet-5 → 1 panggilan, model diminta sonnet-5, Prompt v4 (system & tool)', t5.hasil?.classification === 'NOT_RELEVANT' && t5.badan.length === 1 && bt.model === S5 && bt.messages[0].content === V4.system && JSON.stringify(bt.tools) === JSON.stringify([V4.tool]))
+  cek('5h TEXT sonnet-5: temperature TIDAK dikirim; tool paksa isi_intake_kunjungan; tanpa plugin / models / route / provider', !punya(bt, 'temperature') && bt.tool_choice?.type === 'function' && bt.tool_choice?.function?.name === 'isi_intake_kunjungan' && !punya(bt, 'plugins') && !punya(bt, 'models') && !punya(bt, 'route') && !punya(bt, 'provider'))
+  const c5 = t5.catat[0]
+  cek('5h buku besar TEXT: requested & served sonnet-5, Prompt v4 (versi 4, hash 6ed1edba…), skema 4, OK, request id', t5.catat.length === 1 && c5.requestedModel === S5 && c5.servedModel === S5 && c5.promptVersion === '4' && c5.promptHash === V4.hash && V4.hash.startsWith('6ed1edba') && c5.schemaVersion === '4' && c5.status === 'OK' && c5.providerRequestId === 'gen-s5-1' && c5.params.temperature === undefined && c5.params.toolChoice === 'isi_intake_kunjungan')
+  const tBeda = await lewatLedger('TEXT', teksMasukan, 'anthropic/claude-sonnet-4.5')
+  cek('5h served BERBEDA pada rute sonnet-5 TEXT → GAGAL TERTUTUP AI_UNAVAILABLE, TEPAT 1 panggilan (tanpa ulang, tanpa pengganti), served asli tercatat ERROR', tBeda.galat?.kode === 'AI_UNAVAILABLE' && tBeda.hasil === null && tBeda.badan.length === 1 && tBeda.catat.length === 1 && tBeda.catat[0].status === 'ERROR' && tBeda.catat[0].servedModel === 'anthropic/claude-sonnet-4.5' && tBeda.catat[0].requestedModel === S5)
+  const tHilang = await lewatLedger('TEXT', teksMasukan, undefined)
+  cek('5h served TIDAK dilaporkan → gagal tertutup, 1 panggilan', tHilang.galat?.kode === 'AI_UNAVAILABLE' && tHilang.badan.length === 1 && tHilang.catat[0].status === 'ERROR')
+  const tAkhiran = await lewatLedger('TEXT', teksMasukan, 'anthropic/claude-sonnet-5-20260901')
+  cek('5h served dengan akhiran (bukan persis) → gagal tertutup, 1 panggilan', tAkhiran.galat?.kode === 'AI_UNAVAILABLE' && tAkhiran.badan.length === 1)
+  const legacyDari = (r) => {
+    const b = r.badan[0]
+    return r.hasil?.classification === 'NOT_RELEVANT' && b.model === OR.SPK_MODEL && b.model !== S5 && b.temperature === 0 && b.messages[0].content === V3.system && JSON.stringify(b.tools) === JSON.stringify([V3.tool]) && r.catat.length >= 1 && r.catat.every((m) => m.requestedModel === OR.SPK_MODEL && m.promptVersion === '3' && m.promptHash === V3.hash)
+  }
+  const pdf5 = await lewatLedger('PDF', pdf, 'anthropic/claude-sonnet-4.5')
+  cek('5h PDF + TAH_INTAKE_MODEL=sonnet-5 → jalur LEGACY eksplisit: model bawaan (4.5), Prompt v3, temperature 0, plugin PDF native; tercatat v3', legacyDari(pdf5) && pdf5.badan[0].plugins?.[0]?.pdf?.engine === 'native')
+  const img = { kind: 'IMAGE', bytes: Buffer.from('SENTINEL-GAMBAR'), mimeType: 'image/png' }
+  const csv = { kind: 'CSV', text: 'kapal,pelabuhan\nMV CONTOH,Bitung' }
+  const wb = { kind: 'WORKBOOK', text: 'Sheet1: MV CONTOH | Bitung' }
+  for (const [jenis, m] of [['IMAGE', img], ['CSV', csv], ['WORKBOOK', wb]]) {
+    const r = await lewatLedger(jenis, m, 'anthropic/claude-sonnet-4.5')
+    cek(`5h ${jenis} + TAH_INTAKE_MODEL=sonnet-5 → jalur LEGACY eksplisit (model bawaan, Prompt v3, temperature 0), bukan sonnet-5`, legacyDari(r) && r.badan.length === 1)
+  }
+  // Tanpa setelan: badan permintaan BYTE-IDENTIK dengan ekstrakLewatOpenRouter tanpa konteks (jalur lama/rollback).
+  setel(undefined)
+  const bandingkan = async (masukan, jenis) => {
+    stub = () => sukses()
+    permintaan.length = 0
+    await X.ekstrakDenganBatasWaktu(X.ekstrakLewatOpenRouter, masukan, 5000)
+    const lama = permintaan.map((q) => q.init.body)
+    const baru = await lewatLedger(jenis, masukan, 'anthropic/claude-sonnet-4.5')
+    stub = () => sukses()
+    permintaan.length = 0
+    await LG.jalankanEkstraksi(null, jenis, () => X.ekstrakDenganBatasWaktu(X.ekstrakIntakeProduksi, masukan, 5000))
+    const tanpaLedger = permintaan.map((q) => q.init.body)
+    return JSON.stringify(lama) === JSON.stringify(baru.badan.map((b) => JSON.stringify(b))) && JSON.stringify(lama) === JSON.stringify(tanpaLedger) && baru.catat.every((m) => m.promptVersion === '3')
+  }
+  cek('5h tanpa TAH_INTAKE_MODEL: TEXT/PDF/IMAGE/CSV/WORKBOOK — badan permintaan BYTE-IDENTIK dengan jalur lama (dengan & tanpa ledger), Prompt v3', (await bandingkan(teksMasukan, 'TEXT')) && (await bandingkan(pdf, 'PDF')) && (await bandingkan(img, 'IMAGE')) && (await bandingkan(csv, 'CSV')) && (await bandingkan(wb, 'WORKBOOK')))
+  cek('5h ekspor lama tetap: ekstrakLewatOpenRouter = v3, VERSI_PROMPT_INTAKE 3 (jalur rollback utuh)', X.VERSI_PROMPT_INTAKE === '3' && X.HASH_PROMPT_INTAKE === V3.hash && X.PROMPT_INTAKE_TERDAFTAR['3'] === V3 && X.PROMPT_INTAKE_TERDAFTAR['4'] === V4)
+  // Ikatan prompt tak cocok → gagal tertutup TANPA panggilan.
+  for (const [label, ikatan] of [['hash salah', { versi: '4', hash: '0'.repeat(64) }], ['versi tak terdaftar', { versi: '9', hash: V4.hash }]]) {
+    stub = () => suksesDari(S5)
+    permintaan.length = 0
+    const eI = await PR.jalankanDenganKonteks({ model: S5, kemampuan: MC.cariEntriModel(S5).kemampuan, promptIntake: ikatan }, () => X.ekstrakDenganBatasWaktu(X.ekstrakIntakeProduksi, teksMasukan, 5000)).catch((err) => err)
+    cek(`5h ikatan prompt ${label} → AI_UNAVAILABLE TANPA panggilan jaringan`, eI?.kode === 'AI_UNAVAILABLE' && permintaan.length === 0)
+  }
+  setel('openai/gpt-4o')
+  stub = () => suksesDari(S5)
+  permintaan.length = 0
+  const eTak = await LG.jalankanEkstraksi(null, 'TEXT', () => X.ekstrakDenganBatasWaktu(X.ekstrakIntakeProduksi, teksMasukan, 5000)).catch((err) => err)
+  cek('5h penjaga kedua: TAH_INTAKE_MODEL tak terverifikasi → gagal tertutup TANPA panggilan (tanpa fallback)', eTak?.kode === 'AI_UNAVAILABLE' && permintaan.length === 0)
+  setel(envAwal)
+  cek('5h model bawaan GLOBAL tak diubah: kode default openrouter.ts tetap Sonnet 4.5', /export const SPK_MODEL = process\.env\.OPENROUTER_SPK_MODEL \|\| 'anthropic\/claude-sonnet-4\.5'/.test(baca('src/lib/ai/openrouter.ts')))
+  const fiturLain = ['src/lib/ai/spk-extract.ts', 'src/lib/ai/invoice-extract.ts', 'src/lib/ai/document-ai.ts', 'src/lib/ai/vessel-extract.ts', 'src/lib/ai/extract-target.ts', 'src/lib/ai/extract-util.ts', ...['context/ask', 'context/suggest', 'email-draft', 'explain', 'summarize', 'tracker/ask'].map((r) => `src/app/api/ai/${r}/route.ts`)]
+  cek('5h fitur AI lain tak tersentuh rute TAH: tak merujuk TAH_INTAKE_MODEL / model-capabilities / perekam / ekstrakIntakeProduksi', fiturLain.every((f) => !/TAH_INTAKE_MODEL|model-capabilities|perekam-panggilan|ekstrakIntakeProduksi|ruteModelIntake/.test(baca(f))))
 }
 
 // =====================================================================
@@ -414,12 +497,14 @@ bagian('7. GERBANG MODEL (Q4) — requireIntake')
   cek('kosong "" → sama dengan tak diset (LEGACY)', kosong.ok && kosong.m.mode === 'LEGACY')
   const ver = coba('anthropic/claude-sonnet-4.5')
   cek('diset ke VERIFIED → tersedia, EXPLICIT', ver.ok && ver.m.mode === 'EXPLICIT' && ver.m.model === 'anthropic/claude-sonnet-4.5')
-  for (const [label, v] of [['PENDING_SPIKE (sonnet-5)', 'anthropic/claude-sonnet-5'], ['tak dikenal', 'openai/gpt-4o'], ['slug tak sah', 'Bukan Slug!']]) {
+  const s5 = coba('anthropic/claude-sonnet-5')
+  cek('diset sonnet-5 (VERIFIED sejak PRD-005 D-P1) → tersedia, EXPLICIT dengan cakupan TEXT & Prompt v4', s5.ok && s5.akses && s5.m.mode === 'EXPLICIT' && s5.m.model === 'anthropic/claude-sonnet-5' && JSON.stringify(s5.m.cakupanInput) === '["TEXT"]' && s5.m.promptIntake?.versi === '4')
+  for (const [label, v] of [['tak dikenal', 'openai/gpt-4o'], ['slug tak sah', 'Bukan Slug!'], ['slug dengan akhiran', 'anthropic/claude-sonnet-5:beta']]) {
     const x = coba(v)
     cek(`diset ${label} → 404 MODEL_TIDAK_TERVERIFIKASI, menu tersembunyi, TANPA fallback ke OPENROUTER_SPK_MODEL`, !x.ok && x.status === 404 && x.code === 'MODEL_TIDAK_TERVERIFIKASI' && x.akses === false && x.m.aktif === false && !('model' in x.m))
   }
   const peran = (() => {
-    pasang('anthropic/claude-sonnet-5')
+    pasang('openai/gpt-4o')
     try {
       A.requireIntake({ tenantId: 'cmtahledgerbbbbbbbbbbbbbb', userId: 'u2', role: 'ADMIN' })
       return 'lolos'

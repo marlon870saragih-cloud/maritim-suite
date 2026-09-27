@@ -34,7 +34,7 @@ import {
   GalatEkstraksi,
   VERSI_PENGEKSTRAK_INTAKE,
   ekstrakDenganBatasWaktu,
-  ekstrakLewatOpenRouter,
+  ekstrakIntakeProduksi,
   teksWorkbook,
   type MasukanEkstraksi,
   type PengekstrakIntake,
@@ -87,7 +87,7 @@ function mimeGambar(nama: string, mime: string): string {
 }
 
 function pengekstrakUntuk(k: KonfigurasiIntake): PengekstrakIntake {
-  return k.pengekstrak === 'FAKE' ? ekstrakPalsu : ekstrakLewatOpenRouter
+  return k.pengekstrak === 'FAKE' ? ekstrakPalsu : ekstrakIntakeProduksi
 }
 
 const json = (v: unknown) => v as Prisma.InputJsonValue
@@ -500,7 +500,7 @@ export async function submitIntake(
 
   let mentah: unknown
   try {
-    mentah = await jalankanEkstraksi(ledger, () => ekstrakDenganBatasWaktu(pengekstrakUji ?? pengekstrakUntuk(k), ekstrak, k.batasWaktuMs))
+    mentah = await jalankanEkstraksi(ledger, kind, () => ekstrakDenganBatasWaktu(pengekstrakUji ?? pengekstrakUntuk(k), ekstrak, k.batasWaktuMs))
   } catch (e) {
     const kode = e instanceof GalatEkstraksi ? e.kode : 'AI_UNAVAILABLE'
     // Log hanya kode — tanpa pesan penyedia, tanpa isi dokumen (§23).

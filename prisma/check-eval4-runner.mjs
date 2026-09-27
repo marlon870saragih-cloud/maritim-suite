@@ -177,7 +177,8 @@ let lapC
   const teks = JSON.stringify(lapC)
   cek('C7 privasi: lulus; laporan tanpa baris dokumen / nama kapal / kunci', lapC.privasi.lulus && !teks.includes('LAYANG BENGAWAN') && !teks.includes('to load sawn timber') && !teks.includes(R.KUNCI_STUB))
   cek('C8 env & fetch dipulihkan sesudah run', process.env.OPENROUTER_API_KEY === envSebelum && process.env.TAH_INTAKE_MODEL === undefined && globalThis.fetch === fetchJebakan)
-  cek('C9 laporan mencatat registri: Sonnet 5 PENDING_SPIKE & gerbang produksi tertutup', lapC.registri.statusSonnet5 === 'PENDING_SPIKE' && lapC.registri.gerbangProduksiTertutup === true)
+  // Laporan mencatat status registri SAAT run (historis: PENDING_SPIKE; sejak PRD-005 D-P1: VERIFIED, gerbang intake terbuka untuk TEXT).
+  cek('C9 laporan mencatat registri Sonnet 5 = status peta saat ini & keadaan gerbang produksi yang konsisten', lapC.registri.statusSonnet5 === MC.cariEntriModel(S5).status && lapC.registri.gerbangProduksiTertutup === (MC.resolusiModelIntake({ TAH_INTAKE_MODEL: S5 }).aktif === false))
 }
 
 // =====================================================================
@@ -242,8 +243,8 @@ bagian('E. identitas served, tanpa fallback, tanpa ulang, galat penyedia → BER
     R.periksaBentukTransportEval4(bentukSah).length === 0 && R.periksaBentukTransportEval4({ ...bentukSah, temperature: 0 }).includes('TEMPERATURE_DIKIRIM') &&
       R.periksaBentukTransportEval4({ ...bentukSah, tool_choice: 'auto' }).includes('TOOL_PAKSA_TIDAK_ADA') && R.periksaBentukTransportEval4({ ...bentukSah, tools: [] }).includes('TOOL_TIDAK_TUNGGAL') &&
       R.periksaBentukTransportEval4({ ...bentukSah, tool_choice: { type: 'function', function: { name: 'lain' } } }).includes('TOOL_PAKSA_TIDAK_ADA'))
-  cek('E9g profil transport Eval-4 beku & terpisah dari registri: tanpa temperature, tool paksa; registri Sonnet 5 tetap PENDING_SPIKE/kemampuan null',
-    Object.isFrozen(R.PROFIL_TRANSPORT_EVAL4) && R.PROFIL_TRANSPORT_EVAL4.acceptsTemperature === false && R.PROFIL_TRANSPORT_EVAL4.supportsForcedToolChoice === true && MC.cariEntriModel(S5).status === 'PENDING_SPIKE' && MC.cariEntriModel(S5).kemampuan === null)
+  cek('E9g profil transport Eval-4 beku (tanpa temperature, tool paksa) = kemampuan yang dipromosikan registri (promosi tak melampaui bukti transport)',
+    Object.isFrozen(R.PROFIL_TRANSPORT_EVAL4) && R.PROFIL_TRANSPORT_EVAL4.acceptsTemperature === false && R.PROFIL_TRANSPORT_EVAL4.supportsForcedToolChoice === true && JSON.stringify(MC.cariEntriModel(S5).kemampuan) === JSON.stringify({ acceptsTemperature: R.PROFIL_TRANSPORT_EVAL4.acceptsTemperature, supportsForcedToolChoice: R.PROFIL_TRANSPORT_EVAL4.supportsForcedToolChoice, supportsPdfNative: R.PROFIL_TRANSPORT_EVAL4.supportsPdfNative }))
   const produksi = MC.bentukParameter(null, { temperature: 0, paksaTool: 'x', pdfNative: false })
   cek('E9h perilaku produksi TIDAK berubah: tanpa profil (LEGACY) parameter tetap temperature 0 + tool paksa', produksi.ok && produksi.temperature === 0 && produksi.paksaTool === 'x')
   const k = { ditolak: [], berhenti: null }
@@ -453,7 +454,7 @@ bagian('K. bukti kapabilitas transport Sonnet 5 (beku; hanya menghapus penghalan
   const hal = R.penghalangLiveEval4({ terlihat: TERLIHAT })
   cek('K12 penghalang lain TETAP (otorisasi owner); transport terbukti; kesiapan tetap FALSE', JSON.stringify(hal) === '["OTORISASI_LIVE_OWNER_TIDAK_ADA"]' && !hal.includes(KT) &&
     M.kesiapanLiveEval4({ otorisasiOwnerLive: true, dilayani: S5, konfigOwner: { ambangKualitas: { x: 1 } }, galatKonfig: [], buktiTransport: B, harapanTransport: HP }).siap === false)
-  cek('K13 Sonnet 5 tetap PENDING_SPIKE, kemampuan null, dasar NONE; bawaan klien tetap Sonnet 4.5', MC.cariEntriModel(S5).status === 'PENDING_SPIKE' && MC.cariEntriModel(S5).kemampuan === null && MC.cariEntriModel(S5).dasar === 'NONE' && OR.SPK_MODEL === S45 && MC.resolusiModelIntake({ TAH_INTAKE_MODEL: S5 }).aktif === false)
+  cek('K13 promosi SEMPIT (PRD-005 D-P1): Sonnet 5 VERIFIED/SPIKE, cakupan TEXT, Prompt v4 terikat hash Eval-4; bawaan klien GLOBAL tetap Sonnet 4.5', (() => { const e = MC.cariEntriModel(S5); return e.status === 'VERIFIED' && e.dasar === 'SPIKE' && JSON.stringify(e.cakupanInput) === '["TEXT"]' && e.promptIntake?.versi === R.IKATAN_PROMPT_V4.versiPrompt && e.promptIntake?.hash === R.IKATAN_PROMPT_V4.hashPrompt && OR.SPK_MODEL === S45 })())
   const lapLive = await R.jalankanRunnerEval4({ mode: 'live', env: ENV_LIVE, hariIni: HARI })
   cek('K14 live jaringan tetap DITOLAK sebelum panggilan apa pun (kesiapan: otorisasi owner)', lapLive.verdict === 'DITOLAK_KESIAPAN_LIVE' && lapLive.panggilanTransport === 0 && panggilanJaringan === 0)
 }
@@ -649,7 +650,9 @@ bagian('L. paket held-out BEKU (20 kasus baru) & gerbang kualitas Eval-4')
 // =====================================================================
 bagian('J. kunci lingkup & nol jaringan')
 {
-  cek('J1 Sonnet 5 TETAP PENDING_SPIKE, kemampuan null; gerbang produksi TAH_INTAKE_MODEL tertutup', (() => { const e = MC.cariEntriModel(S5); return e.status === 'PENDING_SPIKE' && e.kemampuan === null && e.dasar === 'NONE' && MC.resolusiModelIntake({ TAH_INTAKE_MODEL: S5 }).aktif === false })())
+  // Snapshot registri HISTORIS (saat Eval-4 dijalankan) tetap menutup gerbang produksi; registri kini membukanya HANYA untuk TEXT.
+  const petaHistoris = MC.PETA_KEMAMPUAN_MODEL.map((e) => (e.slug === S5 ? { slug: S5, status: 'PENDING_SPIKE', kemampuan: null, dasar: 'NONE', catatan: 'snapshot Eval-4' } : e))
+  cek('J1 snapshot historis: Sonnet 5 PENDING_SPIKE → gerbang TAH_INTAKE_MODEL tertutup; registri kini: TEXT → sonnet-5, PDF → LEGACY', MC.resolusiModelIntake({ TAH_INTAKE_MODEL: S5 }, petaHistoris).aktif === false && MC.ruteModelIntakeUntukInput({ TAH_INTAKE_MODEL: S5 }, 'TEXT').model === S5 && MC.ruteModelIntakeUntukInput({ TAH_INTAKE_MODEL: S5 }, 'PDF').rute === 'LEGACY_DI_LUAR_CAKUPAN')
   cek('J2 model bawaan klien tetap Sonnet 4.5; prompt produksi tetap v3', OR.SPK_MODEL === S45 && X.VERSI_PROMPT_INTAKE === '3' && X.PROMPT_INTAKE_V3.versi === '3')
   const KO = R.KONFIG_OWNER_EVAL4
   cek('J3 konfigurasi owner Eval-4 BEKU = keputusan owner persis (20 × 2, keras US$2,10 = lunak, plafon US$0,05, 42 maks, ambang terkunci)', Object.isFrozen(KO) && Object.isFrozen(KO.batas) && KO.jumlahKasusHeldout === 20 && KO.ulangan === 2 && KO.batas.biayaKerasUsd === 2.1 && KO.batas.biayaLunakUsd === 2.1 && KO.plafonPerPanggilanUsd === 0.05 && KO.batas.maksPanggilan === 42 && KO.ambangKualitas === R.AMBANG_KUALITAS_EVAL4 && R.periksaAmbangKualitas(KO.ambangKualitas).length === 0)

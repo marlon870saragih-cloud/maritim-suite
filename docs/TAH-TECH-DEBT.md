@@ -17,6 +17,7 @@ Baris `Status:` dibaca mesin — jangan ubah formatnya.
 - Status: OPEN
 - Dibuka: 2026-09-24 (PRD-005 Step 3A)
 - Keputusan owner: D8 = B — diperbaiki sebagai tugas korektif TERPISAH, tidak dicampur ke PRD-005.
+- Disposisi penutupan PRD-005 (keputusan owner, 2026-09-27): DEFERRED — tetap OPEN, TIDAK memblokir penyelesaian TAH Core.
 - Penjaga: `prisma/check-tah-policy.mjs` → HUTANG / TD-005-01
 
 **Fakta (dari kode di `bae0ae7`):**
@@ -45,6 +46,7 @@ akuntansi AI yang lebih baik daripada `UsageEvent` — keputusan tugas itu, buka
 - Status: OPEN
 - Dibuka: 2026-09-24 (PRD-005 Step 3A)
 - Keputusan owner: Q2 = A — alur persetujuan Vessel Call Intake TIDAK diubah selama PRD-005.
+- Disposisi penutupan PRD-005 (keputusan owner, 2026-09-27): DEFERRED — tetap OPEN, TIDAK memblokir penyelesaian TAH Core.
 - Penjaga: `prisma/check-tah-policy.mjs` → HUTANG / TD-005-02
 
 **Fakta (dari kode di `bae0ae7`):**
@@ -70,6 +72,7 @@ Lalu entri ini diubah menjadi `Status: RESOLVED` dengan rujukan commit/PRD.
 - Dibuka: 2026-09-27 (PRD-005 Eval-4, remediasi grounding)
 - Keputusan owner: D10 — NOT_RELEVANT & UNSUPPORTED_REQUEST TIDAK boleh ditautkan ke voyage yang ada; arsitektur
   tidak boleh menutup permanen alur pembaruan operasional kelak.
+- Disposisi penutupan PRD-005 (keputusan owner, 2026-09-27): DEFERRED — tetap OPEN, TIDAK memblokir penyelesaian TAH Core.
 - Penjaga: `prisma/check-eval4-prep.mjs` → bagian K / TD-005-03
 
 **Fakta (dari kode Eval-4):**

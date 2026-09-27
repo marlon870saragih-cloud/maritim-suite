@@ -977,7 +977,7 @@ console.log('\n[7] Kunci sumber (batas tulis, skema, pagar)')
     return pos.every((x, j) => x > 0 && (j === 0 || x > pos[j - 1]))
   })())
   cek('log [intake] tanpa isi dokumen/kontak', !/console\.(error|log)\([^)]*(teksNormal|contact|email|bytes)/.test(svc))
-  cek('pengekstrak palsu hanya dipilih lewat konfigurasi', /k\.pengekstrak === 'FAKE' \? ekstrakPalsu : ekstrakLewatOpenRouter/.test(svc))
+  cek('pengekstrak palsu hanya dipilih lewat konfigurasi', /k\.pengekstrak === 'FAKE' \? ekstrakPalsu : ekstrakIntakeProduksi/.test(svc))
 
   const schema = baca('prisma/schema.prisma')
   const model = schema.slice(schema.indexOf('model VesselCallIntake {'))

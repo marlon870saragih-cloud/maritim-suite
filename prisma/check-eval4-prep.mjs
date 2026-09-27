@@ -309,7 +309,8 @@ bagian('E. Sonnet 5 gagal-tertutup (tanpa fallback Sonnet 4.5, tanpa ulang, tanp
 // =====================================================================
 bagian('F. kunci lingkup & efek samping')
 {
-  cek('F1 Sonnet 5 TETAP PENDING_SPIKE di registri (tanpa promosi)', MC.PETA_KEMAMPUAN_MODEL.find((m) => m.slug === 'anthropic/claude-sonnet-5')?.status === 'PENDING_SPIKE')
+  // Historis: selama Eval-4 prep Sonnet 5 PENDING_SPIKE. Sejak PRD-005 D-P1 (owner) dipromosikan SEMPIT sesudah EVAL4_PASS heldout-3.
+  cek('F1 Sonnet 5 dipromosikan SEMPIT (sesudah EVAL4_PASS): VERIFIED/SPIKE, cakupan TEXT saja, Prompt v4; bukan promosi global', (() => { const e = MC.PETA_KEMAMPUAN_MODEL.find((m) => m.slug === 'anthropic/claude-sonnet-5'); return e?.status === 'VERIFIED' && e.dasar === 'SPIKE' && JSON.stringify(e.cakupanInput) === '["TEXT"]' && e.promptIntake?.versi === '4' && e.kemampuan?.supportsPdfNative === false })())
   const runnerEval4 = readdirSync(join(AKAR, 'prisma')).filter((f) => /eval4.*runner|runner.*eval4/i.test(f)).sort()
   const srcRunner4 = runnerEval4.includes('spike-eval4-runner.mjs') ? baca('prisma/spike-eval4-runner.mjs') : ''
   const R4 = await import('./spike-eval4-runner.mjs')

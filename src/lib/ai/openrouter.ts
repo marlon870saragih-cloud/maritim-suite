@@ -9,8 +9,10 @@ const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions'
 
 // Slug model bisa di-override via env bila katalog OpenRouter berubah, tanpa edit kode.
 // Dinaikkan dari Haiku 4.5 → Sonnet 4.5 demi akurasi (mis. AI Cost Prediction v2).
-// Untuk pakai Sonnet 5, set env OPENROUTER_SPK_MODEL="anthropic/claude-sonnet-5"
-// (pastikan slug persis sesuai katalog OpenRouter).
+// PERHATIAN (PRD-005): OPENROUTER_SPK_MODEL = model bawaan GLOBAL untuk SEMUA fitur AI.
+// JANGAN set ke anthropic/claude-sonnet-5 — Sonnet 5 hanya terverifikasi untuk Vessel Call
+// Intake input TEXT (Prompt v4). Aktivasinya sempit lewat TAH_INTAKE_MODEL (lihat
+// src/lib/ai/model-capabilities.ts dan docs/PRD-005-EVAL4-RESULT.md), bukan lewat env ini.
 export const SPK_MODEL = process.env.OPENROUTER_SPK_MODEL || 'anthropic/claude-sonnet-4.5'
 
 // Isi pesan multimodal. `content` tetap boleh string biasa (semua pemanggil lama

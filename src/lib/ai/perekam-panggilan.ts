@@ -16,7 +16,7 @@
 // prompt, tanpa isi pesan, tanpa respons mentah, tanpa kunci.
 
 import { AsyncLocalStorage } from 'node:async_hooks'
-import type { KemampuanModel } from './model-capabilities'
+import type { IdentitasPromptIntake, KemampuanModel } from './model-capabilities'
 import type { PemakaianToken } from '@/services/tah/tah-policy'
 
 export type MetaPanggilanModel = {
@@ -41,6 +41,11 @@ export type KonteksPanggilan = {
   /** null = perilaku lama (model bawaan klien, parameter lama). */
   model: string | null
   kemampuan: KemampuanModel | null
+  /**
+   * PRD-005 D-P1: prompt intake yang terikat bukti untuk rute EXPLICIT (dari peta kemampuan).
+   * Tidak ada/null = Prompt v3 legacy.
+   */
+  promptIntake?: IdentitasPromptIntake | null
   /** Hanya ada saat TAH Core aktif. */
   catat?: (m: MetaPanggilanModel) => void
 }
@@ -52,9 +57,9 @@ export function jalankanDenganKonteks<T>(k: KonteksPanggilan, fn: () => Promise<
 }
 
 /** Model yang diminta konteks aktif (null = bawaan lama). */
-export function konteksModel(): { model: string | null; kemampuan: KemampuanModel | null } | null {
+export function konteksModel(): { model: string | null; kemampuan: KemampuanModel | null; promptIntake: IdentitasPromptIntake | null } | null {
   const k = penyimpanan.getStore()
-  return k ? { model: k.model, kemampuan: k.kemampuan } : null
+  return k ? { model: k.model, kemampuan: k.kemampuan, promptIntake: k.promptIntake ?? null } : null
 }
 
 /** Laporkan satu percobaan panggilan. Tak pernah melempar; no-op di luar konteks perekam. */

@@ -19,7 +19,8 @@ import { jalankanDenganKonteks, type MetaPanggilanModel } from '@/lib/ai/perekam
 import { gagalRun, mulaiRun, selesaiRun, tahCoreAktif, type PeganganRun } from '../tah/agent-run.service'
 import { ringkasHasilIntake, teksRingkasanIntake } from '../tah/ringkasan-intake'
 import type { KodeGalatRun } from '../tah/tah-policy'
-import { modelIntake } from './intake-access'
+import { ruteModelIntakeUntukInput } from '@/lib/ai/model-capabilities'
+import { GalatEkstraksi } from '@/lib/ai/vessel-call-extract'
 import type { Proposal } from './intake-policy'
 import { jsonKanonik } from './intake-policy'
 
@@ -32,15 +33,22 @@ export async function mulaiLedgerIntake(ctx: TenantContext, a: { kind: string; h
   return { run, panggilan: [] }
 }
 
-/** Jalankan ekstraksi di dalam konteks model (+ perekam bila ada ledger). */
-export function jalankanEkstraksi<T>(ledger: LedgerIntake | null, fn: () => Promise<T>): Promise<T> {
-  const m = modelIntake()
-  // requireIntake sudah menolak model tak terverifikasi; ini hanya penjaga kedua.
-  const model = m.aktif && m.mode === 'EXPLICIT' ? m.model : null
-  const kemampuan = m.aktif && m.mode === 'EXPLICIT' ? m.kemampuan : null
+/**
+ * Jalankan ekstraksi di dalam konteks model (+ perekam bila ada ledger), dengan rute PER JENIS
+ * INPUT (PRD-005 D-P1): di dalam cakupan terverifikasi → model + prompt terikat bukti; di luar
+ * cakupan → jalur LEGACY eksplisit (model bawaan + Prompt v3). Model & prompt yang BENAR-BENAR
+ * dipakai tercatat di AgentModelCall lewat perekam.
+ */
+export function jalankanEkstraksi<T>(ledger: LedgerIntake | null, jenisInput: string, fn: () => Promise<T>): Promise<T> {
+  const r = ruteModelIntakeUntukInput(process.env, jenisInput)
+  // requireIntake sudah menolak model tak terverifikasi; ini penjaga kedua — gagal tertutup, tanpa panggilan.
+  if (!r.aktif) return Promise.reject(new GalatEkstraksi('AI_UNAVAILABLE'))
+  const model = r.rute === 'EXPLICIT' ? r.model : null
+  const kemampuan = r.rute === 'EXPLICIT' ? r.kemampuan : null
+  const promptIntake = r.rute === 'EXPLICIT' ? r.promptIntake : null
   if (!ledger && model === null) return fn()
   return jalankanDenganKonteks(
-    { model, kemampuan, catat: ledger ? (p) => void ledger.panggilan.push(p) : undefined },
+    { model, kemampuan, promptIntake, catat: ledger ? (p) => void ledger.panggilan.push(p) : undefined },
     fn,
   )
 }

@@ -516,6 +516,29 @@ export function buatEkstraktorOpenRouter(prompt: PromptIntake, opsi: OpsiEkstrak
 
 export const ekstrakLewatOpenRouter: PengekstrakIntake = buatEkstraktorOpenRouter(PROMPT_INTAKE_V3)
 
+/** Prompt intake yang dikenal, menurut versi. Rute EXPLICIT memilih dari sini lewat identitas di peta kemampuan. */
+export const PROMPT_INTAKE_TERDAFTAR: Readonly<Record<string, PromptIntake>> = Object.freeze({
+  [PROMPT_INTAKE_V3.versi]: PROMPT_INTAKE_V3,
+  [PROMPT_INTAKE_V4.versi]: PROMPT_INTAKE_V4,
+})
+
+/**
+ * Pengekstrak PRODUKSI intake (PRD-005 D-P1). Konteks tanpa `promptIntake` (tanpa setelan, rute
+ * LEGACY_DI_LUAR_CAKUPAN, atau model VERIFIED tanpa ikatan prompt) → `ekstrakLewatOpenRouter`
+ * (Prompt v3) APA ADANYA. Konteks dengan `promptIntake` → prompt terdaftar yang versi DAN hash-nya
+ * cocok persis, model WAJIB = model konteks, identitas dilayani WAJIB persis (tanpa ulang, tanpa
+ * pengganti). Ikatan yang tak cocok → gagal tertutup SEBELUM panggilan apa pun. Tidak bercabang
+ * pada nama model: rute ditentukan data peta kemampuan.
+ */
+export const ekstrakIntakeProduksi: PengekstrakIntake = async (masukan, signal) => {
+  const k = konteksModel()
+  const ikatan = k?.promptIntake ?? null
+  if (!ikatan) return ekstrakLewatOpenRouter(masukan, signal)
+  const prompt = PROMPT_INTAKE_TERDAFTAR[ikatan.versi]
+  if (!prompt || prompt.hash !== ikatan.hash || !k?.model) throw new GalatEkstraksi('AI_UNAVAILABLE')
+  return buatEkstraktorOpenRouter(prompt, { modelWajib: k.model, servedWajib: k.model })(masukan, signal)
+}
+
 /** Jalankan pengekstrak dengan batas waktu; semua galat dipetakan ke GalatEkstraksi. */
 export async function ekstrakDenganBatasWaktu(
   pengekstrak: PengekstrakIntake,
