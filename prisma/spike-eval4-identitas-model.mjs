@@ -7,7 +7,7 @@
 //   EXPECTED_SERVED_MODEL_ID = identitas dilayani yang WAJIB. Diisi dari bukti probe identitas LIVE tunggal
 //   yang disetujui owner (OpenRouter melaporkan served = anthropic/claude-sonnet-5; request id
 //   gen-1790488413-03vR0qtSetkMQRFNvhu0). Cakupan bukti: tingkat OpenRouter saja; ID model internal upstream
-//   TIDAK diverifikasi mandiri. kesiapanLiveEval4() TETAP menolak (runner belum ada; otorisasi owner terpisah).
+//   TIDAK diverifikasi mandiri. kesiapanLiveEval4() TETAP menolak (lihat penghalang nyata di fungsinya).
 // Beda / tak ada / ambigu → INCONCLUSIVE_MODEL_IDENTITY: BERHENTI, tanpa ulang, tanpa pengganti, tanpa fallback.
 // Status registri Sonnet 5 (PENDING_SPIKE di model-capabilities.ts) TIDAK diubah oleh modul ini.
 
@@ -57,13 +57,38 @@ export function periksaBadanPermintaanEval4(body, diminta = EXPECTED_MODEL_ID) {
 }
 
 /**
- * Kesiapan run LIVE Eval-4. Di commit ini SELALU tidak siap: runner Eval-4 belum dibangun dan
- * otorisasi LIVE owner adalah gerbang terpisah (tidak ada sakelar di repo).
+ * Gerbang lulus/gagal KUALITAS Eval-4 belum diimplementasikan di runner (spike-eval4-runner.mjs hanya
+ * melaporkan metrik + regresi H20/H18, putusan terbaik MENUNGGU_GERBANG_OWNER). Selama false, kesiapan LIVE
+ * mustahil — apa pun masukannya. Mengubahnya = keputusan owner + implementasi gerbang + uji.
  */
-export function kesiapanLiveEval4({ otorisasiOwnerLive = false, dilayani = EXPECTED_SERVED_MODEL_ID } = {}) {
+export const GERBANG_KUALITAS_EVAL4_DIIMPLEMENTASI = false
+
+const SUMBER_GALAT_BATAS = /^(BATAS_|ULANGAN_|PLAFON_)/
+
+/**
+ * Kesiapan run LIVE Eval-4 (gagal-tertutup): `siap` hanya true bila TIDAK ada satu pun penghalang. Penghalang
+ * yang dilaporkan adalah keadaan NYATA, bukan penanda tetap:
+ *   konfigOwner    — KONFIG_OWNER_EVAL4 runner (null = paket held-out, ulangan, batas & plafon belum dibekukan);
+ *   galatKonfig    — hasil periksaKonfigOwner(konfigOwner) dari runner (wajib array; kosong = sah);
+ *   buktiTransport — bukti LIVE terotorisasi bahwa BENTUK permintaan Eval-4 (Sonnet 5, TANPA temperature, tool paksa,
+ *                    Prompt v4) diterima penyedia & menghasilkan tool call; null = belum dibuktikan
+ *                    (registri: Sonnet 5 PENDING_SPIKE, kemampuan null);
+ *   ambang kualitas — konfigOwner.ambangKualitas (belum ada) DAN implementasi gerbang di runner.
+ * Otorisasi LIVE owner tetap gerbang terpisah (frasa); tidak ada sakelar di repo.
+ */
+export function kesiapanLiveEval4({ otorisasiOwnerLive = false, dilayani = EXPECTED_SERVED_MODEL_ID, konfigOwner = null, galatKonfig = null, buktiTransport = null } = {}) {
   const alasan = []
   if (typeof dilayani !== 'string' || !dilayani) alasan.push('SERVED_BELUM_DIVERIFIKASI')
+  if (konfigOwner === null || konfigOwner === undefined) alasan.push('KONFIG_OWNER_EVAL4_BELUM_DIBEKUKAN', 'PAKET_HELDOUT_BELUM_DIBEKUKAN', 'BATAS_BIAYA_BELUM_DIBEKUKAN')
+  else if (!Array.isArray(galatKonfig)) alasan.push('KONFIG_OWNER_EVAL4_BELUM_DIPERIKSA')
+  else {
+    if (galatKonfig.some((g) => !SUMBER_GALAT_BATAS.test(g))) alasan.push('PAKET_HELDOUT_TIDAK_SAH')
+    if (galatKonfig.some((g) => SUMBER_GALAT_BATAS.test(g))) alasan.push('BATAS_BIAYA_TIDAK_SAH')
+  }
+  if (!konfigOwner?.ambangKualitas) alasan.push('AMBANG_KUALITAS_BELUM_DIBEKUKAN')
+  if (!GERBANG_KUALITAS_EVAL4_DIIMPLEMENTASI) alasan.push('GERBANG_KUALITAS_BELUM_DIIMPLEMENTASI_DI_RUNNER')
+  const bukti = buktiTransport
+  if (!(bukti && typeof bukti.providerRequestId === 'string' && bukti.providerRequestId && bukti.servedModel === EXPECTED_SERVED_MODEL_ID && bukti.toolCallTerpaksa === true)) alasan.push('KAPABILITAS_TRANSPORT_S5_BELUM_DIBUKTIKAN')
   if (otorisasiOwnerLive !== true) alasan.push('OTORISASI_LIVE_OWNER_TIDAK_ADA')
-  alasan.push('RUNNER_EVAL4_BELUM_DIBANGUN')
-  return { siap: false, alasan }
+  return { siap: alasan.length === 0, alasan }
 }

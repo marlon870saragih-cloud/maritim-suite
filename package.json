@@ -60,6 +60,7 @@
     "test:eval3-ledger-db": "node prisma/check-eval3-ledger-db.mjs",
     "test:eval2-runner": "node prisma/check-eval2-runner.mjs",
     "test:eval4-prep": "node prisma/check-eval4-prep.mjs",
+    "test:eval4-runner": "node prisma/check-eval4-runner.mjs",
     "test:gt-source-consistency": "node prisma/check-gt-source-consistency.mjs"
   },
   "dependencies": {
