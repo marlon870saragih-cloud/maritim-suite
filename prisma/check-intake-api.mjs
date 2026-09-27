@@ -285,6 +285,9 @@ async function ujiSubmitDasar() {
     portName: D.portA.name, eta: hariDepan(20), principalName: D.principalA.name,
     cargoes: [{ name: 'Batubara', quantity: 5000, unit: 'MT', operation: 'LOAD', price: 99 }],
     contact: { name: 'Budi Uji', email: `budi-${ACAK}@contoh.local` },
+    // PRD-005 Eval-4 (DEFECT-E2E-01): muatan WAJIB tertulis di dokumen — grounding membuang muatan yang
+    // hanya ada di keluaran "AI" (penanda base64). Nilai lain tetap hanya di penanda (uji NOT_IN_SOURCE).
+    ekstra: 'Cargo: Batubara 5,000 MT, loading',
   })
   const r1 = await kirimBaru(D.sesi.adminA, isi)
   cek('submit teks → 201 NEEDS_REVIEW', r1.status === 201 && r1.json.intake?.status === 'NEEDS_REVIEW', `${r1.status}`)

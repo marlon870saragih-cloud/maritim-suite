@@ -174,8 +174,9 @@ const usulanBaru = (n) => ({
   // 7654.5: titik desimal tak pernah muncul di hash heksadesimal (hindari positif palsu).
   cargoes: [{ name: `${SENTINEL} BATUBARA`, quantity: 7654.5, unit: 'MT', operation: 'LOAD' }],
 })
+// PRD-005 Eval-4 (DEFECT-E2E-01): muatan WAJIB tertulis di dokumen (grounding) — baris muatan ditambahkan.
 const teksSumber = (n, penanda) =>
-  `Nominasi kapal MV ${SENTINEL} KAPAL ${n} ke ${SENTINEL} PELABUHAN, principal PT ${SENTINEL} PRINCIPAL, ref ${SENTINEL}-REF-${n}. DOK${SENTINEL}ISI-${ACAK}-${n}\n${penanda}`
+  `Nominasi kapal MV ${SENTINEL} KAPAL ${n} ke ${SENTINEL} PELABUHAN, principal PT ${SENTINEL} PRINCIPAL, ref ${SENTINEL}-REF-${n}. DOK${SENTINEL}ISI-${ACAK}-${n}\nMuatan: muat ${SENTINEL} BATUBARA 7654.5 MT\n${penanda}`
 
 async function modeOn(expectedModel) {
   console.log(`\n[ON] TAH Core aktif — model yang diharapkan: ${expectedModel}`)
