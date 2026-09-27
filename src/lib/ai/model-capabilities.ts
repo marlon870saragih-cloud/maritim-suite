@@ -58,7 +58,11 @@ export const PETA_KEMAMPUAN_MODEL: readonly EntriModel[] = [
     kemampuan: null,
     dasar: 'NONE',
     catatan:
-      'Model utama TAH yang dituju owner. DILARANG dipakai sampai spike verifikasi penyedia (PRD-005 Step 2 §17) memastikan slug, penanganan temperature, tool paksa, PDF native, dan medan pemakaian.',
+      'Model utama TAH yang dituju owner. DILARANG dipakai sampai spike verifikasi penyedia (PRD-005 Step 2 §17) memastikan slug, penanganan temperature, tool paksa, PDF native, dan medan pemakaian. ' +
+      'Bukti probe identitas dilayani (1 panggilan LIVE, disetujui owner): diminta anthropic/claude-sonnet-5; OpenRouter melaporkan dilayani anthropic/claude-sonnet-5; ' +
+      'penyedia Claude Platform on AWS; request id gen-1790488413-03vR0qtSetkMQRFNvhu0; pemakaian 16 input / 4 output / 20 total token; biaya US$0.000072. ' +
+      'Cakupan: identitas dilayani terverifikasi di tingkat OpenRouter saja; ID model internal upstream TIDAK diverifikasi mandiri. ' +
+      'Temperature, tool paksa, dan PDF native BELUM diverifikasi — status tetap PENDING_SPIKE.',
   },
 ]
 

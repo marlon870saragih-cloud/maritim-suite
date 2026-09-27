@@ -254,10 +254,12 @@ bagian('E. Sonnet 5 gagal-tertutup (tanpa fallback Sonnet 4.5, tanpa ulang, tanp
       return { ok: false, kode: e?.kode ?? String(e), n: permintaan.length, body: JSON.parse(permintaan[0]?.init.body ?? '{}') }
     }
   }
-  cek('E0 identitas owner: EXPECTED_MODEL_ID = anthropic/claude-sonnet-5; EXPECTED_SERVED_MODEL_ID BELUM diverifikasi (null, tak ditebak)', M.EXPECTED_MODEL_ID === S5 && M.EXPECTED_SERVED_MODEL_ID === null)
+  cek('E0 identitas owner: EXPECTED_MODEL_ID = anthropic/claude-sonnet-5; EXPECTED_SERVED_MODEL_ID = anthropic/claude-sonnet-5 (bukti probe identitas OpenRouter)', M.EXPECTED_MODEL_ID === S5 && M.EXPECTED_SERVED_MODEL_ID === S5)
   cek('E1 bawaan klien (SPK_MODEL) masih Sonnet 4.5 → itulah fallback yang wajib diblok', OR.SPK_MODEL === S45)
-  const tanpaServed = (() => { try { M.opsiEkstraktorEval4(); return null } catch (e) { return String(e.message) } })()
-  cek('E2 opsi Eval-4 MENOLAK selama identitas dilayani belum diverifikasi → run LIVE mustahil', tanpaServed === 'INCONCLUSIVE_MODEL_IDENTITY:SERVED_BELUM_DIVERIFIKASI')
+  const opsiBawaan = (() => { try { return M.opsiEkstraktorEval4() } catch (e) { return String(e.message) } })()
+  const tanpaServed = (() => { try { M.opsiEkstraktorEval4({ dilayani: null }); return null } catch (e) { return String(e.message) } })()
+  cek('E2 opsi Eval-4 bawaan = Sonnet 5 diminta & dilayani PERSIS (beku); served kosong tetap DITOLAK',
+    typeof opsiBawaan === 'object' && Object.isFrozen(opsiBawaan) && opsiBawaan.modelWajib === S5 && opsiBawaan.servedWajib === S5 && tanpaServed === 'INCONCLUSIVE_MODEL_IDENTITY:SERVED_BELUM_DIVERIFIKASI')
   const tolakOpsi = (x) => { try { M.opsiEkstraktorEval4(x); return null } catch (e) { return String(e.message) } }
   cek('E3 opsi Eval-4 menolak model diminta kosong / Sonnet 4.5 / dilayani Sonnet 4.5', /EXPECTED_MODEL_ID_TIDAK_ADA/.test(tolakOpsi({ diminta: '', dilayani: S5 })) && /BUKAN_MODEL_OWNER/.test(tolakOpsi({ diminta: S45, dilayani: S5 })) && /SERVED_MODEL_HISTORIS/.test(tolakOpsi({ diminta: S5, dilayani: S45 })))
   const kosongModel = await coba({ modelWajib: '' })
@@ -277,7 +279,13 @@ bagian('E. Sonnet 5 gagal-tertutup (tanpa fallback Sonnet 4.5, tanpa ulang, tanp
   cek('E10 periksaIdentitasModel: beda/tak ada/ambigu/historis → INCONCLUSIVE_MODEL_IDENTITY, berhenti, tanpa ulang/pengganti',
     [{ diminta: S5, dilayani: 'anthropic/claude-sonnet-5-preview' }, { diminta: S5, dilayani: null }, { diminta: S5, dilayani: `${S5}, ${S45}` }, { diminta: S5, dilayani: S45 }, { diminta: undefined, dilayani: S5 }, { diminta: S45, dilayani: S5 }]
       .map(cekId).every((r) => !r.ok && r.status === 'INCONCLUSIVE_MODEL_IDENTITY' && r.berhenti === true && r.ulang === false && r.pengganti === null) && cekId({ diminta: S5, dilayani: S5 }).ok)
-  cek('E11 periksaIdentitasModel memakai harapan bawaan (served null) → selalu menolak', M.periksaIdentitasModel({ diminta: S5, dilayani: S5 }).alasan === 'SERVED_BELUM_DIVERIFIKASI')
+  const cekBawaan = (x) => M.periksaIdentitasModel(x)
+  cek('E11 periksaIdentitasModel harapan bawaan: Sonnet 5/Sonnet 5 → OK; dilayani beda/historis/ambigu → ditolak; harapan served null → tetap menolak',
+    cekBawaan({ diminta: S5, dilayani: S5 }).ok &&
+      cekBawaan({ diminta: S5, dilayani: S45 }).alasan === 'DILAYANI_MODEL_HISTORIS' &&
+      cekBawaan({ diminta: S5, dilayani: 'anthropic/claude-sonnet-5-preview' }).alasan === 'DILAYANI_BERBEDA' &&
+      cekBawaan({ diminta: S5, dilayani: `${S5}, ${S45}` }).alasan === 'DILAYANI_AMBIGU' &&
+      M.periksaIdentitasModel({ diminta: S5, dilayani: S5 }, { diminta: S5, dilayani: null }).alasan === 'SERVED_BELUM_DIVERIFIKASI')
   cek('E12 periksaBadanPermintaanEval4: tanpa model / Sonnet 4.5 / larik fallback / allow_fallbacks → ditolak',
     M.periksaBadanPermintaanEval4({}).includes('MODEL_TIDAK_ADA') && M.periksaBadanPermintaanEval4({ model: S45 }).includes('MODEL_HISTORIS_DIMINTA') &&
       M.periksaBadanPermintaanEval4({ model: S5, models: [S5, S45] }).includes('FALLBACK_DIMINTA') && M.periksaBadanPermintaanEval4({ model: S5, provider: { allow_fallbacks: true } }).includes('FALLBACK_DIMINTA'))

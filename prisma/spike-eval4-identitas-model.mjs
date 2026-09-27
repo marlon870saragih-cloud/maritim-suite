@@ -4,14 +4,16 @@
 // Modul ini menyiapkan semantik gagal-tertutup untuk runner Eval-4 kelak:
 //   EXPECTED_MODEL_ID  = identitas PERMINTAAN yang disetujui owner (slug di peta model repo).
 //   ACTUAL_MODEL_ID    = identitas yang DILAYANI penyedia (meta.servedModel per panggilan).
-//   EXPECTED_SERVED_MODEL_ID = identitas dilayani yang WAJIB — SENGAJA null: belum diverifikasi, TIDAK
-//   boleh ditebak. Selama null, opsiEkstraktorEval4() dan kesiapanLiveEval4() MENOLAK (run LIVE mustahil).
+//   EXPECTED_SERVED_MODEL_ID = identitas dilayani yang WAJIB. Diisi dari bukti probe identitas LIVE tunggal
+//   yang disetujui owner (OpenRouter melaporkan served = anthropic/claude-sonnet-5; request id
+//   gen-1790488413-03vR0qtSetkMQRFNvhu0). Cakupan bukti: tingkat OpenRouter saja; ID model internal upstream
+//   TIDAK diverifikasi mandiri. kesiapanLiveEval4() TETAP menolak (runner belum ada; otorisasi owner terpisah).
 // Beda / tak ada / ambigu → INCONCLUSIVE_MODEL_IDENTITY: BERHENTI, tanpa ulang, tanpa pengganti, tanpa fallback.
 // Status registri Sonnet 5 (PENDING_SPIKE di model-capabilities.ts) TIDAK diubah oleh modul ini.
 
 export const VERSI_PAGAR_MODEL_EVAL4 = 'prd005-e5-eval4/pagar-model-1'
 export const EXPECTED_MODEL_ID = 'anthropic/claude-sonnet-5'
-export const EXPECTED_SERVED_MODEL_ID = null
+export const EXPECTED_SERVED_MODEL_ID = 'anthropic/claude-sonnet-5'
 export const INCONCLUSIVE_MODEL_IDENTITY = 'INCONCLUSIVE_MODEL_IDENTITY'
 /** Model historis — tak boleh diminta atau dilayani di Eval-4 dalam bentuk apa pun. */
 export const MODEL_HISTORIS = Object.freeze(['anthropic/claude-sonnet-4.5'])
@@ -55,7 +57,7 @@ export function periksaBadanPermintaanEval4(body, diminta = EXPECTED_MODEL_ID) {
 }
 
 /**
- * Kesiapan run LIVE Eval-4. Di commit ini SELALU tidak siap: identitas dilayani belum diverifikasi dan
+ * Kesiapan run LIVE Eval-4. Di commit ini SELALU tidak siap: runner Eval-4 belum dibangun dan
  * otorisasi LIVE owner adalah gerbang terpisah (tidak ada sakelar di repo).
  */
 export function kesiapanLiveEval4({ otorisasiOwnerLive = false, dilayani = EXPECTED_SERVED_MODEL_ID } = {}) {
