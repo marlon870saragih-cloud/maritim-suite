@@ -102,6 +102,46 @@ export const KONFIG_OWNER_EVAL4 = null
 export const PROFIL_TRANSPORT_EVAL4 = Object.freeze({ acceptsTemperature: false, supportsForcedToolChoice: true, supportsPdfNative: false })
 /** Bentuk permintaan beku Eval-4 yang dicek pagarBadanEval4 sebelum transport (kandidat untuk probe kapabilitas). */
 export const BENTUK_TRANSPORT_EVAL4 = Object.freeze({ model: 'anthropic/claude-sonnet-5', prompt: 'v4', toolChoice: 'FUNCTION_PAKSA', temperature: 'DIHILANGKAN', fallback: 'TIDAK_ADA', servedWajib: 'anthropic/claude-sonnet-5' })
+/** Nama tool paksa Prompt v4 (dicek terhadap X.PROMPT_INTAKE_V4 saat preflight). */
+export const TOOL_PAKSA_EVAL4 = 'isi_intake_kunjungan'
+
+/** Sidik identitas transport Eval-4: bentuk + profil (kunci terurut). Berubah → bukti transport tak berlaku. */
+export function sidikBentukTransportEval4(bentuk = BENTUK_TRANSPORT_EVAL4, profil = PROFIL_TRANSPORT_EVAL4) {
+  const urut = (o) => Object.fromEntries(Object.keys(o).sort().map((k) => [k, o[k]]))
+  return sha256(JSON.stringify({ bentuk: urut(bentuk), profil: urut(profil) }))
+}
+/** Harapan bukti transport = identitas beku SAAT INI (dihitung ulang, bukan disalin dari bukti). */
+export const harapanTransportEval4 = () => ({ model: M.EXPECTED_MODEL_ID, served: M.EXPECTED_SERVED_MODEL_ID, sidikBentukTransport: sidikBentukTransportEval4(), hashPromptV4: IKATAN_PROMPT_V4.hashPrompt, toolPaksa: TOOL_PAKSA_EVAL4 })
+
+/**
+ * BUKTI KAPABILITAS TRANSPORT Sonnet 5 (probe LIVE tunggal, disetujui owner, 2026-09-27). Hanya menghapus
+ * penghalang KAPABILITAS_TRANSPORT_S5_BELUM_DIBUKTIKAN. BUKAN verifikasi registri: Sonnet 5 tetap PENDING_SPIKE,
+ * kemampuan null, dasar NONE; produksi tidak berubah; bukan evaluasi kualitas.
+ */
+export const BUKTI_TRANSPORT_S5_EVAL4 = Object.freeze({
+  jenis: 'SONNET_5_TRANSPORT_CAPABILITY_PROVEN',
+  tanggal: '2026-09-27',
+  panggilanModel: 1,
+  requestedModel: 'anthropic/claude-sonnet-5',
+  servedModel: 'anthropic/claude-sonnet-5',
+  provider: 'Claude Platform on AWS',
+  providerRequestId: 'gen-1790501177-tPEVHVfeDJZFILO7BC5M',
+  httpStatus: 200,
+  finishReason: 'tool_calls',
+  toolPaksa: 'isi_intake_kunjungan',
+  toolCallTerpaksa: true,
+  argumenTerurai: true,
+  argumenStrukturSah: true,
+  temperatureDikirim: false,
+  fallbackDikirim: false,
+  providerOverrideDikirim: false,
+  hashPromptV4: '6ed1edba38780badcff111e70f63e83d95668f15b99644f174bac1984ce65959',
+  sidikBentukTransport: '24de82fc1dfdf717a7222ad347aacf8e272cc6dac7b343b590b6e1e0f1910fd0',
+  masukan: 'RG-H18 (regresi, bukan held-out)',
+  pemakaian: Object.freeze({ input: 5997, output: 162, total: 6159 }),
+  biayaUsd: 0.013614,
+  batasBiayaProbeUsd: 0.05,
+})
 /** Batas KHUSUS stub luring (biaya stub, bukan uang nyata). Tak pernah dipakai transport jaringan. */
 export const BATAS_LURING_STUB = Object.freeze({ maksPanggilan: 40, biayaLunakUsd: 0.9, biayaKerasUsd: 1, tokenInput: 1_000_000, tokenOutput: 100_000 })
 export const PLAFON_LURING_STUB_USD = 0.02
@@ -202,7 +242,7 @@ export function periksaKonfigOwner(konfig, opsi = {}) {
 /** Penghalang LIVE Eval-4 untuk konfigurasi owner yang TERBEKU di repo (tanpa otorisasi; untuk CLI/laporan). */
 export function penghalangLiveEval4({ konfig = KONFIG_OWNER_EVAL4, terlihat } = {}) {
   const galatKonfig = konfig === null ? null : periksaKonfigOwner(konfig, { terlihat })
-  return M.kesiapanLiveEval4({ otorisasiOwnerLive: false, konfigOwner: konfig, galatKonfig, buktiTransport: null }).alasan
+  return M.kesiapanLiveEval4({ otorisasiOwnerLive: false, konfigOwner: konfig, galatKonfig, buktiTransport: BUKTI_TRANSPORT_S5_EVAL4, harapanTransport: harapanTransportEval4() }).alasan
 }
 
 // ------------------------------------------------------------------ rencana (deterministik)
@@ -441,6 +481,7 @@ export async function jalankanRunnerEval4({
   const muat = (rel) => jiti(join(AKAR, rel))
   const X = muat('src/lib/ai/vessel-call-extract.ts')
   const galatPrompt = verifikasiIkatanPromptV4(X.PROMPT_INTAKE_V4)
+  if (X.PROMPT_INTAKE_V4.tool?.function?.name !== TOOL_PAKSA_EVAL4) galatPrompt.push('TOOL_PAKSA_BERBEDA')
   if (galatPrompt.length) return tolak('DITOLAK_IKATAN_PROMPT', galatPrompt)
   if (X.VERSI_PROMPT_INTAKE !== '3') return tolak('DITOLAK_IKATAN_PROMPT', ['PROMPT_PRODUKSI_BUKAN_V3'])
   let opsiIdentitas
@@ -494,7 +535,7 @@ export async function jalankanRunnerEval4({
     fetchTransport = transportUji ?? globalThis.fetch
   }
   if (transport === TRANSPORT.NETWORK) {
-    const siap = M.kesiapanLiveEval4({ otorisasiOwnerLive: env.SPIKE_AUTHORIZED === FRASA_OTORISASI_EVAL4, dilayani: M.EXPECTED_SERVED_MODEL_ID, konfigOwner: konfig, galatKonfig: periksaKonfigOwner(konfig, { terlihat: kasusTerlihat(hariIni) }), buktiTransport: null })
+    const siap = M.kesiapanLiveEval4({ otorisasiOwnerLive: env.SPIKE_AUTHORIZED === FRASA_OTORISASI_EVAL4, dilayani: M.EXPECTED_SERVED_MODEL_ID, konfigOwner: konfig, galatKonfig: periksaKonfigOwner(konfig, { terlihat: kasusTerlihat(hariIni) }), buktiTransport: BUKTI_TRANSPORT_S5_EVAL4, harapanTransport: harapanTransportEval4() })
     if (!siap.siap) return tolak('DITOLAK_KESIAPAN_LIVE', siap.alasan)
     if (!checkpoint) return tolak('DITOLAK_PRASYARAT', ['CHECKPOINT_WAJIB_UNTUK_JARINGAN'])
   }
@@ -747,7 +788,10 @@ export async function jalankanRunnerEval4({
     regresi: RG.VERSI_REGRESI_MUATAN,
     shaBeku: SHA_BEKU_EVAL4,
     ikatanPrompt: IKATAN_PROMPT_V4,
-    bentukTransport: { ...BENTUK_TRANSPORT_EVAL4, buktiKapabilitas: 'BELUM — probe LIVE terpisah wajib (KAPABILITAS_TRANSPORT_S5_BELUM_DIBUKTIKAN)' },
+    bentukTransport: (() => {
+      const g = M.periksaBuktiTransport(BUKTI_TRANSPORT_S5_EVAL4, harapanTransportEval4())
+      return { ...BENTUK_TRANSPORT_EVAL4, sidik: sidikBentukTransportEval4(), buktiKapabilitas: g.length ? `TIDAK_BERLAKU:${g.join('+')}` : `TERBUKTI:${BUKTI_TRANSPORT_S5_EVAL4.providerRequestId}` }
+    })(),
     identitasModel: { diminta: M.EXPECTED_MODEL_ID, dilayaniWajib: M.EXPECTED_SERVED_MODEL_ID, cakupanBukti: 'OpenRouter saja; ID model internal upstream tidak diverifikasi mandiri' },
     registri: { statusSonnet5: MC.cariEntriModel(M.EXPECTED_MODEL_ID)?.status ?? null, gerbangProduksiTertutup: MC.resolusiModelIntake({ TAH_INTAKE_MODEL: M.EXPECTED_MODEL_ID }).aktif === false },
     paketHeldout: konfig ? { versi: konfig.paket.versi, hashGt: konfig.paket.hashGt, kasus: heldout.length } : null,

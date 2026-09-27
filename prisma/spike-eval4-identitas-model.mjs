@@ -65,18 +65,51 @@ export const GERBANG_KUALITAS_EVAL4_DIIMPLEMENTASI = false
 
 const SUMBER_GALAT_BATAS = /^(BATAS_|ULANGAN_|PLAFON_)/
 
+export const JENIS_BUKTI_TRANSPORT = 'SONNET_5_TRANSPORT_CAPABILITY_PROVEN'
+const bulatPositif = (v) => Number.isSafeInteger(v) && v > 0
+
+/**
+ * Galat bukti kapabilitas transport Sonnet 5 (kosong = sah). Bukti divalidasi ISINYA terhadap `harapan` yang
+ * dihitung runner dari identitas beku SAAT INI (model, served, sidik bentuk+profil transport, hash Prompt v4,
+ * nama tool paksa). Identitas/bentuk berubah → bukti tak lagi memenuhi gerbang.
+ */
+export function periksaBuktiTransport(bukti, harapan) {
+  if (!bukti || typeof bukti !== 'object') return ['BUKTI_TIDAK_ADA']
+  if (!harapan || typeof harapan !== 'object') return ['HARAPAN_TRANSPORT_TIDAK_ADA']
+  const g = []
+  if (bukti.jenis !== JENIS_BUKTI_TRANSPORT) g.push('JENIS_BERBEDA')
+  if (bukti.requestedModel !== EXPECTED_MODEL_ID || bukti.requestedModel !== harapan.model) g.push('MODEL_DIMINTA_BERBEDA')
+  if (bukti.servedModel !== EXPECTED_SERVED_MODEL_ID || bukti.servedModel !== harapan.served) g.push('MODEL_DILAYANI_BERBEDA')
+  if (typeof bukti.providerRequestId !== 'string' || !/^gen-[A-Za-z0-9-]{6,}$/.test(bukti.providerRequestId)) g.push('REQUEST_ID_TIDAK_SAH')
+  if (typeof bukti.provider !== 'string' || !bukti.provider.trim()) g.push('PROVIDER_TIDAK_ADA')
+  if (bukti.panggilanModel !== 1) g.push('JUMLAH_PANGGILAN_BUKAN_1')
+  if (bukti.httpStatus !== 200) g.push('HTTP_BUKAN_200')
+  if (bukti.finishReason !== 'tool_calls') g.push('FINISH_REASON_BUKAN_TOOL_CALLS')
+  if (bukti.toolCallTerpaksa !== true || typeof harapan.toolPaksa !== 'string' || bukti.toolPaksa !== harapan.toolPaksa) g.push('TOOL_PAKSA_BERBEDA')
+  if (bukti.argumenTerurai !== true || bukti.argumenStrukturSah !== true) g.push('ARGUMEN_TIDAK_SAH')
+  if (bukti.temperatureDikirim !== false) g.push('TEMPERATURE_DIKIRIM')
+  if (bukti.fallbackDikirim !== false || bukti.providerOverrideDikirim !== false) g.push('FALLBACK_ATAU_OVERRIDE_DIKIRIM')
+  if (typeof harapan.hashPromptV4 !== 'string' || bukti.hashPromptV4 !== harapan.hashPromptV4) g.push('HASH_PROMPT_V4_BERBEDA')
+  if (typeof harapan.sidikBentukTransport !== 'string' || bukti.sidikBentukTransport !== harapan.sidikBentukTransport) g.push('SIDIK_BENTUK_TRANSPORT_BERBEDA')
+  const u = bukti.pemakaian
+  if (!(u && bulatPositif(u.input) && bulatPositif(u.output) && u.total === u.input + u.output)) g.push('PEMAKAIAN_TIDAK_SAH')
+  if (!(typeof bukti.biayaUsd === 'number' && Number.isFinite(bukti.biayaUsd) && bukti.biayaUsd > 0 && bukti.biayaUsd <= (bukti.batasBiayaProbeUsd ?? 0))) g.push('BIAYA_TIDAK_SAH')
+  return g
+}
+
 /**
  * Kesiapan run LIVE Eval-4 (gagal-tertutup): `siap` hanya true bila TIDAK ada satu pun penghalang. Penghalang
  * yang dilaporkan adalah keadaan NYATA, bukan penanda tetap:
  *   konfigOwner    — KONFIG_OWNER_EVAL4 runner (null = paket held-out, ulangan, batas & plafon belum dibekukan);
  *   galatKonfig    — hasil periksaKonfigOwner(konfigOwner) dari runner (wajib array; kosong = sah);
  *   buktiTransport — bukti LIVE terotorisasi bahwa BENTUK permintaan Eval-4 (Sonnet 5, TANPA temperature, tool paksa,
- *                    Prompt v4) diterima penyedia & menghasilkan tool call; null = belum dibuktikan
- *                    (registri: Sonnet 5 PENDING_SPIKE, kemampuan null);
+ *                    Prompt v4) diterima penyedia & menghasilkan tool call; divalidasi periksaBuktiTransport
+ *                    terhadap harapanTransport (identitas beku saat ini). Bukti ini TIDAK mengubah registri
+ *                    (Sonnet 5 tetap PENDING_SPIKE, kemampuan null) dan hanya menghapus penghalang transport;
  *   ambang kualitas — konfigOwner.ambangKualitas (belum ada) DAN implementasi gerbang di runner.
  * Otorisasi LIVE owner tetap gerbang terpisah (frasa); tidak ada sakelar di repo.
  */
-export function kesiapanLiveEval4({ otorisasiOwnerLive = false, dilayani = EXPECTED_SERVED_MODEL_ID, konfigOwner = null, galatKonfig = null, buktiTransport = null } = {}) {
+export function kesiapanLiveEval4({ otorisasiOwnerLive = false, dilayani = EXPECTED_SERVED_MODEL_ID, konfigOwner = null, galatKonfig = null, buktiTransport = null, harapanTransport = null } = {}) {
   const alasan = []
   if (typeof dilayani !== 'string' || !dilayani) alasan.push('SERVED_BELUM_DIVERIFIKASI')
   if (konfigOwner === null || konfigOwner === undefined) alasan.push('KONFIG_OWNER_EVAL4_BELUM_DIBEKUKAN', 'PAKET_HELDOUT_BELUM_DIBEKUKAN', 'BATAS_BIAYA_BELUM_DIBEKUKAN')
@@ -87,8 +120,7 @@ export function kesiapanLiveEval4({ otorisasiOwnerLive = false, dilayani = EXPEC
   }
   if (!konfigOwner?.ambangKualitas) alasan.push('AMBANG_KUALITAS_BELUM_DIBEKUKAN')
   if (!GERBANG_KUALITAS_EVAL4_DIIMPLEMENTASI) alasan.push('GERBANG_KUALITAS_BELUM_DIIMPLEMENTASI_DI_RUNNER')
-  const bukti = buktiTransport
-  if (!(bukti && typeof bukti.providerRequestId === 'string' && bukti.providerRequestId && bukti.servedModel === EXPECTED_SERVED_MODEL_ID && bukti.toolCallTerpaksa === true)) alasan.push('KAPABILITAS_TRANSPORT_S5_BELUM_DIBUKTIKAN')
+  if (periksaBuktiTransport(buktiTransport, harapanTransport).length) alasan.push('KAPABILITAS_TRANSPORT_S5_BELUM_DIBUKTIKAN')
   if (otorisasiOwnerLive !== true) alasan.push('OTORISASI_LIVE_OWNER_TIDAK_ADA')
   return { siap: alasan.length === 0, alasan }
 }

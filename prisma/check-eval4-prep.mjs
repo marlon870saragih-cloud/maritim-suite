@@ -292,13 +292,15 @@ bagian('E. Sonnet 5 gagal-tertutup (tanpa fallback Sonnet 4.5, tanpa ulang, tanp
   const bawaan = M.kesiapanLiveEval4()
   cek('E13 kesiapan LIVE Eval-4 bawaan: tidak siap; penghalang NYATA (konfig/paket/batas/ambang/gerbang/kapabilitas/otorisasi), tanpa alasan basi "runner belum dibangun"',
     !bawaan.siap && ['KONFIG_OWNER_EVAL4_BELUM_DIBEKUKAN', 'PAKET_HELDOUT_BELUM_DIBEKUKAN', 'BATAS_BIAYA_BELUM_DIBEKUKAN', 'AMBANG_KUALITAS_BELUM_DIBEKUKAN', 'GERBANG_KUALITAS_BELUM_DIIMPLEMENTASI_DI_RUNNER', 'KAPABILITAS_TRANSPORT_S5_BELUM_DIBUKTIKAN', 'OTORISASI_LIVE_OWNER_TIDAK_ADA'].every((a) => bawaan.alasan.includes(a)) && !bawaan.alasan.includes('RUNNER_EVAL4_BELUM_DIBANGUN'), bawaan.alasan.join(','))
-  const semua = M.kesiapanLiveEval4({ otorisasiOwnerLive: true, dilayani: S5, konfigOwner: { ambangKualitas: { x: 1 } }, galatKonfig: [], buktiTransport: { providerRequestId: 'gen-x', servedModel: S5, toolCallTerpaksa: true } })
+  const R4 = await import('./spike-eval4-runner.mjs')
+  const BT = { buktiTransport: R4.BUKTI_TRANSPORT_S5_EVAL4, harapanTransport: R4.harapanTransportEval4() }
+  const semua = M.kesiapanLiveEval4({ otorisasiOwnerLive: true, dilayani: S5, konfigOwner: { ambangKualitas: { x: 1 } }, galatKonfig: [], ...BT })
   cek('E13b semua masukan terpenuhi → TETAP tidak siap: hanya GERBANG_KUALITAS_BELUM_DIIMPLEMENTASI_DI_RUNNER (gagal-tertutup di commit ini)', M.GERBANG_KUALITAS_EVAL4_DIIMPLEMENTASI === false && !semua.siap && JSON.stringify(semua.alasan) === JSON.stringify(['GERBANG_KUALITAS_BELUM_DIIMPLEMENTASI_DI_RUNNER']), semua.alasan.join(','))
-  const buruk = (x) => M.kesiapanLiveEval4({ otorisasiOwnerLive: true, dilayani: S5, konfigOwner: { ambangKualitas: { x: 1 } }, galatKonfig: [], buktiTransport: { providerRequestId: 'gen-x', servedModel: S5, toolCallTerpaksa: true }, ...x }).alasan
-  cek('E13c penghalang spesifik: galat paket / batas, konfig tak diperiksa, bukti transport served Sonnet 4.5 / tanpa tool paksa, served null',
+  const buruk = (x) => M.kesiapanLiveEval4({ otorisasiOwnerLive: true, dilayani: S5, konfigOwner: { ambangKualitas: { x: 1 } }, galatKonfig: [], ...BT, ...x }).alasan
+  cek('E13c penghalang spesifik: galat paket / batas, konfig tak diperiksa, bukti transport served Sonnet 4.5 / tanpa tool paksa / objek longgar / tanpa harapan, served null',
     buruk({ galatKonfig: ['UJI-1:KASUS_SUDAH_TERLIHAT_TEKS'] }).includes('PAKET_HELDOUT_TIDAK_SAH') && buruk({ galatKonfig: ['BATAS_TIDAK_SAH:maksPanggilan'] }).includes('BATAS_BIAYA_TIDAK_SAH') &&
-      buruk({ galatKonfig: null }).includes('KONFIG_OWNER_EVAL4_BELUM_DIPERIKSA') && buruk({ buktiTransport: { providerRequestId: 'g', servedModel: S45, toolCallTerpaksa: true } }).includes('KAPABILITAS_TRANSPORT_S5_BELUM_DIBUKTIKAN') &&
-      buruk({ buktiTransport: { providerRequestId: 'g', servedModel: S5, toolCallTerpaksa: false } }).includes('KAPABILITAS_TRANSPORT_S5_BELUM_DIBUKTIKAN') && buruk({ dilayani: null }).includes('SERVED_BELUM_DIVERIFIKASI'))
+      buruk({ galatKonfig: null }).includes('KONFIG_OWNER_EVAL4_BELUM_DIPERIKSA') && buruk({ buktiTransport: { ...BT.buktiTransport, servedModel: S45 } }).includes('KAPABILITAS_TRANSPORT_S5_BELUM_DIBUKTIKAN') &&
+      buruk({ buktiTransport: { ...BT.buktiTransport, toolCallTerpaksa: false } }).includes('KAPABILITAS_TRANSPORT_S5_BELUM_DIBUKTIKAN') && buruk({ buktiTransport: { providerRequestId: 'gen-xxxxxx', servedModel: S5, toolCallTerpaksa: true } }).includes('KAPABILITAS_TRANSPORT_S5_BELUM_DIBUKTIKAN') && buruk({ harapanTransport: null }).includes('KAPABILITAS_TRANSPORT_S5_BELUM_DIBUKTIKAN') && buruk({ dilayani: null }).includes('SERVED_BELUM_DIVERIFIKASI'))
 }
 
 // =====================================================================

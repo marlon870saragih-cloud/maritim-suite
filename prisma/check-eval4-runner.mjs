@@ -130,9 +130,9 @@ bagian('A. preflight & penolakan (0 panggilan)')
   const src = baca('prisma/spike-eval4-runner.mjs')
   cek('A15 jalur JARINGAN terkunci kesiapanLiveEval4 (masih selalu tidak siap) + checkpoint wajib', src.includes('M.kesiapanLiveEval4(') && src.includes('CHECKPOINT_WAJIB_UNTUK_JARINGAN') && M.kesiapanLiveEval4({ otorisasiOwnerLive: true, dilayani: S5 }).siap === false)
   const hal = R.penghalangLiveEval4({ terlihat: TERLIHAT })
-  cek('A16 penghalang LIVE repo saat ini = konfig/paket/batas/ambang/gerbang/kapabilitas/otorisasi (tanpa "runner belum dibangun")', JSON.stringify(hal) === JSON.stringify(['KONFIG_OWNER_EVAL4_BELUM_DIBEKUKAN', 'PAKET_HELDOUT_BELUM_DIBEKUKAN', 'BATAS_BIAYA_BELUM_DIBEKUKAN', 'AMBANG_KUALITAS_BELUM_DIBEKUKAN', 'GERBANG_KUALITAS_BELUM_DIIMPLEMENTASI_DI_RUNNER', 'KAPABILITAS_TRANSPORT_S5_BELUM_DIBUKTIKAN', 'OTORISASI_LIVE_OWNER_TIDAK_ADA']), hal.join(','))
+  cek('A16 penghalang LIVE repo saat ini = konfig/paket/batas/ambang/gerbang/otorisasi (transport TERBUKTI oleh bukti beku)', JSON.stringify(hal) === JSON.stringify(['KONFIG_OWNER_EVAL4_BELUM_DIBEKUKAN', 'PAKET_HELDOUT_BELUM_DIBEKUKAN', 'BATAS_BIAYA_BELUM_DIBEKUKAN', 'AMBANG_KUALITAS_BELUM_DIBEKUKAN', 'GERBANG_KUALITAS_BELUM_DIIMPLEMENTASI_DI_RUNNER', 'OTORISASI_LIVE_OWNER_TIDAK_ADA']), hal.join(','))
   const halSah = R.penghalangLiveEval4({ konfig: konfig(), terlihat: TERLIHAT })
-  cek('A17 konfig owner sah (paket+batas) → penghalang konfig hilang; ambang/gerbang/kapabilitas/otorisasi TETAP', !halSah.some((a) => /KONFIG|PAKET|BATAS/.test(a)) && ['AMBANG_KUALITAS_BELUM_DIBEKUKAN', 'GERBANG_KUALITAS_BELUM_DIIMPLEMENTASI_DI_RUNNER', 'KAPABILITAS_TRANSPORT_S5_BELUM_DIBUKTIKAN'].every((a) => halSah.includes(a)))
+  cek('A17 konfig owner sah (paket+batas) → penghalang konfig hilang; ambang/gerbang/otorisasi TETAP', !halSah.some((a) => /KONFIG|PAKET|BATAS/.test(a)) && ['AMBANG_KUALITAS_BELUM_DIBEKUKAN', 'GERBANG_KUALITAS_BELUM_DIIMPLEMENTASI_DI_RUNNER', 'OTORISASI_LIVE_OWNER_TIDAK_ADA'].every((a) => halSah.includes(a)))
   const halRusak = R.penghalangLiveEval4({ konfig: konfig({ batas: { ...BATAS_UJI, biayaLunakUsd: 5 } }), terlihat: TERLIHAT })
   cek('A18 konfig owner dengan batas tak sah → BATAS_BIAYA_TIDAK_SAH', halRusak.includes('BATAS_BIAYA_TIDAK_SAH') && !halRusak.includes('PAKET_HELDOUT_TIDAK_SAH'))
 }
@@ -233,7 +233,7 @@ bagian('E. identitas served, tanpa fallback, tanpa ulang, galat penyedia → BER
   cek('E9b bentuk transport Eval-4: TIDAK ADA field temperature di badan permintaan mana pun', ok.tp.badan.length === 4 && ok.tp.badan.every((b) => !punya(b, 'temperature')))
   cek('E9c tool paksa tetap WAJIB: tepat satu tool & tool_choice {type:function} menunjuk tool itu', ok.tp.badan.every((b) => b.tools?.length === 1 && b.tool_choice?.type === 'function' && b.tool_choice.function?.name === b.tools[0].function.name))
   cek('E9d model diminta PERSIS anthropic/claude-sonnet-5; tanpa models/route/provider fallback', ok.tp.badan.every((b) => b.model === S5 && !punya(b, 'models') && !punya(b, 'route') && !punya(b, 'provider')))
-  cek('E9e laporan mencatat bentuk transport beku + bukti kapabilitas BELUM', ok.l.bentukTransport.temperature === 'DIHILANGKAN' && ok.l.bentukTransport.toolChoice === 'FUNCTION_PAKSA' && ok.l.bentukTransport.model === S5 && /^BELUM/.test(ok.l.bentukTransport.buktiKapabilitas))
+  cek('E9e laporan mencatat bentuk transport beku + bukti kapabilitas TERBUKTI (request id probe) + sidik', ok.l.bentukTransport.temperature === 'DIHILANGKAN' && ok.l.bentukTransport.toolChoice === 'FUNCTION_PAKSA' && ok.l.bentukTransport.model === S5 && ok.l.bentukTransport.buktiKapabilitas === 'TERBUKTI:gen-1790501177-tPEVHVfeDJZFILO7BC5M' && ok.l.bentukTransport.sidik === R.BUKTI_TRANSPORT_S5_EVAL4.sidikBentukTransport)
   const bentukSah = { model: S5, messages: [], tools: [{ type: 'function', function: { name: 't' } }], tool_choice: { type: 'function', function: { name: 't' } } }
   cek('E9f periksaBentukTransportEval4: sah = []; temperature 0 → TEMPERATURE_DIKIRIM; auto → TOOL_PAKSA_TIDAK_ADA; tanpa tool → TOOL_TIDAK_TUNGGAL; tool lain → TOOL_PAKSA_TIDAK_ADA',
     R.periksaBentukTransportEval4(bentukSah).length === 0 && R.periksaBentukTransportEval4({ ...bentukSah, temperature: 0 }).includes('TEMPERATURE_DIKIRIM') &&
@@ -389,6 +389,41 @@ bagian('I. CLI (argumen & jalur)')
   cek('I5 CLI live (frasa + kunci palsu) → DITOLAK (kode 3), 0 jaringan — konfigurasi owner belum ada', rcLive === 3 && !existsSync(join(dir, 'l.json')))
   cek('I6 CLI tanpa argumen → kode 2 (cetak rencana saja)', (await R.cli([], ENV_UJI, () => {})) === 2)
   writeFileSync(join(dir, 'ada.json'), '{}')
+}
+
+// =====================================================================
+bagian('K. bukti kapabilitas transport Sonnet 5 (beku; hanya menghapus penghalang transport)')
+{
+  const B = R.BUKTI_TRANSPORT_S5_EVAL4
+  const HP = R.harapanTransportEval4()
+  const KT = 'KAPABILITAS_TRANSPORT_S5_BELUM_DIBUKTIKAN'
+  const siapDengan = (bukti, harapan = HP, x = {}) => M.kesiapanLiveEval4({ otorisasiOwnerLive: true, dilayani: S5, konfigOwner: { ambangKualitas: { x: 1 } }, galatKonfig: [], buktiTransport: bukti, harapanTransport: harapan, ...x }).alasan
+  const tanpaBukti = siapDengan(null)
+  const denganBukti = siapDengan(B)
+  cek('K1 bukti beku sah: periksaBuktiTransport = []; beku (Object.isFrozen); field inti = hasil probe', M.periksaBuktiTransport(B, HP).length === 0 && Object.isFrozen(B) && Object.isFrozen(B.pemakaian) &&
+    B.providerRequestId === 'gen-1790501177-tPEVHVfeDJZFILO7BC5M' && B.provider === 'Claude Platform on AWS' && B.pemakaian.input === 5997 && B.pemakaian.output === 162 && B.pemakaian.total === 6159 && B.biayaUsd === 0.013614 && B.panggilanModel === 1 && B.finishReason === 'tool_calls')
+  cek('K2 bukti menghapus HANYA penghalang transport (selisih tepat satu penghalang)', tanpaBukti.includes(KT) && !denganBukti.includes(KT) && JSON.stringify(tanpaBukti.filter((a) => a !== KT)) === JSON.stringify(denganBukti))
+  const ubah = (x) => ({ ...B, ...x })
+  const kembali = (bukti, harapan = HP) => siapDengan(bukti, harapan).includes(KT)
+  cek('K3 served model salah (Sonnet 4.5 / -preview) → penghalang kembali', kembali(ubah({ servedModel: S45 })) && kembali(ubah({ servedModel: `${S5}-preview` })))
+  cek('K4 requested model salah → penghalang kembali', kembali(ubah({ requestedModel: S45 })) && kembali(ubah({ requestedModel: 'anthropic/claude-opus-5' })))
+  cek('K5 bukti dengan temperature terkirim → penghalang kembali', kembali(ubah({ temperatureDikirim: true })) && kembali(ubah({ temperatureDikirim: undefined })))
+  cek('K6 fallback / provider override terkirim → penghalang kembali', kembali(ubah({ fallbackDikirim: true })) && kembali(ubah({ providerOverrideDikirim: true })))
+  cek('K7 tool paksa salah / tidak terpaksa → penghalang kembali', kembali(ubah({ toolPaksa: 'tool_lain' })) && kembali(ubah({ toolCallTerpaksa: false })) && kembali(ubah({ finishReason: 'stop' })))
+  cek('K8 request id hilang / tak sah → penghalang kembali', kembali(ubah({ providerRequestId: undefined })) && kembali(ubah({ providerRequestId: '' })) && kembali(ubah({ providerRequestId: 'bukan-id' })))
+  const bentukLain = R.sidikBentukTransportEval4({ ...R.BENTUK_TRANSPORT_EVAL4, temperature: 'NOL' }, R.PROFIL_TRANSPORT_EVAL4)
+  const profilLain = R.sidikBentukTransportEval4(R.BENTUK_TRANSPORT_EVAL4, { ...R.PROFIL_TRANSPORT_EVAL4, acceptsTemperature: true })
+  cek('K9 identitas transport/hash berubah (bentuk, profil, hash Prompt v4, tool) → penghalang kembali', bentukLain !== HP.sidikBentukTransport && profilLain !== HP.sidikBentukTransport &&
+    kembali(B, { ...HP, sidikBentukTransport: bentukLain }) && kembali(B, { ...HP, sidikBentukTransport: profilLain }) && kembali(B, { ...HP, hashPromptV4: X.PROMPT_INTAKE_V3.hash }) && kembali(B, { ...HP, toolPaksa: 'lain' }) && kembali(B, null))
+  cek('K10 sidik beku = sidik bentuk+profil SAAT INI; tool paksa beku = tool Prompt v4 nyata', B.sidikBentukTransport === R.sidikBentukTransportEval4() && R.TOOL_PAKSA_EVAL4 === X.PROMPT_INTAKE_V4.tool.function.name && B.hashPromptV4 === X.PROMPT_INTAKE_V4.hash)
+  cek('K11 bukti lain yang rusak (argumen tak sah, HTTP ≠200, panggilan ≠1, pemakaian/biaya tak konsisten, biaya > batas probe) → penghalang kembali',
+    kembali(ubah({ argumenStrukturSah: false })) && kembali(ubah({ httpStatus: 500 })) && kembali(ubah({ panggilanModel: 2 })) && kembali(ubah({ pemakaian: { input: 5997, output: 162, total: 1 } })) && kembali(ubah({ biayaUsd: 0.06 })) && kembali(ubah({ jenis: 'X' })) && kembali(ubah({ provider: '' })))
+  const hal = R.penghalangLiveEval4({ terlihat: TERLIHAT })
+  cek('K12 penghalang lain TETAP (konfig, paket, batas, ambang, gerbang, otorisasi); kesiapan tetap FALSE', ['KONFIG_OWNER_EVAL4_BELUM_DIBEKUKAN', 'PAKET_HELDOUT_BELUM_DIBEKUKAN', 'BATAS_BIAYA_BELUM_DIBEKUKAN', 'AMBANG_KUALITAS_BELUM_DIBEKUKAN', 'GERBANG_KUALITAS_BELUM_DIIMPLEMENTASI_DI_RUNNER', 'OTORISASI_LIVE_OWNER_TIDAK_ADA'].every((a) => hal.includes(a)) && !hal.includes(KT) &&
+    M.kesiapanLiveEval4({ otorisasiOwnerLive: true, dilayani: S5, konfigOwner: { ambangKualitas: { x: 1 } }, galatKonfig: [], buktiTransport: B, harapanTransport: HP }).siap === false)
+  cek('K13 Sonnet 5 tetap PENDING_SPIKE, kemampuan null, dasar NONE; bawaan klien tetap Sonnet 4.5', MC.cariEntriModel(S5).status === 'PENDING_SPIKE' && MC.cariEntriModel(S5).kemampuan === null && MC.cariEntriModel(S5).dasar === 'NONE' && OR.SPK_MODEL === S45 && MC.resolusiModelIntake({ TAH_INTAKE_MODEL: S5 }).aktif === false)
+  const lapLive = await R.jalankanRunnerEval4({ mode: 'live', env: ENV_LIVE, hariIni: HARI })
+  cek('K14 live jaringan tetap DITOLAK sebelum panggilan apa pun (konfig owner belum ada)', lapLive.verdict === 'DITOLAK_KONFIG_OWNER' && lapLive.panggilanTransport === 0 && panggilanJaringan === 0)
 }
 
 // =====================================================================
