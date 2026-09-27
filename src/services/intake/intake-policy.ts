@@ -6,10 +6,27 @@
 // ada di sini, deterministik, tanpa DB/jaringan/LLM. Keluaran AI diperlakukan
 // sebagai masukan TIDAK TEPERCAYA: bentuknya diperiksa ulang di validasiEkstraksi().
 //
-// TANPA impor runtime (pola monitoring-policy.ts / gate.ts) supaya Node bisa
-// mengujinya langsung (prisma/check-intake-policy.mjs). Normalisasi identitas
+// TANPA impor runtime (pola monitoring-policy.ts / gate.ts) — SATU pengecualian (Eval-4, audit alias
+// maritim): lib/maritim-lexicon.ts, modul DATA murni tanpa impor apa pun, supaya istilah maritim punya
+// satu sumber berversi yang juga dibaca penilai & pemeriksa GT. prisma/check-intake-policy.mjs memuat
+// berkas ini lewat jiti (objek yang sama; impor .ts eksplisit ditolak tsc TS5097). Normalisasi identitas
 // kapal TIDAK disalin: fungsi dari lib/vessels.ts disuntikkan lewat `NormalisasiKapal`,
 // sehingga service dan uji memakai fungsi yang PERSIS sama.
+
+import {
+  FRASA_BUKAN_OPERASI,
+  KATA_UANG,
+  LABEL_BARIS_MUATAN,
+  LABEL_BUKAN_JUMLAH,
+  LABEL_JUMLAH,
+  LIPATAN_OCR_ANGKA,
+  MATA_UANG,
+  MIN_DIGIT_ASLI_OCR,
+  OPERASI_LEKSIKON,
+  PENANDA_PERKIRAAN,
+  SATUAN_LEKSIKON,
+  tokenLeksikon,
+} from '../../lib/maritim-lexicon'
 
 // ----------------------------------------------------------------- konstanta
 
@@ -30,6 +47,15 @@ export const KLASIFIKASI = [
 export type Klasifikasi = (typeof KLASIFIKASI)[number]
 /** D5 — satu-satunya klasifikasi yang boleh di-approve pada pilot. */
 export const KLASIFIKASI_PILOT: readonly Klasifikasi[] = ['NEW_NOMINATION', 'NEW_APPOINTMENT']
+
+/**
+ * Eval-4 (OWNER D10) — klasifikasi yang BOLEH ditautkan ke voyage yang sudah ada. Daftar-izin (gagal-tertutup:
+ * klasifikasi baru/tak dikenal TIDAK bisa ditautkan). NOT_RELEVANT & UNSUPPORTED_REQUEST sengaja tidak ada.
+ * FUTURE_REQUIREMENT (TD-005-03): pembaruan operasional (revisi ETA/ETB/ETD untuk voyage yang ada) butuh alur
+ * tautkan/perbarui KHUSUS dengan klasifikasinya sendiri — bukan dengan melonggarkan daftar ini.
+ */
+export const KLASIFIKASI_BOLEH_TAUTKAN: readonly Klasifikasi[] = ['NEW_NOMINATION', 'NEW_APPOINTMENT', 'INSUFFICIENT_INFORMATION']
+export const bolehTautkanVoyage = (classification: string): boolean => (KLASIFIKASI_BOLEH_TAUTKAN as readonly string[]).includes(classification)
 
 export const JENIS_INPUT = ['TEXT', 'PDF', 'IMAGE', 'WORKBOOK', 'CSV'] as const
 export type JenisInput = (typeof JENIS_INPUT)[number]
@@ -136,8 +162,10 @@ export type FlagCargo =
   | 'CARGO_OPERATION_NOT_IN_SOURCE'
   | 'CARGO_OPERATION_CONTRADICTS_SOURCE'
   | 'CARGO_OPERATION_AMBIGUOUS'
+  | 'APPROXIMATE_QUANTITY'
 
-export const PERLU_KONFIRMASI_CARGO: readonly FlagCargo[] = ['UNVERIFIED_SOURCE', 'OCR_CORRECTED', 'CARGO_OPERATION_AMBIGUOUS']
+/** OWNER D7/D8: jumlah perkiraan & koreksi OCR tetap terlihat, tetapi wajib dikonfirmasi sebelum menjadi data operasional. */
+export const PERLU_KONFIRMASI_CARGO: readonly FlagCargo[] = ['UNVERIFIED_SOURCE', 'OCR_CORRECTED', 'CARGO_OPERATION_AMBIGUOUS', 'APPROXIMATE_QUANTITY']
 
 export type CargoUsulan = {
   name: string
@@ -814,46 +842,44 @@ function angkaTakNegatif(v: unknown): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null
 }
 
-// ----------------------------------------------------------------- grounding muatan (Eval-4 prep)
+// ----------------------------------------------------------------- grounding muatan (Eval-4)
 //
-// H20 (audit Eval-3): baris muatan usulan AI dulu lolos hanya dengan uji tipe (nama tak kosong,
-// jumlah ≥ 0, enum operasi) dan dicap SOURCE_DOCUMENT tanpa diuji — jumlah karangan ikut ke voyage
-// dan tonase autofill finance. Untuk masukan berteks setiap bagian baris kini WAJIB berbukti di
-// sumber; aturannya sempit dan deterministik (kata utuh, daftar tetap), tanpa kemiripan/fuzzy.
+// H20 (audit Eval-3) + audit alias maritim: baris muatan usulan AI WAJIB berbukti di sumber (masukan
+// berteks). Istilah HANYA dari leksikon terkendali (lib/maritim-lexicon.ts, berversi); pencocokan kata
+// utuh, tanpa kemiripan/fuzzy. Nilai tak berbukti dikosongkan (flag = jejak); keraguan → konfirmasi.
+//
+//   nama     — urutan kata utuh di sumber; jalur OCR sempit (lipatOcr) → OCR_CORRECTED.
+//   jumlah   — hanya KANDIDAT JUMLAH: angka yang TEPAT diikuti satuan leksikon ("5,000 MT", "3200 m³";
+//              pemisah sel tabel boleh) atau TEPAT sesudah label jumlah ("Quantity: 5000"); di baris
+//              muatan barisnya sendiri (memuat nama komoditas / label Cargo·Muatan·Operation·Kegiatan).
+//              BUKAN kandidat: angka uang (mata uang / kata tarif di klausa yang sama, atau sesudahnya),
+//              tarif "… MT/day" / "per MT", partikular & pengenal (GRT/DWT/LOA/IMO/Ref/…), tanggal, jam.
+//              Penanda perkiraan (approx / +/- / sekitar) → APPROXIMATE_QUANTITY (wajib konfirmasi).
+//              OCR angka (OWNER D8): O/o→0, I/l→1 hanya di token angka ber-≥2 digit asli dengan satuan
+//              tepat sesudahnya → OCR_CORRECTED (wajib konfirmasi).
+//   satuan   — hanya satuan yang TEPAT sesudah angka jumlah yang dipakai; grup MT / CBM leksikon.
+//              TON/TONS bukan MT, M/T bukan satuan. Tanpa jumlah → dikosongkan.
+//   operasi  — HANYA dari baris muatan (baris ber-nama komoditas / berlabel muatan / ber-kandidat jumlah
+//              yang dipakai), sesudah frasa bukan-operasi dibuang ("load port", "completion of discharge").
+//              Hanya lawannya → CONTRADICTS; keduanya → AMBIGUOUS (dipertahankan, wajib konfirmasi).
 
 /** Kata umum yang BUKAN komoditas — baris bernama ini dibuang (bukan fakta muatan). */
 export const NAMA_MUATAN_UMUM: readonly string[] = ['CARGO', 'CARGOES', 'THE CARGO', 'MUATAN', 'BARANG', 'GOODS', 'COMMODITY', 'KOMODITAS']
-/** Bukti operasi: kata utuh di sumber. "MUATAN" (kata benda) ≠ "MUAT"; "bongkar muat" = kedua-duanya → ambigu. */
-export const LEKSIKON_OPERASI_CARGO: Readonly<Record<'LOAD' | 'DISCHARGE', readonly string[]>> = {
-  LOAD: ['LOAD', 'LOADING', 'MUAT', 'MEMUAT'],
-  DISCHARGE: ['DISCHARGE', 'DISCHARGING', 'UNLOAD', 'BONGKAR'],
-}
-/** Alias satuan — HANYA grup ini; satuan lain harus tertulis persis. */
-export const ALIAS_SATUAN_CARGO: readonly (readonly string[])[] = [
-  ['MT', 'METRIC TON', 'METRIC TONS', 'TONNE', 'TONNES'],
-  ['CBM', 'M3'],
-]
-/** Kata kunci jumlah — baris sumber yang memuatnya boleh menjadi bukti angka jumlah. */
-const KATA_JUMLAH = ['QTY', 'QUANTITY', 'JUMLAH', 'KUANTITAS']
-/** Label pengenal: angka tepat sesudahnya BUKAN jumlah muatan (IMO 9998535, Ref 0412, …). */
-const LABEL_BUKAN_JUMLAH = /(?:^|[^A-Z0-9])(?:IMO|MMSI|NO|NR|NOMOR|REF|VOY|VOYAGE|HULL|YARD|PO|CALL\s*SIGN)\s*[:.#]?\s*$/i
-const POLA_BULAN = 'JAN|FEB|MAR|APR|MAY|MEI|JUN|JUL|AUG|AGU|AGT|SEP|OCT|OKT|NOV|DEC|DES'
-const POLA_TANGGAL_SUMBER = [
-  /\b\d{1,4}[/.-]\d{1,2}[/.-]\d{2,4}\b/g,
-  new RegExp(`\\b\\d{1,2}[\\s-]+(?:${POLA_BULAN})[A-Z]*\\.?[\\s-]+\\d{2,4}\\b`, 'gi'),
-  new RegExp(`\\b(?:${POLA_BULAN})[A-Z]*\\.?\\s+\\d{1,2},?\\s+\\d{4}\\b`, 'gi'),
-  /\b\d{1,2}:\d{2}\b/g,
-]
 
-/** Token kata utuh: huruf besar A-Z0-9 ("m³" → "M3"). */
-export function tokenMuatan(s: string): string[] {
-  return s.toUpperCase().replace(/³/g, '3').split(/[^A-Z0-9]+/).filter(Boolean)
+/** Token kata utuh (sama dengan leksikon): huruf besar A-Z0-9 ("m³" → "M3"). */
+export const tokenMuatan = tokenLeksikon
+function indeksUrutan(cari: readonly string[], sumber: readonly string[]): number {
+  if (cari.length === 0) return -1
+  for (let i = 0; i + cari.length <= sumber.length; i++) if (cari.every((t, j) => sumber[i + j] === t)) return i
+  return -1
 }
-function adaUrutanToken(cari: readonly string[], sumber: readonly string[]): boolean {
-  if (cari.length === 0) return false
-  for (let i = 0; i + cari.length <= sumber.length; i++) if (cari.every((t, j) => sumber[i + j] === t)) return true
-  return false
-}
+const adaUrutanToken = (cari: readonly string[], sumber: readonly string[]): boolean => indeksUrutan(cari, sumber) >= 0
+const urutanDi = (daftar: readonly string[], sumber: readonly string[]) => daftar.some((d) => adaUrutanToken(d.split(' '), sumber))
+const berakhirDengan = (daftar: readonly string[], t: readonly string[]) =>
+  daftar.some((d) => {
+    const x = d.split(' ')
+    return x.length <= t.length && x.every((w, i) => t[t.length - x.length + i] === w)
+  })
 
 /**
  * Nilai SATU token angka dari dokumen sumber — aturan tetap, satu tafsiran per token:
@@ -887,34 +913,91 @@ export function nilaiAngkaSumber(tok: string): number | null {
   return Number.isFinite(n) ? n : null
 }
 
-type BuktiMuatan = { token: string[]; baris: string[][]; angkaPerBaris: number[][] }
-
-/** Bukti muatan dari teks sumber: token kata utuh + angka kandidat jumlah per baris (tanggal/jam & angka ber-label pengenal dibuang). */
-function buktiMuatanDari(sumber: string): BuktiMuatan {
-  const barisTeks = sumber.split(/\r?\n/)
-  const baris = barisTeks.map(tokenMuatan)
-  const angkaPerBaris = barisTeks.map((l) => {
-    let x = l
-    for (const pola of POLA_TANGGAL_SUMBER) x = x.replace(pola, ' ')
-    const hasil: number[] = []
-    // Tanpa lookbehind (berkas ini ikut dibundel ke peramban lama): awal token = awal baris atau bukan angka/pemisah.
-    const pola = /(^|[^\d.,])(\d+(?:[.,]\d+)*)(?!\d)/g
-    for (let m = pola.exec(x); m; m = pola.exec(x)) {
-      const awal = m.index + m[1].length
-      if (LABEL_BUKAN_JUMLAH.test(x.slice(Math.max(0, awal - 16), awal))) continue
-      const n = nilaiAngkaSumber(m[2])
-      if (n !== null) hasil.push(n)
-    }
-    return hasil
-  })
-  return { token: baris.flat(), baris, angkaPerBaris }
+const POLA_BULAN = 'JAN|FEB|MAR|APR|MAY|MEI|JUN|JUL|AUG|AGU|AGT|SEP|OCT|OKT|NOV|DEC|DES'
+const POLA_TANGGAL_SUMBER = [
+  /\b\d{1,4}[/.-]\d{1,2}[/.-]\d{2,4}\b/g,
+  new RegExp(`\\b\\d{1,2}[\\s-]+(?:${POLA_BULAN})[A-Z]*\\.?[\\s-]+\\d{2,4}\\b`, 'gi'),
+  new RegExp(`\\b(?:${POLA_BULAN})[A-Z]*\\.?\\s+\\d{1,2},?\\s+\\d{4}\\b`, 'gi'),
+  /\b\d{1,2}:\d{2}\b/g,
+]
+/** Token angka kandidat; O/o/I/l hanya boleh sebagai salah-baca OCR (diperiksa sesudahnya). */
+const POLA_TOKEN_ANGKA = /(^|[^A-Za-z0-9.,])([0-9OoIl](?:[0-9OoIl]|[.,](?=[0-9OoIl]))*)(?![A-Za-z0-9])/g
+/** Penanda perkiraan TEPAT sebelum angka (leksikon; "approx." / "+/-" / "sekitar"). */
+const POLA_PERKIRAAN = new RegExp(`(?:^|[^A-Za-z0-9])(?:${PENANDA_PERKIRAAN.map((p) => p.replace(/[.+/]/g, (c) => `\\${c}`)).join('|')})\\s*$`, 'i')
+const LIPAT_ANGKA = new RegExp(`[${Object.keys(LIPATAN_OCR_ANGKA).join('')}]`, 'g')
+const GRUP_SATUAN = (Object.keys(SATUAN_LEKSIKON) as Array<keyof typeof SATUAN_LEKSIKON>).flatMap((g) =>
+  SATUAN_LEKSIKON[g].alias.map((a) => ({ grup: g, token: a.split(' ') })),
+).sort((x, y) => y.token.length - x.token.length)
+const grupSatuan = (unit: string): 'MT' | 'CBM' | null => {
+  const t = tokenLeksikon(unit).join(' ')
+  return GRUP_SATUAN.find((s) => s.token.join(' ') === t)?.grup ?? null
 }
 
-function satuanBerbukti(unit: string, b: BuktiMuatan): boolean {
-  const t = tokenMuatan(unit)
-  if (adaUrutanToken(t, b.token)) return true
-  const grup = ALIAS_SATUAN_CARGO.find((g) => g.includes(t.join(' ')))
-  return !!grup && grup.some((a) => adaUrutanToken(a.split(' '), b.token))
+type KandidatJumlah = { nilai: number; grup: 'MT' | 'CBM' | null; perkiraan: boolean; ocr: boolean }
+type BarisBukti = { token: string[]; lipat: string[]; labelMuatan: boolean; kandidat: KandidatJumlah[]; operasi: Set<'LOAD' | 'DISCHARGE'> }
+type BuktiMuatan = { token: string[]; lipat: string[]; baris: BarisBukti[] }
+
+/** Kandidat jumlah pada satu baris sumber (lihat komentar bagian). */
+function kandidatJumlahBaris(barisAsli: string): KandidatJumlah[] {
+  let x = barisAsli
+  for (const pola of POLA_TANGGAL_SUMBER) x = x.replace(pola, (m) => ' '.repeat(m.length))
+  const hasil: KandidatJumlah[] = []
+  const pola = new RegExp(POLA_TOKEN_ANGKA.source, 'g')
+  for (let m = pola.exec(x); m; m = pola.exec(x)) {
+    const mentah = m[2]
+    const digitAsli = (mentah.match(/[0-9]/g) ?? []).length
+    const ocr = /[OoIl]/.test(mentah)
+    if (digitAsli === 0 || (ocr && digitAsli < MIN_DIGIT_ASLI_OCR)) continue
+    const nilai = nilaiAngkaSumber(ocr ? mentah.replace(LIPAT_ANGKA, (c) => LIPATAN_OCR_ANGKA[c]) : mentah)
+    if (nilai === null) continue
+    const awal = m.index + m[1].length
+    const sebelum = x.slice(0, awal)
+    const sesudah = x.slice(awal + mentah.length)
+    const tSebelum = tokenLeksikon(sebelum)
+    // pengenal / partikular kapal TEPAT sebelum angka
+    if (berakhirDengan(LABEL_BUKAN_JUMLAH, tSebelum)) continue
+    // uang: mata uang / kata tarif di klausa yang sama sebelum angka, simbol $, atau sesudah angka
+    const klausa = tokenLeksikon(sebelum.split(/[;()|\t\n]|,\s/).pop() ?? '')
+    if (/\$\s*$/.test(sebelum) || urutanDi(MATA_UANG, klausa) || urutanDi(KATA_UANG, klausa)) continue
+    const tSesudah = tokenLeksikon(sesudah)
+    if (tSesudah.length && (urutanDi(MATA_UANG, tSesudah.slice(0, 1)) || urutanDi(KATA_UANG, tSesudah.slice(0, 2)) || ['RUPIAH', 'DOLLAR', 'DOLLARS'].includes(tSesudah[0]))) continue
+    // satuan TEPAT sesudah angka (spasi, atau satu pemisah sel tabel)
+    const mSat = /^[ \t]*(?:\|[ \t]*)?/.exec(sesudah)
+    const sisa = sesudah.slice(mSat ? mSat[0].length : 0)
+    const tSisa = tokenLeksikon(sisa)
+    const awalSisa = sisa.toUpperCase().replace(/³/g, '3')
+    const sat = GRUP_SATUAN.find((s) => s.token.every((w, i) => tSisa[i] === w) && awalSisa.startsWith(s.token[0]))
+    let grup: 'MT' | 'CBM' | null = null
+    if (sat) {
+      // tarif: "5,000 MT/day", "5,000 MT per day" → bukan jumlah muatan
+      const setelahSatuan = sisa.slice(sat.token.join(' ').length)
+      if (/^\s*(?:\/|per\b)/i.test(setelahSatuan)) continue
+      grup = sat.grup
+    } else if (!berakhirDengan(LABEL_JUMLAH, tSebelum)) {
+      continue // tanpa satuan leksikon & tanpa label jumlah → bukan kandidat
+    }
+    if (ocr && !grup) continue // OCR angka WAJIB bersatuan tepat sesudahnya (OWNER D8)
+    hasil.push({ nilai, grup, perkiraan: POLA_PERKIRAAN.test(sebelum), ocr })
+  }
+  return hasil
+}
+
+/** Bukti muatan dari teks sumber: token dokumen + per baris (token, lipatan OCR, label muatan, kandidat jumlah, operasi). */
+function buktiMuatanDari(sumber: string): BuktiMuatan {
+  // Baris berlabel field muatan: Cargo / Muatan / Operation / Kegiatan, atau label jumlah (Quantity / Qty / …).
+  const labelMuatan = [...LABEL_BARIS_MUATAN, ...LABEL_JUMLAH].map((l) => lipatOcr(l))
+  const frasaBukan = FRASA_BUKAN_OPERASI.map((f) => f.split(' '))
+  const baris = sumber.split(/\r?\n/).map((l): BarisBukti => {
+    const token = tokenLeksikon(l)
+    const lipat = token.map(lipatOcr)
+    // operasi di baris ini sesudah frasa bukan-operasi dibuang
+    const t = [...token]
+    for (const f of frasaBukan) for (let i = indeksUrutan(f, t); i >= 0; i = indeksUrutan(f, t)) t.splice(i, f.length, '~')
+    const operasi = new Set<'LOAD' | 'DISCHARGE'>()
+    for (const op of ['LOAD', 'DISCHARGE'] as const) if (OPERASI_LEKSIKON[op].alias.some((w) => t.includes(w))) operasi.add(op)
+    return { token, lipat, labelMuatan: lipat.length > 0 && labelMuatan.includes(lipat[0]), kandidat: kandidatJumlahBaris(l), operasi }
+  })
+  return { token: baris.flatMap((b) => b.token), lipat: baris.flatMap((b) => b.lipat), baris }
 }
 
 /**
@@ -926,42 +1009,55 @@ function barisMuatan(
   b: BuktiMuatan | null,
 ): CargoUsulan | null {
   const flags: FlagCargo[] = []
+  const tambah = (f: FlagCargo) => {
+    if (!flags.includes(f)) flags.push(f)
+  }
   const tNama = tokenMuatan(v.name)
   if (NAMA_MUATAN_UMUM.includes(tNama.join(' '))) return null
   let { quantity, unit, operation } = v
   if (!b) {
-    flags.push('UNVERIFIED_SOURCE')
+    tambah('UNVERIFIED_SOURCE')
   } else {
     // nama: urutan kata utuh di sumber; jalur OCR sempit (lipatOcr) hanya sesudah uji harfiah gagal.
+    const lNama = tNama.map(lipatOcr)
     if (!adaUrutanToken(tNama, b.token)) {
-      const lipat = tNama.map(lipatOcr)
-      if (lipat.join('').length < MIN_PANJANG_OCR || !adaUrutanToken(lipat, b.token.map(lipatOcr))) return null
-      flags.push('OCR_CORRECTED')
+      if (lNama.join('').length < MIN_PANJANG_OCR || !adaUrutanToken(lNama, b.lipat)) return null
+      tambah('OCR_CORRECTED')
     }
-    // jumlah: angka yang SAMA tertulis pada baris sumber yang juga memuat nama muatan / satuan / kata jumlah.
+    // baris muatan untuk baris ini: memuat nama komoditas (harfiah/lipatan) atau berlabel muatan
+    const barisNama = b.baris.filter((x) => x.labelMuatan || adaUrutanToken(tNama, x.token) || adaUrutanToken(lNama, x.lipat))
+    // jumlah: kandidat bernilai sama di baris muatan; pilih yang pasti & bukan OCR bila ada
+    let dipakai: KandidatJumlah | null = null
+    let barisJumlah: BarisBukti | null = null
     if (quantity !== null) {
       const q = quantity
-      const berbukti = b.baris.some(
-        (t, i) =>
-          b.angkaPerBaris[i].some((n) => Math.abs(n - q) < 1e-9) &&
-          (adaUrutanToken(tNama, t) || KATA_JUMLAH.some((x) => t.includes(x)) || ALIAS_SATUAN_CARGO.flat().some((a) => adaUrutanToken(a.split(' '), t))),
-      )
-      if (!berbukti) {
+      for (const x of barisNama)
+        for (const c of x.kandidat)
+          if (Math.abs(c.nilai - q) < 1e-9 && (!dipakai || Number(c.perkiraan) + Number(c.ocr) < Number(dipakai.perkiraan) + Number(dipakai.ocr))) {
+            dipakai = c
+            barisJumlah = x
+          }
+      if (!dipakai) {
         quantity = null
-        flags.push('CARGO_QUANTITY_NOT_IN_SOURCE')
+        tambah('CARGO_QUANTITY_NOT_IN_SOURCE')
+      } else {
+        if (dipakai.perkiraan) tambah('APPROXIMATE_QUANTITY')
+        if (dipakai.ocr) tambah('OCR_CORRECTED')
       }
     }
-    if (unit !== null && !satuanBerbukti(unit, b)) {
+    // satuan: HANYA satuan yang tepat sesudah angka jumlah yang dipakai
+    if (unit !== null && v.quantity !== null && (!dipakai || dipakai.grup === null || grupSatuan(unit) !== dipakai.grup)) {
       unit = null
-      flags.push('CARGO_UNIT_NOT_IN_SOURCE')
+      tambah('CARGO_UNIT_NOT_IN_SOURCE')
     }
-    // operasi: leksikon tetap, kata utuh.
+    // operasi: hanya dari baris muatan (+ baris jumlah yang dipakai)
     if (operation !== null) {
-      const ada = (op: 'LOAD' | 'DISCHARGE') => LEKSIKON_OPERASI_CARGO[op].some((w) => b.token.includes(w))
+      const bukti = new Set<'LOAD' | 'DISCHARGE'>()
+      for (const x of barisJumlah && !barisNama.includes(barisJumlah) ? [...barisNama, barisJumlah] : barisNama) x.operasi.forEach((o) => bukti.add(o))
       const lawan = operation === 'LOAD' ? 'DISCHARGE' : 'LOAD'
-      if (ada(operation) && ada(lawan)) flags.push('CARGO_OPERATION_AMBIGUOUS')
-      else if (!ada(operation)) {
-        flags.push(ada(lawan) ? 'CARGO_OPERATION_CONTRADICTS_SOURCE' : 'CARGO_OPERATION_NOT_IN_SOURCE')
+      if (bukti.has(operation) && bukti.has(lawan)) tambah('CARGO_OPERATION_AMBIGUOUS')
+      else if (!bukti.has(operation)) {
+        tambah(bukti.has(lawan) ? 'CARGO_OPERATION_CONTRADICTS_SOURCE' : 'CARGO_OPERATION_NOT_IN_SOURCE')
         operation = null
       }
     }
@@ -969,7 +1065,7 @@ function barisMuatan(
   // Satuan tanpa jumlah bukan fakta muatan (termasuk bila jumlahnya baru saja dikosongkan).
   if (quantity === null && unit !== null) {
     unit = null
-    flags.push('CARGO_UNIT_WITHOUT_QUANTITY')
+    tambah('CARGO_UNIT_WITHOUT_QUANTITY')
   }
   return { name: v.name, quantity, unit, operation, source: 'SOURCE_DOCUMENT', flags, confirmed: false }
 }

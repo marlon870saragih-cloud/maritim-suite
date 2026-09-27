@@ -61,3 +61,26 @@ akuntansi AI yang lebih baik daripada `UsageEvent` — keputusan tugas itu, buka
 (atau diberi pagar setuju-sendiri untuk kasus terlihat portal atas keputusan owner),
 kebijakan D9 berlaku: `EXTERNALLY_VISIBLE` → setuju-sendiri dilarang secara bawaan.
 Lalu entri ini diubah menjadi `Status: RESOLVED` dengan rujukan commit/PRD.
+
+---
+
+## TD-005-03 — Alur pembaruan operasional untuk voyage yang sudah ada
+
+- Status: OPEN
+- Dibuka: 2026-09-27 (PRD-005 Eval-4, remediasi grounding)
+- Keputusan owner: D10 — NOT_RELEVANT & UNSUPPORTED_REQUEST TIDAK boleh ditautkan ke voyage yang ada; arsitektur
+  tidak boleh menutup permanen alur pembaruan operasional kelak.
+- Penjaga: `prisma/check-eval4-prep.mjs` → bagian K / TD-005-03
+
+**Fakta (dari kode Eval-4):**
+
+- `linkExistingIntake` (`src/services/intake/intake.service.ts`) kini menolak klasifikasi di luar
+  `KLASIFIKASI_BOLEH_TAUTKAN` (`src/services/intake/intake-policy.ts`) dengan kode `CLASSIFICATION_NOT_LINKABLE`.
+- Dokumen pembaruan operasional (revisi ETA/ETB/ETD untuk penunjukan yang sudah ada, mis. kasus Eval-3 H19)
+  diklasifikasikan `UNSUPPORTED_REQUEST` — sehingga saat ini hanya bisa DITOLAK, tidak bisa dicatat ke voyage-nya.
+
+**Dampak:** revisi jadwal untuk voyage yang sudah ada harus diperbarui manual di voyage; intake-nya ditolak.
+
+**Kriteria selesai:** ada alur KHUSUS pembaruan operasional (klasifikasi/jenis tersendiri, bukan nominasi baru,
+dan bukan dengan melonggarkan `KLASIFIKASI_BOLEH_TAUTKAN`) yang menautkan dokumen ke voyage yang ada dan
+memperbarui field jadwalnya lewat peninjauan manusia; lalu entri ini diubah menjadi `Status: RESOLVED`.

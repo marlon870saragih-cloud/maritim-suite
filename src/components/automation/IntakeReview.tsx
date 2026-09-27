@@ -30,6 +30,7 @@ import { useLang, useT, type Lang } from '@/lib/i18n'
 import type { IntakeDto } from '@/services/intake/intake.service'
 import {
   basisTerkuat,
+  bolehTautkanVoyage,
   cargoTepercaya,
   formatJumlah,
   formatTanggal,
@@ -90,7 +91,7 @@ const STR: Record<Lang, Record<string, string>> = {
     riskyAsk: 'Kandidat ini berisiko. Yakin memilih', riskyYes: 'Ya, pilih', mmsiUnverified: 'MMSI belum terverifikasi', riskyUnverified: 'MMSI kapal ini belum terverifikasi di data master.',
     riskyPartial: 'Namanya hanya mirip, tidak sama.', riskyInactive: 'Data master ini nonaktif.', riskyConflict: 'Identitas di dokumen bertentangan.',
     portsLink: 'Kelola data master pelabuhan', noPortCreate: 'Pelabuhan tidak dibuat dari intake — tambahkan dulu di data master bila belum ada.',
-    cargoTitle: 'Muatan', noCargo: 'Tidak ada muatan.', remove: 'Hapus', cargoEdit: 'Ubah', cargoAdd: 'Tambah muatan', cargoName: 'Nama muatan', cargoQty: 'Jumlah', cargoUnit: 'Satuan', cargoOp: 'Operasi', cargoOpNone: '— tidak ditentukan —', cargoSave: 'Simpan muatan', cargoCancel: 'Batal', cargoNameReq: 'Nama muatan wajib diisi.', cargoQtyBad: 'Jumlah harus angka 0 atau lebih.', cargoFull: 'Sudah mencapai batas 20 muatan.', cargoConfirm: 'Konfirmasi', cargoNeedsConfirm: 'Belum terverifikasi terhadap dokumen — periksa lalu konfirmasi', cargoCleared: 'Dikosongkan: tidak tertulis di dokumen', cargoesDropped: 'AI mengusulkan {n} muatan yang tidak tertulis di dokumen sumber — tidak dimasukkan. Periksa dokumen bila perlu menambahkannya.', contact: 'Narahubung di dokumen (hanya untuk mengisi data master baru)',
+    cargoTitle: 'Muatan', noCargo: 'Tidak ada muatan.', remove: 'Hapus', cargoEdit: 'Ubah', cargoAdd: 'Tambah muatan', cargoName: 'Nama muatan', cargoQty: 'Jumlah', cargoUnit: 'Satuan', cargoOp: 'Operasi', cargoOpNone: '— tidak ditentukan —', cargoSave: 'Simpan muatan', cargoCancel: 'Batal', cargoNameReq: 'Nama muatan wajib diisi.', cargoQtyBad: 'Jumlah harus angka 0 atau lebih.', cargoFull: 'Sudah mencapai batas 20 muatan.', cargoConfirm: 'Konfirmasi', cargoApprox: 'Jumlah perkiraan (tertulis "approx." / "+/-" / "sekitar") — bukan angka pasti', cargoNeedsConfirm: 'Belum terverifikasi terhadap dokumen — periksa lalu konfirmasi', cargoCleared: 'Dikosongkan: tidak tertulis di dokumen', cargoesDropped: 'AI mengusulkan {n} muatan yang tidak tertulis di dokumen sumber — tidak dimasukkan. Periksa dokumen bila perlu menambahkannya.', contact: 'Narahubung di dokumen (hanya untuk mengisi data master baru)',
     dupTitle: 'Pemeriksaan duplikat', noDup: 'Tidak ditemukan voyage atau intake lain yang mirip.',
     dupBanner: 'Ada voyage yang mungkin sama dengan permintaan ini. Periksa bagian "Pemeriksaan duplikat" sebelum menyetujui.',
     thisIntake: 'Permintaan ini', existing: 'Voyage yang ada',
@@ -147,7 +148,7 @@ const STR: Record<Lang, Record<string, string>> = {
     riskyAsk: 'This candidate is risky. Really choose', riskyYes: 'Yes, choose', mmsiUnverified: 'MMSI unverified', riskyUnverified: 'This vessel’s MMSI is not verified in master data.',
     riskyPartial: 'The name is only similar, not the same.', riskyInactive: 'This master record is inactive.', riskyConflict: 'The document identity is conflicting.',
     portsLink: 'Manage port master', noPortCreate: 'Ports are not created from an intake — add it to the port master first if missing.',
-    cargoTitle: 'Cargo', noCargo: 'No cargo.', remove: 'Remove', cargoEdit: 'Edit', cargoAdd: 'Add cargo', cargoName: 'Cargo name', cargoQty: 'Quantity', cargoUnit: 'Unit', cargoOp: 'Operation', cargoOpNone: '— not specified —', cargoSave: 'Save cargo', cargoCancel: 'Cancel', cargoNameReq: 'Cargo name is required.', cargoQtyBad: 'Quantity must be a number 0 or greater.', cargoFull: 'The 20 cargo limit has been reached.', cargoConfirm: 'Confirm', cargoNeedsConfirm: 'Not verified against the document — check, then confirm', cargoCleared: 'Cleared: not written in the document', cargoesDropped: 'AI proposed {n} cargo line(s) not written in the source document — not included. Check the document if you need to add them.', contact: 'Contact in document (only to prefill new master data)',
+    cargoTitle: 'Cargo', noCargo: 'No cargo.', remove: 'Remove', cargoEdit: 'Edit', cargoAdd: 'Add cargo', cargoName: 'Cargo name', cargoQty: 'Quantity', cargoUnit: 'Unit', cargoOp: 'Operation', cargoOpNone: '— not specified —', cargoSave: 'Save cargo', cargoCancel: 'Cancel', cargoNameReq: 'Cargo name is required.', cargoQtyBad: 'Quantity must be a number 0 or greater.', cargoFull: 'The 20 cargo limit has been reached.', cargoConfirm: 'Confirm', cargoApprox: 'Approximate quantity (written as "approx." / "+/-" / "sekitar") — not an exact figure', cargoNeedsConfirm: 'Not verified against the document — check, then confirm', cargoCleared: 'Cleared: not written in the document', cargoesDropped: 'AI proposed {n} cargo line(s) not written in the source document — not included. Check the document if you need to add them.', contact: 'Contact in document (only to prefill new master data)',
     dupTitle: 'Duplicate check', noDup: 'No similar voyage or intake found.',
     dupBanner: 'A voyage may already exist for this request. Check "Duplicate check" before approving.',
     thisIntake: 'This request', existing: 'Existing voyage',
@@ -705,7 +706,8 @@ void patch({ cargoes: daftar })
                 <li key={i}>{formulirCargo()}</li>
               ) : (
                 <li key={i} className="flex flex-wrap items-center gap-2 text-text-primary">
-                  <span className="break-words">{c.name}{c.quantity != null ? ` · ${formatJumlah(c.quantity, lang)} ${c.unit ?? ''}` : ''}{c.operation ? ` · ${c.operation}` : ''}</span>
+                  <span className="break-words">{c.name}{c.quantity != null ? ` · ${c.flags?.includes('APPROXIMATE_QUANTITY') ? '≈ ' : ''}${formatJumlah(c.quantity, lang)} ${c.unit ?? ''}` : ''}{c.operation ? ` · ${c.operation}` : ''}</span>
+                  {c.flags?.includes('APPROXIMATE_QUANTITY') && <span className="text-xs text-amber-700 dark:text-amber-400">{t.cargoApprox}</span>}
                   <ProvenanceBadge f={{ value: c.name, source: c.source, flags: c.flags ?? [], extracted: null, confirmed: c.confirmed === true }} lang={lang} visual={visual} />
                   {(c.flags ?? []).some((f) => f.endsWith('_NOT_IN_SOURCE') || f.endsWith('_CONTRADICTS_SOURCE') || f === 'CARGO_UNIT_WITHOUT_QUANTITY') && (
                     <span className="text-xs text-text-secondary">{t.cargoCleared}</span>
@@ -787,7 +789,7 @@ void patch({ cargoes: daftar })
                     )}
                   </p>
                   <p className="mt-1 text-xs text-text-secondary">{t.basis}: {LABEL_ALASAN_DUP[lang][c.reason] ?? c.reason}</p>
-                  {bisaEdit && c.type === 'VOYAGE' && (
+                  {bisaEdit && c.type === 'VOYAGE' && bolehTautkanVoyage(d.classification) && (
                     <button
                       type="button"
                       disabled={busy}
@@ -802,7 +804,7 @@ void patch({ cargoes: daftar })
                 </li>
               ))}
             </ul>
-            {bisaEdit && <p className="mt-2 text-xs text-text-secondary">{t.linkNote}</p>}
+            {bisaEdit && bolehTautkanVoyage(d.classification) && <p className="mt-2 text-xs text-text-secondary">{t.linkNote}</p>}
           </>
         )}
         {bisaEdit && d.duplicateLevel !== 'NO_DUPLICATE' && (

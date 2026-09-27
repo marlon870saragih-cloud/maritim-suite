@@ -68,14 +68,16 @@ bagian('1. KUNCI SUMBER — yang tak boleh berubah di Step 3B')
     chatCompletion: '02267f85f1d0102acbf7769aa80c5f308760b3d29ff1b7067c424d5c7aa7cfae',
     // Sidik 9d3b261a… digantikan PRD-005 Eval-4 prep (remediasi H20, DISETUJUI OWNER): PATCH muatan membawa
     // flag validasi + konfirmasi peninjau; jalankanPembuatan melewati muatan belum tepercaya.
-    intakeSetelahSubmit: '6adcd4c8c6f74789760e2746ce108d18c92d96f9039c11176df7699aae8f14e8',
+    // Lalu PRD-005 Eval-4 final (OWNER D10): linkExistingIntake menolak klasifikasi non-keagenan sebelum menulis.
+    intakeSetelahSubmit: 'c04de3624ff694306589be63a3d135e6537d9abf7b7ae81ee6551ca2924c2fb5',
     intakeSebelumSubmit: '2a1c00f2f62d992de7a0c95b5b90929161238efc45f68efd9d49c3d21528fd10',
     'src/services/intake/intake-gate.ts': '98521d074c3aa0043ea4ce3c4c6e107313e96e5f82e4fd3ecd2a0a61b5255d9d',
     // Sidik Step 3A (c8781c27…f326) digantikan PRD-005 E5 Step 1 (81fab8cb…432e, pagar bukti tanggal),
     // lalu E5 Step 2 yang DISETUJUI OWNER (verifikasi OCR-aman + hitungan kapal dibuang).
     // Perubahan berikutnya pada berkas ini tetap harus memperbarui sidik ini secara eksplisit.
     // Lalu PRD-005 Eval-4 prep (remediasi H20, DISETUJUI OWNER): grounding muatan + CARGO_CONFIRMATION_REQUIRED (4b82b8c7… → baru).
-    'src/services/intake/intake-policy.ts': '9a9e2660bc19e14d91f935309868b3da3495b96f14cabefb106053bf4a2988fc',
+    // Lalu PRD-005 Eval-4 final (DISETUJUI OWNER): leksikon maritim, jumlah/satuan/operasi berbasis baris muatan, APPROXIMATE_QUANTITY, OCR angka, bolehTautkanVoyage.
+    'src/services/intake/intake-policy.ts': '7997f6f0039d13ffd942f5f0ff3605b8872ca8eb1979763bb144dc793716201d',
     'src/services/intake/intake-hash.ts': '862d3e086c24f578bdd4a07a70664de6fff96d6831e289dcb1d5ccd69e4525d3',
     'src/services/saas/quota.service.ts': '777e86317b23f3f1ebf3a4c0db9a941fa6159585d0071350f622019a844f29ce',
     'src/services/saas/usage.service.ts': '183fa3bbb9af7278d780d62431df5f91961130a8d84cd2392195b834cff0c23d',
@@ -86,7 +88,8 @@ bagian('1. KUNCI SUMBER — yang tak boleh berubah di Step 3B')
     // Rute API tidak berubah.
     // Lalu PRD-005 Eval-4 prep (remediasi H20, DISETUJUI OWNER): UI muatan menampilkan flag, tombol Konfirmasi,
     // dan hitungan muatan dibuang; label syarat CARGO_CONFIRMATION_REQUIRED (1177a29c… → baru). Rute API tidak berubah.
-    ruteDanUiIntake: 'a054ab36596828e1af26e66528278c0c9a7b224ed9b7220bcf4afd75f285a29d',
+    // Lalu PRD-005 Eval-4 final (DISETUJUI OWNER): jumlah perkiraan terlihat, tombol Tautkan disembunyikan untuk klasifikasi non-keagenan, pesan CLASSIFICATION_NOT_LINKABLE. Rute API tidak berubah.
+    ruteDanUiIntake: '6ddc468ddfe20fecad820f7dfc24ecfe57580061f7b837a017b529ad9b31ed43',
   }
   const fungsi = (src, nama) => {
     const i = src.indexOf(`export async function ${nama}(`)

@@ -13,8 +13,9 @@
 // baru memakai komoditas lain (uji mutasi di check-gt-source-consistency.mjs).
 
 import { angkaToken } from './spike-eval4-scorer.mjs'
+import * as L from '../src/lib/maritim-lexicon.ts'
 
-export const VERSI_PEMERIKSA_GT = 'prd005-e5-eval4/gt-sumber-1'
+export const VERSI_PEMERIKSA_GT = 'prd005-e5-eval4/gt-sumber-2'
 
 export const LEKSIKON_KOMODITAS = Object.freeze([
   'COAL', 'STEAM COAL', 'BATUBARA', 'BATU BARA', 'TIMBER', 'SAWN TIMBER', 'LOGS', 'KAYU', 'NICKEL', 'NIKEL', 'NICKEL ORE', 'NIKEL ORE',
@@ -23,12 +24,42 @@ export const LEKSIKON_KOMODITAS = Object.freeze([
   'SOYBEAN', 'KEDELAI', 'SUGAR', 'GULA', 'RICE', 'BERAS', 'SALT', 'GARAM', 'STEEL', 'BAJA', 'CONTAINERS', 'KONTAINER', 'GENERAL CARGO',
   'CAUSTIC SODA', 'CRUDE OIL', 'HSD', 'MFO', 'LNG', 'LPG',
 ])
-export const LEKSIKON_OPERASI = Object.freeze({
-  LOAD: ['LOAD', 'LOADING', 'MUAT', 'MEMUAT'],
-  DISCHARGE: ['DISCHARGE', 'DISCHARGING', 'UNLOAD', 'BONGKAR'],
-})
+/** Alias operasi dari leksikon maritim terkendali (DATA bersama; termasuk DISCH — OWNER D1). */
+export const LEKSIKON_OPERASI = Object.freeze(Object.fromEntries(Object.entries(L.OPERASI_LEKSIKON).map(([k, e]) => [k, e.alias])))
 
-const token = (s) => String(s).toUpperCase().replace(/³/g, '3').split(/[^A-Z0-9]+/).filter(Boolean)
+const token = (s) => L.tokenLeksikon(String(s))
+/** Token dokumen sesudah frasa bukan-operasi ("load port", "completion of discharge", …) dibuang. */
+function tokenOperasi(src) {
+  const t = token(src)
+  for (const f of L.FRASA_BUKAN_OPERASI.map((x) => x.split(' '))) for (let i = 0; i + f.length <= t.length; i++) if (f.every((w, j) => t[i + j] === w)) t.splice(i, f.length, '~')
+  return t
+}
+/** Angka yang BOLEH menjadi bukti jumlah GT: bukan tanggal/jam, bukan uang (mata uang/kata tarif di klausa), bukan sesudah label pengenal/partikular. */
+function angkaBukanUang(src) {
+  const hasil = new Set()
+  for (const baris of String(src).split(/\r?\n/)) {
+    let x = baris
+    for (const p of TANGGAL_JAM) x = x.replace(p, (m) => ' '.repeat(m.length))
+    const pola = /(^|[^A-Za-z0-9.,])(\d+(?:[.,]\d+)*)(?![A-Za-z0-9])/g
+    for (let m = pola.exec(x); m; m = pola.exec(x)) {
+      const sebelum = x.slice(0, m.index + m[1].length)
+      const tSeb = token(sebelum)
+      const klausa = token(sebelum.split(/[;()|\t\n]|,\s/).pop() ?? '')
+      if (L.LABEL_BUKAN_JUMLAH.some((l) => { const w = l.split(' '); return w.every((v, i) => tSeb[tSeb.length - w.length + i] === v) })) continue
+      if (/\$\s*$/.test(sebelum) || L.MATA_UANG.some((c) => klausa.includes(c)) || L.KATA_UANG.some((c) => klausa.includes(c.split(' ')[0]))) continue
+      const n = angkaToken(m[2])
+      if (n !== null) hasil.add(n)
+    }
+  }
+  return hasil
+}
+const BULAN = 'JAN|FEB|MAR|APR|MAY|MEI|JUN|JUL|AUG|AGU|AGT|SEP|OCT|OKT|NOV|DEC|DES'
+const TANGGAL_JAM = [
+  /\b\d{1,4}[/.-]\d{1,2}[/.-]\d{2,4}\b/g,
+  new RegExp(`\\b\\d{1,2}[\\s-]+(?:${BULAN})[A-Z]*\\.?[\\s-]+\\d{2,4}\\b`, 'gi'),
+  new RegExp(`\\b(?:${BULAN})[A-Z]*\\.?\\s+\\d{1,2},?\\s+\\d{4}\\b`, 'gi'),
+  /\b\d{1,2}:\d{2}\b/g,
+]
 function adaUrutan(cari, sumber) {
   if (!cari.length) return false
   for (let i = 0; i + cari.length <= sumber.length; i++) if (cari.every((t, j) => sumber[i + j] === t)) return true
@@ -58,11 +89,12 @@ export function periksaKasus(k) {
   const src = teksKasus(k)
   const tok = token(src)
   const komoditas = LEKSIKON_KOMODITAS.filter((c) => adaUrutan(c.split(' '), tok))
-  const operasi = Object.keys(LEKSIKON_OPERASI).filter((o) => LEKSIKON_OPERASI[o].some((w) => tok.includes(w)))
+  const tokOp = tokenOperasi(src)
+  const operasi = Object.keys(LEKSIKON_OPERASI).filter((o) => LEKSIKON_OPERASI[o].some((w) => tokOp.includes(w)))
   const hanyaKosong = g.bentukDiterima.every((b) => b.length === 0)
   if (hanyaKosong && komoditas.length && operasi.length) temuan.push({ kasus: k.id, aturan: 'K1', tingkat: 'GAGAL', detail: { komoditas, operasi } })
   else if (hanyaKosong && operasi.length) temuan.push({ kasus: k.id, aturan: 'K4', tingkat: 'INFO', detail: { operasi } })
-  const angka = new Set((src.match(/\d+(?:[.,]\d+)*/g) ?? []).map(angkaToken).filter((n) => n !== null))
+  const angka = angkaBukanUang(src)
   g.bentukDiterima.forEach((bentuk, bi) =>
     bentuk.forEach((baris, ri) => {
       const nama = bentukNama(baris.name)
@@ -82,7 +114,8 @@ export function muatanSetiaDariSumber(k) {
   const tok = token(teksKasus(k))
   const komoditas = LEKSIKON_KOMODITAS.filter((c) => adaUrutan(c.split(' '), tok)).sort((a, b) => b.length - a.length)
   if (!komoditas.length) return []
-  const operasi = Object.keys(LEKSIKON_OPERASI).filter((o) => LEKSIKON_OPERASI[o].some((w) => tok.includes(w)))
+  const tokOp = tokenOperasi(teksKasus(k))
+  const operasi = Object.keys(LEKSIKON_OPERASI).filter((o) => LEKSIKON_OPERASI[o].some((w) => tokOp.includes(w)))
   return [{ name: komoditas[0], quantity: null, unit: null, operation: operasi.length === 1 ? operasi[0] : null }]
 }
 

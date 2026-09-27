@@ -91,7 +91,7 @@ const denganMuatan = (cargoes, x = {}) => ({ ...DASAR_H20, ...x, cargoes })
 // =====================================================================
 bagian('A. scorer-2 (koreksi penilaian muatan — scorer-1 tidak diubah)')
 {
-  cek('A0 versi scorer-2 baru; scorer-1 tetap', S2.VERSI_PENILAI_V2 === 'prd005-e5-eval4/scorer-2' && S1.VERSI_PENILAI === 'prd005-step3c-eval1/scorer-1')
+  cek('A0 versi scorer-3 (bukti sumber leksikon); scorer-1 tetap', S2.VERSI_PENILAI_V2 === 'prd005-e5-eval4/scorer-3' && S1.VERSI_PENILAI === 'prd005-step3c-eval1/scorer-1')
   const setia = denganMuatan([{ name: 'sawn timber', operation: 'LOAD' }])
   const s1 = skor1(H20, setia)
   const s2 = skor2(H20, setia)
@@ -146,8 +146,8 @@ bagian('B. pemeriksa konsistensi GT ↔ sumber')
     E3: G.periksaKonsistensiGtSumber(Object.values(K3)),
   }
   cek('B1 (R8) GT historis H20 TERDETEKSI tidak konsisten (K1: sawn timber + LOAD, GT hanya [])', hist.E3.gagal.length === 1 && hist.E3.gagal[0].kasus === 'H20' && hist.E3.gagal[0].aturan === 'K1')
-  cek('B2 temuan historis lain: tak ada GAGAL di Eval-1/Eval-2; INFO K4 = T07 & H18 (operasi tanpa komoditas)',
-    hist.E1.lulus && hist.E2.lulus && JSON.stringify([...hist.E2.temuan, ...hist.E3.temuan].filter((t) => t.aturan === 'K4').map((t) => t.kasus)) === '["T07","H18"]')
+  cek('B2 temuan historis lain: tak ada GAGAL di Eval-1/Eval-2; T07/H18 ("completion of discharge", "Discharging completed") bukan bukti operasi → tanpa INFO',
+    hist.E1.lulus && hist.E2.lulus && [...hist.E1.temuan, ...hist.E2.temuan, ...hist.E3.temuan].filter((t) => t.aturan === 'K4').length === 0)
   cek('B3 kasus regresi Eval-4 lulus pemeriksa', G.periksaKonsistensiGtSumber(RG.KASUS_REGRESI_MUATAN).lulus)
   const mut = (teks, cargoes) => G.periksaKasus({ id: 'MUT', teks, gt: { cargoes } })
   cek('B4 mutasi K1: "load 5,000 MT coal" + GT [] → GAGAL', mut('Please load 5,000 MT coal', { bentukDiterima: [[]] }).some((t) => t.aturan === 'K1'))
@@ -293,6 +293,103 @@ bagian('F. kunci lingkup & efek samping')
   cek('F3 modul Eval-4 luring tanpa jaringan/kunci/DB', ['prisma/spike-eval4-scorer.mjs', 'prisma/spike-gt-konsistensi.mjs', 'prisma/spike-eval4-identitas-model.mjs', 'prisma/fixtures/spike-intake/eval4-regresi-muatan.mjs'].every((f) => !/fetch\(|OPENROUTER_API_KEY|PrismaClient|process\.env/.test(baca(f))))
   cek('F4 fixture & scorer historis tidak berubah (Eval-3 SHA c6098c1a…, scorer-1 e5c89ca4…)', sha('prisma/fixtures/spike-intake/eval3-cases.mjs') === 'c6098c1a06a9cc771e202b15c65fd38d351a89a258f03985002ef4a3450853d1' && sha('prisma/spike-eval1-scorer.mjs') === 'e5c89ca4ca917ea51856ab74795e388ac91860e1cd8843fd16294cdda300f493')
   cek('F5 semua "panggilan penyedia" di uji ini berakhir di stub (openrouter.ai tersimulasi, nol jaringan nyata)', permintaan.every((p) => /openrouter\.ai/.test(p.url)))
+}
+
+// =====================================================================
+bagian('G. Leksikon maritim & celah grounding (audit alias — kasus serangan A–P + tambahan)')
+{
+  const LX = muat('src/lib/maritim-lexicon.ts')
+  const c1 = (teks, cargo, jenis = 'TEXT') => validasi({ classification: 'NEW_NOMINATION', vessels: [], cargoes: [cargo] }, teks, jenis).proposal.cargoes[0] ?? null
+  const q = (teks, cargo) => c1(teks, cargo)?.quantity
+  const K1 = Object.fromEntries(F1.bangunKasusEval1(new Date(`${HARI}T00:00:00Z`)).map((k) => [k.id, k]))
+  cek('G0 leksikon: versi, modul data tanpa impor, tanpa lookbehind; DISCH hanya konteks BARIS_MUATAN; DISCHG/LDG/LOADG/TON/TONS/M/T TIDAK ada',
+    LX.VERSI_LEKSIKON === 'maritim-lexicon/1' && !/^\s*import\s/m.test(baca('src/lib/maritim-lexicon.ts')) && !/\(\?<[!=a-zA-Z]/.test(baca('src/lib/maritim-lexicon.ts')) &&
+      LX.OPERASI_LEKSIKON.DISCHARGE.alias.includes('DISCH') && LX.OPERASI_LEKSIKON.DISCHARGE.konteks === 'BARIS_MUATAN' &&
+      !JSON.stringify(LX.OPERASI_LEKSIKON).match(/"(DISCHG|LDG|LOADG|L D)"/) && !['TON', 'TONS', 'M T'].some((x) => LX.SATUAN_LEKSIKON.MT.alias.includes(x)) &&
+      JSON.stringify(LX.SATUAN_LEKSIKON.MT.alias) === '["MT","METRIC TON","METRIC TONS","METRIC TONNE","METRIC TONNES","TONNE","TONNES"]' && JSON.stringify(LX.SATUAN_LEKSIKON.CBM.alias) === '["CBM","M3"]')
+  cek('G0b setiap entri leksikon punya provenans; tak ada istilah niat keagenan (AGENT/AGENCY/NOMINATION) di leksikon', [...Object.values(LX.OPERASI_LEKSIKON), ...Object.values(LX.SATUAN_LEKSIKON)].every((e) => e.provenans.length > 0) && !/AGENT|AGENCY|NOMINAT|APPOINT/.test(baca('src/lib/maritim-lexicon.ts').replace(/^\s*\/\/.*$/gm, '')))
+  // A–D uang / tarif / lumpsum / partikular
+  cek('A "Jumlah : IDR 45.600.000" (E12) → bukan jumlah muatan', (() => { const c = c1(G.teksKasus(K1.E12), { name: 'Jasa keagenan', quantity: 45600000 }); return c && c.quantity === null && c.flags.includes('CARGO_QUANTITY_NOT_IN_SOURCE') })())
+  cek('B "Freight rate: USD 9.75 per MT" (E13) → bukan jumlah muatan', q(G.teksKasus(K1.E13), { name: 'Coal', quantity: 9.75, unit: 'MT', operation: 'LOAD' }) === null)
+  cek('C "Rate USD 5,000 lumpsum; coal" → bukan jumlah muatan', q('Rate USD 5,000 lumpsum; coal', { name: 'coal', quantity: 5000 }) === null && q('coal 5,000 lumpsum', { name: 'coal', quantity: 5000 }) === null)
+  cek('D "MT SINAR JAYA GRT 1200" → bukan jumlah muatan (MT awalan kapal, GRT partikular)', q('MT SINAR JAYA ETA 12, load coal\nMT SINAR JAYA GRT 1200', { name: 'coal', quantity: 1200, unit: 'MT', operation: 'LOAD' }) === null &&
+    q('Cargo: coal, DWT 45,000 MT', { name: 'coal', quantity: 45000, unit: 'MT' }) === null)
+  // E–F operasi dari frasa non-operasi
+  cek('E "vessel max load line 12m" → tanpa operasi LOAD', (() => { const c = c1('coal terminal, vessel max load line 12m', { name: 'coal', operation: 'LOAD' }); return c.operation === null && c.flags.includes('CARGO_OPERATION_NOT_IN_SOURCE') })())
+  cek('F "Load port: Taboneo. Discharge port: Gresik. Cargo: coal" → tanpa operasi (bukan ambigu, bukan tebakan)', (() => { const c = c1('Load port: Taboneo. Discharge port: Gresik. Cargo: coal', { name: 'coal', operation: 'LOAD' }); return c.operation === null && c.flags.includes('CARGO_OPERATION_NOT_IN_SOURCE') && !c.flags.includes('CARGO_OPERATION_AMBIGUOUS') })())
+  // G–K pengenal / tanggal / jam / rujukan / LOA
+  cek('G "IMO 9998535" → bukan jumlah', q('MV LAYANG IMO 9998535, load coal 5,000 MT', { name: 'coal', quantity: 9998535 }) === null)
+  cek('H "ETA 28 October 2026" → bukan jumlah (2026 / 28)', [2026, 28].every((n) => q('load coal, ETA 28 October 2026', { name: 'coal', quantity: n }) === null))
+  cek('I "12:30" → bukan jumlah', [30, 12, 1230].every((n) => q('load coal at 12:30', { name: 'coal', quantity: n }) === null))
+  cek('J "Ref 0412" → bukan jumlah', q('Ref 0412 load coal', { name: 'coal', quantity: 412 }) === null)
+  cek('K "SNTLQB/LOA/0202" & "LOA 183,5 m" → LOA tak menjadi fakta jumlah muatan', q('No. SNTLQB/LOA/0202 load coal', { name: 'coal', quantity: 202 }) === null && q('coal, LOA 183,5 m', { name: 'coal', quantity: 183.5 }) === null)
+  // L niat keagenan TIDAK dari leksikon
+  cek('L "advise your agency fee" (H20) → validator tak pernah menaikkan klasifikasi; leksikon tanpa istilah niat', validasi({ ...DASAR_H20, cargoes: [] }, K3.H20.teks).classification === 'UNSUPPORTED_REQUEST' &&
+    validasi({ ...DASAR_H20, classification: 'NOT_RELEVANT', cargoes: [] }, K3.H20.teks).classification === 'NOT_RELEVANT')
+  // M–N
+  cek('M "completion of discharge" / "Discharging completed" → bukan operasi DISCHARGE saat ini', ['coal: estimated departure two days after completion of discharge', 'coal discharging completed without incident'].every((t) => { const c = c1(t, { name: 'coal', operation: 'DISCHARGE' }); return c.operation === null && c.flags.includes('CARGO_OPERATION_NOT_IN_SOURCE') }))
+  cek('N "Jasa bongkar muat coal" → ambigu, tak ada tebakan tunggal (dipertahankan + wajib konfirmasi)', (() => { const c = c1('Jasa bongkar muat coal di Gresik', { name: 'coal', operation: 'DISCHARGE' }); return c.operation === 'DISCHARGE' && c.flags.includes('CARGO_OPERATION_AMBIGUOUS') && !P.cargoTepercaya(c) })())
+  // O perkiraan
+  const o = c1('muatan sekitar 50.000 MT batubara', { name: 'batubara', quantity: 50000, unit: 'MT' })
+  cek('O "sekitar 50.000 MT" → 50000 MT + APPROXIMATE_QUANTITY, wajib konfirmasi', o.quantity === 50000 && o.unit === 'MT' && o.flags.includes('APPROXIMATE_QUANTITY') && !P.cargoTepercaya(o) && P.PERLU_KONFIRMASI_CARGO.includes('APPROXIMATE_QUANTITY'))
+  cek('O2 "+/- 7.500 MT" & "approx. 7,500 MT" → APPROXIMATE_QUANTITY; angka pasti "15.000 MT" → tanpa flag', c1('Muatan : Batubara total 15.000 MT (tongkang +/- 7.500 MT)', { name: 'Batubara', quantity: 7500, unit: 'MT' }).flags.includes('APPROXIMATE_QUANTITY') &&
+    c1('approx. 7,500 MT coal was loaded', { name: 'coal', quantity: 7500, unit: 'MT' }).flags.includes('APPROXIMATE_QUANTITY') && c1('Muatan : Batubara total 15.000 MT (tongkang +/- 7.500 MT)', { name: 'Batubara', quantity: 15000, unit: 'MT' }).flags.length === 0)
+  // P OCR angka
+  const pOcr = c1('Carg0 :  Nicke1 0re   1O.000 MT   DISCH', { name: 'Nickel Ore', quantity: 10000, unit: 'MT', operation: 'DISCHARGE' })
+  cek('P "Carg0 : Nicke1 0re 1O.000 MT DISCH" → Nickel Ore / 10000 / MT / DISCHARGE + OCR_CORRECTED, wajib konfirmasi', pOcr.quantity === 10000 && pOcr.unit === 'MT' && pOcr.operation === 'DISCHARGE' && pOcr.flags.includes('OCR_CORRECTED') && !P.cargoTepercaya(pOcr))
+  cek('P2 OCR angka TIDAK menebak: tanpa satuan tepat sesudahnya / <2 digit asli / nilai beda / huruf lain → dikosongkan',
+    q('Cargo: nickel ore 1O.000 in bulk', { name: 'nickel ore', quantity: 10000 }) === null && q('Cargo: nickel ore lO MT', { name: 'nickel ore', quantity: 10 }) === null &&
+      q('Cargo: nickel ore 1O.000 MT', { name: 'nickel ore', quantity: 1000 }) === null && q('Cargo: nickel ore 1Q.000 MT', { name: 'nickel ore', quantity: 10000 }) === null)
+  // tambahan (≥ 20 kasus total)
+  cek('Q satuan hanya TEPAT sesudah angka: "5000 tons" (TON bukan MT) & "5000 M/T" → jumlah & satuan kosong', [['load coal 5000 tons', 'MT'], ['load coal 5000 M/T', 'MT']].every(([t, u]) => { const c = c1(t, { name: 'coal', quantity: 5000, unit: u, operation: 'LOAD' }); return c.quantity === null && c.unit === null }))
+  cek('R CBM: "3200 m³" / "3200 m3" / "3200 CBM" berbukti; MT↔CBM tak dikonversi', ['load clinker 3200 m³', 'load clinker 3200 m3', 'load clinker 3200 CBM'].every((t) => { const c = c1(t, { name: 'clinker', quantity: 3200, unit: 'CBM' }); return c.quantity === 3200 && c.unit === 'CBM' }) &&
+    (() => { const c = c1('load clinker 3200 CBM', { name: 'clinker', quantity: 3200, unit: 'MT' }); return c.quantity === 3200 && c.unit === null && c.flags.includes('CARGO_UNIT_NOT_IN_SOURCE') })())
+  cek('S tarif muat "5,000 MT per day" / "5,000 MT/day" → bukan jumlah muatan', ['coal load rate 5,000 MT per day', 'coal 5,000 MT/day'].every((t) => q(t, { name: 'coal', quantity: 5000 }) === null))
+  cek('T DISCH hanya di konteks muatan: "Next port DISCH Gresik" tanpa nama/label muatan → bukan bukti', (() => { const c = c1('coal for Samarinda\nNext port DISCH Gresik', { name: 'coal', operation: 'DISCHARGE' }); return c.operation === null })())
+  cek('U DISCHG / LDG tidak dikenal (belum disetujui owner)', c1('Cargo: coal 5,000 MT DISCHG', { name: 'coal', operation: 'DISCHARGE' }).operation === null && c1('Cargo: coal 5,000 MT LDG', { name: 'coal', operation: 'LOAD' }).operation === null)
+  cek('V operasi per baris: dua kapal (E05) — coal LOAD & gypsum DISCHARGE masing-masing tunggal, bukan ambigu', (() => { const t = G.teksKasus(K1.E05); const a = c1(t, { name: 'coal', operation: 'LOAD' }); const b = c1(t, { name: 'gypsum', operation: 'DISCHARGE' }); return a.operation === 'LOAD' && b.operation === 'DISCHARGE' && !a.flags.length && !b.flags.length })())
+  cek('X uang yang BERSEBELAHAN satuan / sesudah label jumlah tetap bukan jumlah: "coal USD 9.75 MT", "Jumlah: 45.600.000 IDR"', q('Cargo: coal USD 9.75 MT', { name: 'coal', quantity: 9.75 }) === null && q('Cargo: coal\nJumlah: 45.600.000 IDR', { name: 'coal', quantity: 45600000 }) === null)
+  cek('Y OCR angka lewat label jumlah TANPA satuan tetap ditolak: "Quantity: 1O.000"', q('Cargo: nickel ore\nQuantity: 1O.000', { name: 'nickel ore', quantity: 10000 }) === null)
+  cek('W label jumlah tanpa satuan: "Quantity: 5000" berbukti (satuan tetap kosong); "Jumlah : IDR 5000" tidak', q('Cargo: coal\nQuantity: 5000', { name: 'coal', quantity: 5000 }) === 5000 && q('Cargo: coal\nJumlah : IDR 5000', { name: 'coal', quantity: 5000 }) === null)
+}
+
+// =====================================================================
+bagian('H. Regresi historis (fixture beku — tidak diubah)')
+{
+  const K1 = Object.fromEntries(F1.bangunKasusEval1(new Date(`${HARI}T00:00:00Z`)).map((k) => [k.id, k]))
+  const pil = (n) => (!n || !('status' in n) ? null : n.status === 'PRESENT' ? n.value : n.status === 'ACCEPTABLE' ? n.values.find((x) => x !== null) ?? null : null)
+  const muatanGt = (k) => (k.gt.cargoes?.bentukDiterima?.[0] ?? []).map((r) => Object.fromEntries(['name', 'quantity', 'unit', 'operation'].map((f) => [f, pil(r[f])]).filter(([, x]) => x !== null)))
+  const vk = (k, cargoes) => validasi({ classification: 'NEW_NOMINATION', vessels: [], cargoes }, G.teksKasus(k), k.kind === 'PDF' ? 'PDF' : 'TEXT').proposal
+  cek('H-E09 (PDF): muatan GT dipertahankan tetapi UNVERIFIED_SOURCE → wajib konfirmasi (PDF tak di-grounding)', (() => { const p = vk(K1.E09, muatanGt(K1.E09)); return p.cargoes.length === 1 && p.cargoes[0].flags.includes('UNVERIFIED_SOURCE') && !P.cargoTepercaya(p.cargoes[0]) })())
+  cek('H-E10: muatan GT pulih (10000 MT DISCHARGE) + OCR_CORRECTED, wajib konfirmasi', (() => { const c = vk(K1.E10, muatanGt(K1.E10))[`cargoes`][0]; return c.quantity === 10000 && c.operation === 'DISCHARGE' && c.flags.includes('OCR_CORRECTED') && !P.cargoTepercaya(c) })())
+  cek('H-E12: uang invoice bukan jumlah muatan', vk(K1.E12, [{ name: 'Jasa keagenan', quantity: 45600000 }]).cargoes.every((c) => c.quantity === null))
+  cek('H-E13: jumlah GT 50,000 MT bertahan PASTI; tarif 9.75 & port dues 12500 tidak', (() => { const p = vk(K1.E13, muatanGt(K1.E13)); return p.cargoes[0].quantity === 50000 && p.cargoes[0].flags.length === 0 })() &&
+    [9.75, 12500].every((n) => vk(K1.E13, [{ name: 'Coal', quantity: n, unit: 'MT' }]).cargoes[0].quantity === null))
+  const H18 = K3.H18
+  cek('H-H18: komoditas karangan dibuang; operasi tanpa nama tak jadi baris', vk(H18, [{ name: 'iron ore', quantity: 30000, unit: 'MT', operation: 'DISCHARGE' }]).cargoes.length === 0 && vk(H18, [{ operation: 'DISCHARGE' }]).cargoes.length === 0)
+  cek('H-H20: sawn timber / LOAD setia dipertahankan; GT historis → INCONCLUSIVE_GT (bukan F5)', vk(K3.H20, [{ name: 'sawn timber', operation: 'LOAD' }]).cargoes[0].operation === 'LOAD' &&
+    skor2(K3.H20, denganMuatan([{ name: 'sawn timber', operation: 'LOAD' }])).integritasGt === 'INCONCLUSIVE_GT')
+  cek('H-RG-H18 / RG-H20: setia → 0 FATAL, integritas OK', skor2(RGK['RG-H20'], denganMuatan([{ name: 'sawn timber', operation: 'LOAD' }])).POST.jumlah.FATAL === 0 &&
+    (() => { const r = skor2(RGK['RG-H18'], { classification: 'NOT_RELEVANT', vessels: [], cargoes: [] }); return r.POST.jumlah.FATAL === 0 && r.integritasGt === 'OK' })())
+  cek('H-scorer-3: uang di sumber TIDAK menjadi "berbukti" → jumlah uang tetap F5_UNSUPPORTED (bukan GT_CONFLICT)', (() => {
+    const k = { ...RH20, teks: RH20.teks + '\nRate USD 5,000 lumpsum for sawn timber' }
+    return skor2(k, denganMuatan([{ name: 'sawn timber', quantity: 5000, operation: 'LOAD' }])).RAW.fatal.some((f) => f.jenis === 'F5_UNSUPPORTED')
+  })())
+}
+
+// =====================================================================
+bagian('K. linkExistingIntake — klasifikasi non-keagenan tak bisa ditautkan (OWNER D10)')
+{
+  const svc = baca('src/services/intake/intake.service.ts')
+  const link = svc.slice(svc.indexOf('export async function linkExistingIntake('), svc.indexOf('\n}\n', svc.indexOf('export async function linkExistingIntake(')))
+  cek('K1 daftar-izin: NEW_* & INSUFFICIENT boleh; NOT_RELEVANT, UNSUPPORTED_REQUEST, klasifikasi tak dikenal → tidak (gagal-tertutup)',
+    ['NEW_NOMINATION', 'NEW_APPOINTMENT', 'INSUFFICIENT_INFORMATION'].every(P.bolehTautkanVoyage) && !['NOT_RELEVANT', 'UNSUPPORTED_REQUEST', 'APPROVE_NOW', '', 'new_nomination'].some(P.bolehTautkanVoyage))
+  const iG = link.indexOf('P.bolehTautkanVoyage(row.classification)')
+  cek('K2 pagar dijalankan SEBELUM hitung duplikat & SEBELUM tulis intake (updateMany/catatAudit)', iG > 0 && iG < link.indexOf('hitungDuplikat(') && iG < link.indexOf('updateMany(') && iG < link.indexOf('catatAudit(') && /CLASSIFICATION_NOT_LINKABLE/.test(link))
+  const ui = baca('src/components/automation/IntakeReview.tsx')
+  cek('K3 UI tidak menawarkan "Tautkan" untuk klasifikasi yang diblok', /bisaEdit && c\.type === 'VOYAGE' && bolehTautkanVoyage\(d\.classification\) && \(/.test(ui) && /bisaEdit && bolehTautkanVoyage\(d\.classification\) && <p[^>]*>\{t\.linkNote\}/.test(ui))
+  const reg = baca('docs/TAH-TECH-DEBT.md')
+  cek('K4 TD-005-03 (alur pembaruan operasional kelak) tercatat OPEN selama UNSUPPORTED_REQUEST tak bisa ditautkan', /## TD-005-03[\s\S]*?- Status: OPEN/.test(reg) && !P.bolehTautkanVoyage('UNSUPPORTED_REQUEST'))
 }
 
 console.log(`\n${gagal === 0 ? '✅ SEMUA LULUS' : '❌ ADA YANG GAGAL'} — lulus ${lulus}, gagal ${gagal}`)

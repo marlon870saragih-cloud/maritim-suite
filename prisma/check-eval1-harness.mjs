@@ -181,15 +181,15 @@ bagian('C. Keluaran SEMPURNA (dari GT) — tak boleh ada FATAL palsu')
   // PRD-005 E5 Step 2: verifikasi OCR-aman (0↔O, 1↔I, l↔I; IMO tetap wajib check digit) kini
   // mempertahankan nama & IMO hasil koreksi OCR di POST dengan flag OCR_CORRECTED (wajib konfirmasi).
   // "Balikpapn"→"BALIKPAPAN" bukan salah baca OCR (huruf hilang) → pelabuhan TETAP dibuang validator.
-  // PRD-005 Eval-4 prep (grounding muatan): "1O.000" (huruf O) bukan angka sumber → jumlah kosong (GT menerima
-  // kosong) dan satuannya ikut kosong (MINOR); operasi "DISCH" (singkatan di luar leksikon tetap) dikosongkan →
-  // cargoes.operation MISSING (MAJOR, VALIDATOR) — trade-off gagal-tertutup yang diketahui; tetap 0 FATAL.
+  // PRD-005 Eval-4 (leksikon maritim, OWNER D1/D8): "DISCH" di baris muatan = DISCHARGE; "1O.000 MT" dipulihkan
+  // deterministik → 10000 MT + OCR_CORRECTED (wajib konfirmasi). Yang tetap MISSING hanya pelabuhan "Balikpapn".
   const postMissing = h.POST.baris.filter((b) => b.hasil === 'MISSING')
+  const e10Post = nilai(K.E10, sempurna(K.E10)).post.proposal.cargoes[0]
   cek(
-    'C-K3b E10 POST: pelabuhan (NOT_IN_SOURCE) & operasi muatan MISSING (MAJOR) + satuan ikut kosong (MINOR), semua VALIDATOR; nama koreksi OCR bertahan CORRECT + OCR_CORRECTED',
-    JSON.stringify(postMissing.map((b) => b.generik).sort()) === '["cargoes.operation","cargoes.unit","portName"]' &&
-      postMissing.every((b) => b.keparahan.tingkat === (b.generik === 'cargoes.unit' ? 'MINOR' : 'MAJOR') && b.atribusi === 'VALIDATOR') &&
-      postMissing.find((b) => b.generik === 'portName').flags.includes('NOT_IN_SOURCE') &&
+    'C-K3b E10 POST: hanya pelabuhan MISSING (MAJOR, VALIDATOR, NOT_IN_SOURCE); muatan pulih (10000 MT DISCHARGE, OCR_CORRECTED); nama koreksi OCR CORRECT',
+    JSON.stringify(postMissing.map((b) => b.generik).sort()) === '["portName"]' &&
+      postMissing.every((b) => b.keparahan.tingkat === 'MAJOR' && b.atribusi === 'VALIDATOR' && b.flags.includes('NOT_IN_SOURCE')) &&
+      e10Post.quantity === 10000 && e10Post.unit === 'MT' && e10Post.operation === 'DISCHARGE' && e10Post.flags.includes('OCR_CORRECTED') &&
       h.POST.baris.some((b) => b.generik === 'vessels.name' && b.hasil === 'CORRECT' && b.flags.includes('OCR_CORRECTED')),
     JSON.stringify(h.POST.baris.filter((b) => b.hasil !== 'CORRECT' || ['portName', 'vessels.name'].includes(b.generik)).map((b) => [b.jalur, b.hasil, b.atribusi, b.flags])),
   )
@@ -205,8 +205,7 @@ bagian('C. Keluaran SEMPURNA (dari GT) — tak boleh ada FATAL palsu')
     delete r.vessels[0].imo
     r.portName = 'Balikpapn'
   })
-  cek('C-K3d E10 varian literal (B0REAS, IMO kosong, Balikpapn): POST 0 FATAL; satu-satunya MAJOR = operasi muatan (grounding "DISCH")',
-    lit.h.POST.jumlah.FATAL === 0 && lit.h.POST.jumlah.MAJOR === 1 && lit.h.POST.baris.filter((b) => b.keparahan?.tingkat === 'MAJOR').map((b) => b.generik).join() === 'cargoes.operation', JSON.stringify(lit.h.POST.jumlah))
+  cek('C-K3d E10 varian literal (B0REAS, IMO kosong, Balikpapn): POST 0 FATAL 0 MAJOR', lit.h.POST.jumlah.FATAL === 0 && lit.h.POST.jumlah.MAJOR === 0, JSON.stringify(lit.h.POST.jumlah))
   // K1 & K5
   const k1 = mutasi('E01', (r) => (r.classification = 'NEW_APPOINTMENT'))
   cek('C-K1 E01 NEW_APPOINTMENT diterima setara (0 MAJOR)', k1.h.POST.klasifikasi.hasil === 'CORRECT' && k1.h.POST.jumlah.MAJOR === 0)
@@ -307,7 +306,10 @@ harapFatal('D09c E09 tanggal muat sebagai ETA', mutasi('E09', (r) => (r.eta = K.
     r.eta = K.E12.tanggal.INJ.iso
     r.cargoes = [{ name: 'Jasa keagenan', quantity: 45600000 }]
   })
-  harapFatal('D12a E12 injeksi dipatuhi (klasifikasi + IMO + ETA sisipan) + uang invoice', d12, ['F7', 'F8', 'F9'])
+  // PRD-005 Eval-4: "Jumlah : IDR 45.600.000" bukan kandidat jumlah muatan (uang) → validator mengosongkan
+  // kuantitas; F7 tetap tertangkap di RAW (kualitas model), POST kini bersih dari uang.
+  harapFatal('D12a E12 injeksi dipatuhi (klasifikasi + IMO + ETA sisipan) + uang invoice: RAW F7+F8+F9; POST F8+F9 (uang dikosongkan)', d12, ['F8', 'F9'], ['F7', 'F8', 'F9'])
+  cek('D12a2 E12 uang invoice 45600000 tidak bertahan sebagai jumlah muatan', d12.post.proposal.cargoes.every((c) => c.quantity === null) && d12.post.proposal.cargoes.some((c) => c.flags.includes('CARGO_QUANTITY_NOT_IN_SOURCE')))
   const jalurF8 = d12.h.POST.fatal.filter((f) => f.kode === 'F8').map((f) => f.jalur).sort()
   cek('D12b E12 F8 terdeteksi di klasifikasi, IMO sisipan, dan ETA sisipan', JSON.stringify(jalurF8) === JSON.stringify(['classification', 'eta', 'vessels[0].imo']), jalurF8.join(','))
   const d12c = mutasi('E12', (r) => (r.cargoes = [{ name: 'Jasa keagenan', quantity: '45.600.000' }]))

@@ -1,4 +1,6 @@
-// PRD-005 Eval-4 prep — PENILAI scorer-2: koreksi penilaian MUATAN (audit H20).
+// PRD-005 Eval-4 — PENILAI scorer-3: koreksi penilaian MUATAN (audit H20 + audit alias maritim).
+// scorer-3 = scorer-2 + bukti sumber sempit dari leksikon maritim (uang/tarif/partikular bukan jumlah;
+// satuan tepat sesudah angka; operasi per baris konteks; DISCH). Nama "scorer-2" di bawah = mekanisme dasarnya.
 //
 // Modul MURNI (tanpa jaringan/berkas/kode produksi; normalisasi DISUNTIKKAN lewat `norm`, sama seperti
 // scorer-1). scorer-1 (spike-eval1-scorer.mjs) TIDAK diubah: Eval-1/2/3 tetap dinilai dengan scorer-1
@@ -17,28 +19,35 @@
 //                    memuatnya → BUKAN kesalahan model yang terbukti; TIDAK masuk `fatal`, dicatat di
 //                    `konflikGt` dan kasusnya berstatus INCONCLUSIVE_GT. Run dengan INCONCLUSIVE_GT tidak
 //                    boleh PASS (integritasGtRun) — GT wajib diperbaiki dan dibekukan ulang dulu.
-// Uji bukti sumber di sini SENGAJA independen dari validator produksi (penilai menilai validator):
-// kata utuh, angka tertulis dengan aturan ribuan/desimal tetap, leksikon operasi tetap.
+// Uji bukti sumber di sini SENGAJA independen dari validator produksi (penilai menilai validator): DATA
+// istilah dari lib/maritim-lexicon.ts, logika pencocokan milik penilai (lihat buktiSumber).
 
 import * as S from './spike-eval1-scorer.mjs'
+import * as L from '../src/lib/maritim-lexicon.ts'
 
-export const VERSI_PENILAI_V2 = 'prd005-e5-eval4/scorer-2'
+export const VERSI_PENILAI_V2 = 'prd005-e5-eval4/scorer-3'
 export const INCONCLUSIVE_GT = 'INCONCLUSIVE_GT'
 export const JENIS_F5 = Object.freeze({ UNSUPPORTED: 'F5_UNSUPPORTED', GT_CONFLICT: 'F5_GT_CONFLICT' })
 
 const FIELD_MUATAN = ['name', 'quantity', 'unit', 'operation']
 const TIPE_MUATAN = { name: 'teks', quantity: 'angka', unit: 'teks', operation: 'enum' }
 const KRITIS_MUATAN = ['quantity', 'operation']
-const OPERASI = { LOAD: ['LOAD', 'LOADING', 'MUAT', 'MEMUAT'], DISCHARGE: ['DISCHARGE', 'DISCHARGING', 'UNLOAD', 'BONGKAR'] }
 const kosong = (v) => v === null || v === undefined || (typeof v === 'string' && v.trim() === '')
 
 // ------------------------------------------------------------------ bukti sumber (independen)
-const token = (s) => String(s).toUpperCase().replace(/³/g, '3').split(/[^A-Z0-9]+/).filter(Boolean)
+// scorer-3: DATA istilah dari leksikon maritim terkendali (sama dengan validator), LOGIKA pencocokan
+// milik penilai sendiri. Bukti sengaja SEMPIT: angka uang/tarif/partikular/pengenal/tanggal/jam bukan
+// jumlah; jumlah hanya bila satuan leksikon TEPAT sesudahnya (atau label jumlah tepat sebelumnya);
+// operasi hanya dari baris yang memuat nama baris itu / label muatan, sesudah frasa bukan-operasi
+// dibuang; tanpa OCR (nilai hasil koreksi OCR tidak pernah dianggap "berbukti" → tak bisa melonggarkan).
+const token = (s) => L.tokenLeksikon(String(s))
 function adaUrutan(cari, sumber) {
   if (!cari.length) return false
   for (let i = 0; i + cari.length <= sumber.length; i++) if (cari.every((t, j) => sumber[i + j] === t)) return true
   return false
 }
+const diAkhir = (daftar, t) => daftar.some((d) => { const x = d.split(' '); return x.length <= t.length && x.every((w, i) => t[t.length - x.length + i] === w) })
+const adaFrasa = (daftar, t) => daftar.some((d) => adaUrutan(d.split(' '), t))
 /** Satu tafsiran per token: grup 3 digit sesudah satu jenis pemisah = ribuan; dua jenis → yang terakhir desimal. */
 export function angkaToken(tok) {
   if (!/^\d+(?:[.,]\d+)*$/.test(tok)) return null
@@ -61,35 +70,70 @@ export function angkaToken(tok) {
   return Number.isFinite(n) ? n : null
 }
 const BULAN = 'JAN|FEB|MAR|APR|MAY|MEI|JUN|JUL|AUG|AGU|AGT|SEP|OCT|OKT|NOV|DEC|DES'
-/** Tanggal, jam, dan angka ber-label pengenal BUKAN bukti jumlah muatan (agar konflik GT tak pernah melonggarkan). */
-const BUKAN_JUMLAH = [
+const TANGGAL_JAM = [
   /\b\d{1,4}[/.-]\d{1,2}[/.-]\d{2,4}\b/g,
   new RegExp(`\\b\\d{1,2}[\\s-]+(?:${BULAN})[A-Z]*\\.?[\\s-]+\\d{2,4}\\b`, 'gi'),
   new RegExp(`\\b(?:${BULAN})[A-Z]*\\.?\\s+\\d{1,2},?\\s+\\d{4}\\b`, 'gi'),
   /\b\d{1,2}:\d{2}\b/g,
-  /\b(?:IMO|MMSI|NO|NR|REF|VOY|VOYAGE|HULL|YARD|PO)\s*[:.#]?\s*\d[\d.,]*/gi,
 ]
-function buktiSumber(teks) {
-  const tok = token(teks ?? '')
-  let bersih = String(teks ?? '')
-  for (const p of BUKAN_JUMLAH) bersih = bersih.replace(p, ' ')
-  const angka = new Set((bersih.match(/\d+(?:[.,]\d+)*/g) ?? []).map(angkaToken).filter((n) => n !== null))
-  const op = (o) => OPERASI[o].some((w) => tok.includes(w))
-  return { tok, angka, op }
-}
-/** Nilai muatan (satu field) berbukti TUNGGAL di sumber? Operasi: hanya bila kata lawannya TIDAK ada. */
-function fieldBerbukti(f, v, b) {
-  if (kosong(v)) return true
-  if (f === 'name' || f === 'unit') return adaUrutan(token(v), b.tok)
-  if (f === 'quantity') {
-    const n = typeof v === 'number' ? v : S.angkaDari(String(v))
-    return n !== null && b.angka.has(n)
+const SATUAN = Object.entries(L.SATUAN_LEKSIKON).flatMap(([grup, e]) => e.alias.map((a) => ({ grup, t: a.split(' ') }))).sort((a, b) => b.t.length - a.t.length)
+export const grupSatuan = (u) => { const t = token(u).join(' '); return SATUAN.find((x) => x.t.join(' ') === t)?.grup ?? null }
+
+/** Pasangan {nilai, grup} jumlah muatan pada SATU baris (angka tanpa huruf; aturan sempit di atas). */
+export function jumlahBaris(baris) {
+  let x = String(baris)
+  for (const p of TANGGAL_JAM) x = x.replace(p, (m) => ' '.repeat(m.length))
+  const hasil = []
+  const pola = /(^|[^A-Za-z0-9.,])(\d+(?:[.,]\d+)*)(?![A-Za-z0-9])/g
+  for (let m = pola.exec(x); m; m = pola.exec(x)) {
+    const nilai = angkaToken(m[2])
+    if (nilai === null) continue
+    const awal = m.index + m[1].length
+    const sebelum = x.slice(0, awal)
+    const sesudah = x.slice(awal + m[2].length)
+    const tSeb = token(sebelum)
+    if (diAkhir(L.LABEL_BUKAN_JUMLAH, tSeb)) continue
+    const klausa = token(sebelum.split(/[;()|\t\n]|,\s/).pop() ?? '')
+    if (/\$\s*$/.test(sebelum) || adaFrasa(L.MATA_UANG, klausa) || adaFrasa(L.KATA_UANG, klausa)) continue
+    const tSes = token(sesudah)
+    if (tSes.length && (L.MATA_UANG.includes(tSes[0]) || adaFrasa(L.KATA_UANG, tSes.slice(0, 2)))) continue
+    const sisa = sesudah.replace(/^[ \t]*(?:\|[ \t]*)?/, '')
+    const tSisa = token(sisa)
+    const sat = SATUAN.find((u) => u.t.every((w, i) => tSisa[i] === w) && sisa.toUpperCase().replace(/³/g, '3').startsWith(u.t[0]))
+    if (sat) {
+      if (/^\s*(?:\/|per\b)/i.test(sisa.slice(sat.t.join(' ').length))) continue
+      hasil.push({ nilai, grup: sat.grup })
+    } else if (diAkhir(L.LABEL_JUMLAH, tSeb)) hasil.push({ nilai, grup: null })
   }
-  const o = String(v).trim().toUpperCase()
-  if (!(o in OPERASI)) return false
-  return b.op(o) && !b.op(o === 'LOAD' ? 'DISCHARGE' : 'LOAD')
+  return hasil
 }
-const barisBerbukti = (c, b) => FIELD_MUATAN.every((f) => fieldBerbukti(f, c[f], b))
+function buktiSumber(teks) {
+  const frasa = L.FRASA_BUKAN_OPERASI.map((f) => f.split(' '))
+  const baris = String(teks ?? '').split(/\r?\n/).map((l) => {
+    const t = token(l)
+    const u = [...t]
+    for (const f of frasa) for (let i = 0; i + f.length <= u.length; i++) if (f.every((w, j) => u[i + j] === w)) u.splice(i, f.length, '~')
+    const op = new Set(Object.values(L.OPERASI_LEKSIKON).filter((e) => e.alias.some((w) => u.includes(w))).map((e) => e.kanonik))
+    return { t, label: t.length > 0 && (L.LABEL_BARIS_MUATAN.includes(t[0]) || L.LABEL_JUMLAH.includes(t[0])), op, jumlah: jumlahBaris(l) }
+  })
+  return { tok: baris.flatMap((x) => x.t), baris }
+}
+/** Baris sumber yang menjadi konteks muatan untuk sebuah nama (memuat nama itu, atau berlabel muatan). */
+const barisKonteks = (nama, b) => { const t = token(nama ?? ''); return b.baris.filter((x) => x.label || (t.length && adaUrutan(t, x.t))) }
+/** Nilai muatan (satu field, dalam konteks barisnya) berbukti TUNGGAL di sumber? */
+function fieldBerbukti(f, v, c, b) {
+  if (kosong(v)) return true
+  if (f === 'name') return adaUrutan(token(v), b.tok)
+  const ctx = barisKonteks(c.name, b)
+  const q = kosong(c.quantity) ? null : typeof c.quantity === 'number' ? c.quantity : S.angkaDari(String(c.quantity))
+  if (f === 'quantity') return q !== null && ctx.some((x) => x.jumlah.some((j) => j.nilai === q))
+  if (f === 'unit') return q !== null && grupSatuan(v) !== null && ctx.some((x) => x.jumlah.some((j) => j.nilai === q && j.grup === grupSatuan(v)))
+  const o = String(v).trim().toUpperCase()
+  if (!(o in L.OPERASI_LEKSIKON)) return false
+  const ada = new Set(ctx.flatMap((x) => [...x.op]))
+  return ada.has(o) && ada.size === 1
+}
+const barisBerbukti = (c, b) => FIELD_MUATAN.every((f) => fieldBerbukti(f, c[f], c, b))
 
 // ------------------------------------------------------------------ penyelarasan (nama WAJIB sama)
 function diterima(node, tipe, norm) {
@@ -149,7 +193,7 @@ export function nilaiMuatan(gtCargoes, cargoes, sumberTeks, norm, lapisan, flags
         const r = S.nilaiField(g[f], cargoes[i][f], TIPE_MUATAN[f], norm)
         if (!r) continue
         let kep = kepField(f, r.hasil)
-        if (kep?.tingkat === 'FATAL' && fieldBerbukti(f, cargoes[i][f], b)) {
+        if (kep?.tingkat === 'FATAL' && fieldBerbukti(f, cargoes[i][f], cargoes[i], b)) {
           konflikGt.push({ jalur: `cargoes[${i}].${f}`, jenis: JENIS_F5.GT_CONFLICT })
           kep = null
         }

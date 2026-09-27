@@ -1441,6 +1441,10 @@ export async function linkExistingIntake(
   if (row.status !== 'NEEDS_REVIEW') throw conflict('Intake ini sudah diproses.', { code: 'INTAKE_ALREADY_PROCESSED' })
   const version = versiDari(body)
   if (version !== row.version) throw galatVersi()
+  // Eval-4 (OWNER D10): dokumen non-keagenan tak boleh ditautkan ke voyage — dicek SEBELUM hitung duplikat & tulis intake.
+  if (!P.bolehTautkanVoyage(row.classification)) {
+    throw validation('Intake dengan klasifikasi ini tidak bisa ditautkan ke voyage — tolak intake ini.', { code: 'CLASSIFICATION_NOT_LINKABLE' })
+  }
   const voyageId = teksOpsional(body.voyageId, 40)
   if (!voyageId) throw validation('Pilih voyage yang akan ditautkan.')
 

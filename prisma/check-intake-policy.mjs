@@ -17,7 +17,7 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import * as P from '../src/services/intake/intake-policy.ts'
+import { createRequire } from 'node:module'
 import { bacaKonfigurasiIntake } from '../src/services/intake/intake-gate.ts'
 import { hashInput } from '../src/services/intake/intake-hash.ts'
 import {
@@ -32,6 +32,9 @@ import {
 import { TENANT_MODELS } from '../src/services/tenant-guard.ts'
 
 const AKAR = fileURLToPath(new URL('..', import.meta.url))
+// Eval-4: intake-policy.ts kini mengimpor SATU modul data (lib/maritim-lexicon.ts) — impor .ts eksplisit
+// ditolak tsc (TS5097), jadi berkas itu dimuat lewat jiti (transpilasi objek yang sama, pola check-intake-prompt).
+const P = createRequire(import.meta.url)('jiti')(fileURLToPath(import.meta.url), { alias: { '@': join(AKAR, 'src') }, interopDefault: true })(join(AKAR, 'src/services/intake/intake-policy.ts'))
 // Akhir-baris dinormalkan ke LF: di Windows berkas kerja bisa CRLF (core.autocrlf),
 // dan pola seperti /\n\n/ di bawah akan meleset tanpa ini — kerapuhan uji, bukan cacat kode.
 const baca = (rel) => readFileSync(join(AKAR, rel), 'utf8').replace(/\r\n/g, '\n')
@@ -1218,6 +1221,10 @@ console.log('\n[8] Grounding muatan & gerbang approval (Eval-4 prep)')
   cek('R11 pertahanan berlapis: baris muatan belum tepercaya dilewati di jalankanPembuatan', /if \(!P\.cargoTepercaya\(c\)\) \{\n\s*cargoGagal\+\+\n\s*continue/.test(fungsi('jalankanPembuatan')))
   cek('gerbang: konfirmasi muatan peninjau tercatat eksplisit di audit (cargoes.confirmed); baris tak berubah membawa flags-nya',
     /perubahan\.push\(\{ field: 'cargoes\.confirmed', lama: null, baru: dikonfirmasi \}\)/.test(fungsi('updateIntake')) && /source: sama\.source, \.\.\.\(sama\.flags \? \{ flags: sama\.flags \} : \{\}\)/.test(fungsi('updateIntake')))
+  const pol = baca('src/services/intake/intake-policy.ts')
+  const imporRuntime = [...pol.matchAll(/^import (?!type )[\s\S]*?from '([^']+)'/gm)].map((m) => m[1])
+  cek('kemurnian: SATU-SATUNYA impor runtime intake-policy.ts = lib/maritim-lexicon (modul data tanpa impor, tanpa lookbehind)',
+    JSON.stringify(imporRuntime) === '["../../lib/maritim-lexicon"]' && !/^\s*import\s/m.test(baca('src/lib/maritim-lexicon.ts')) && !/\(\?<[!=a-zA-Z]/.test(baca('src/lib/maritim-lexicon.ts')))
   cek('R11 submitIntake tak memicu finance/automation', !/autofill|disbursement|createTask|mulaiPemantauan/i.test(fungsi('submitIntake')))
 }
 
