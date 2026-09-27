@@ -129,7 +129,7 @@ const lacak = { voyage: new Set(), intake: new Set(), blokir: new Set() }
 const MODEL_GLOBAL = [
   'tenant', 'user', 'vessel', 'principal', 'customer', 'port', 'voyage', 'voyageVessel', 'cargo', 'task',
   'vesselCallIntake', 'auditLog', 'usageEvent', 'securityEvent', 'attachment', 'notification',
-  'portalUser', 'portalAccess', 'portalInvitation', 'monitoredVoyage',
+  'portalUser', 'portalAccess', 'portalInvitation', 'monitoredVoyage', 'agentRun', 'agentModelCall',
 ]
 async function hitungGlobal() {
   const o = {}
@@ -763,7 +763,12 @@ async function bersihkan(awalId) {
   const voyageDariIntake = (await prisma.voyage.findMany({ where: { OR: [{ sourceIntakeId: { in: intakeIds } }, { id: { in: [...lacak.voyage, ...lacak.blokir] } }, { voyageNumber: { startsWith: TAG } }] }, select: { id: true } })).map((v) => v.id)
   const voyageBaru = (await baru('voyage')).filter((id) => !voyageDariIntake.includes(id))
   const semuaVoyage = [...voyageDariIntake, ...voyageBaru]
+  // Buku besar TAH (bila server berjalan dengan TAH_CORE_ENABLED=true): hanya AgentRun yang BARU sejak awal uji
+  // DAN dipicu pengguna uji ini (email berawalan EMAIL). AgentModelCall ikut terhapus (CASCADE).
+  const penggunaUji = (await prisma.user.findMany({ where: { email: { startsWith: EMAIL } }, select: { id: true } })).map((u) => u.id)
+  const runBaru = await baru('agentRun')
   const n = {
+    ledgerTah: (await prisma.agentRun.deleteMany({ where: { id: { in: runBaru }, triggeredByUserId: { in: penggunaUji } } })).count,
     lampiran: (await prisma.attachment.deleteMany({ where: { id: { in: await baru('attachment') } } })).count,
     komentar: (await prisma.comment.deleteMany({ where: { entityType: 'VESSEL_CALL_INTAKE' , entityId: { in: intakeIds } } })).count,
     intake: (await prisma.vesselCallIntake.deleteMany({ where: { id: { in: intakeIds } } })).count,
@@ -798,7 +803,7 @@ async function main() {
 
   const awal = await hitungGlobal()
   const awalId = {}
-  for (const m of ['vesselCallIntake', 'voyage', 'attachment', 'portalAccess', 'vessel', 'auditLog', 'usageEvent', 'securityEvent', 'notification']) awalId[m] = await idSemua(m)
+  for (const m of ['vesselCallIntake', 'voyage', 'attachment', 'portalAccess', 'vessel', 'auditLog', 'usageEvent', 'securityEvent', 'notification', 'agentRun']) awalId[m] = await idSemua(m)
   const potretTenant = async () => JSON.stringify((await prisma.tenant.findMany({ orderBy: { id: 'asc' } })).map(({ updatedAt, ...r }) => r))
   const tenantAwal = await potretTenant()
   console.log(`Baris global sebelum uji: ${JSON.stringify(awal)}`)

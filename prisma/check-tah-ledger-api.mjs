@@ -12,7 +12,12 @@
 //   node prisma/check-tah-ledger-api.mjs                  TAH_CORE_ENABLED=true,  TAH_INTAKE_MODEL tak diset
 //   node prisma/check-tah-ledger-api.mjs --tah-off        TAH_CORE_ENABLED tak diset (nol baris ledger)
 //   node prisma/check-tah-ledger-api.mjs --model-verified TAH_CORE_ENABLED=true,  TAH_INTAKE_MODEL=anthropic/claude-sonnet-4.5
-//   node prisma/check-tah-ledger-api.mjs --model-pending  TAH_CORE_ENABLED=true,  TAH_INTAKE_MODEL=anthropic/claude-sonnet-5
+//   node prisma/check-tah-ledger-api.mjs --model-s5-text  TAH_CORE_ENABLED=true,  TAH_INTAKE_MODEL=anthropic/claude-sonnet-5
+//     (PRD-005 D-P1: Sonnet 5 VERIFIED SEMPIT — TEXT → sonnet-5; PDF/IMAGE/CSV → jalur LEGACY eksplisit.
+//      Pengganti mode lama --model-pending yang mengasersi PENDING_SPIKE sebelum promosi; flag lama DITOLAK.)
+//     Pengekstrak FAKE mencatat requestedModel dari konteks rute, tetapi promptVersion/hash & params-nya
+//     tetap nilai tetap FAKE (v3, temperature 0) — pemilihan Prompt v4/temperature/served dibuktikan di
+//     check-tah-ledger.mjs (stub transport), BUKAN di sini.
 //
 // Skrip ini MENULIS ke database dev (tag `P5S3B-`) dan menghapusnya lagi di akhir, termasuk
 // saat gagal. Uji kegagalan ledger MENGGANTI NAMA tabel TAH sesaat (hanya DB dev/throwaway!)
@@ -37,7 +42,12 @@ for (const f of ['.env.local', '.env']) {
 }
 
 const AKAR = fileURLToPath(new URL('..', import.meta.url))
-const MODE = process.argv.includes('--tah-off') ? 'OFF' : process.argv.includes('--model-verified') ? 'VERIFIED' : process.argv.includes('--model-pending') ? 'PENDING' : 'ON'
+if (process.argv.includes('--model-pending')) {
+  console.log('Mode --model-pending sudah DIHAPUS (Sonnet 5 dipromosikan sempit, PRD-005 D-P1). Pakai --model-s5-text.')
+  process.exit(2)
+}
+const MODE = process.argv.includes('--tah-off') ? 'OFF' : process.argv.includes('--model-verified') ? 'VERIFIED' : process.argv.includes('--model-s5-text') ? 'S5_TEKS' : 'ON'
+const S5 = 'anthropic/claude-sonnet-5'
 const prisma = new PrismaClient()
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:3000'
 const TAG = 'P5S3B-'
@@ -99,6 +109,13 @@ async function baca(res) {
     json = { _teks: teks }
   }
   return { status: res.status, json, teks }
+}
+async function kirimBerkas(sesi, { name, type, bytes }) {
+  const form = new FormData()
+  form.set('file', new Blob([bytes], { type }), name)
+  form.set('saveOriginal', 'false')
+  form.set('confirmReprocess', 'false')
+  return baca(await sesi.ambil('/api/automation/intakes', { method: 'POST', body: form }))
 }
 async function kirim(sesi, text) {
   const form = new FormData()
@@ -363,18 +380,38 @@ async function modeOff() {
   cek('NOL AgentRun & NOL AgentModelCall tertulis', akhir.run === awal.run && akhir.panggilan === awal.panggilan, `${JSON.stringify(awal)} → ${JSON.stringify(akhir)}`)
 }
 
-async function modePending() {
-  console.log('\n[PENDING] TAH_INTAKE_MODEL=anthropic/claude-sonnet-5 (PENDING_SPIKE) — intake gagal tertutup')
+async function modeS5Teks() {
+  console.log('\n[S5-TEKS] TAH_INTAKE_MODEL=anthropic/claude-sonnet-5 (VERIFIED sempit, PRD-005 D-P1) — TEXT → sonnet-5, non-TEXT → LEGACY eksplisit')
+  const LEGACY = process.env.OPENROUTER_SPK_MODEL || 'anthropic/claude-sonnet-4.5'
   const awal = await hitungLedger()
   const g = await api(D.sA, 'GET', '/api/automation/intakes')
-  cek('GET daftar intake → 404 MODEL_TIDAK_TERVERIFIKASI', g.status === 404 && g.json.error?.details?.code === 'MODEL_TIDAK_TERVERIFIKASI', `${g.status} ${g.teks.slice(0, 120)}`)
-  const s = await kirim(D.sA, teksSumber(31, palsu(usulanBaru(31))))
-  cek('submit → 404 MODEL_TIDAK_TERVERIFIKASI (tanpa fallback ke model lama)', s.status === 404 && s.json.error?.details?.code === 'MODEL_TIDAK_TERVERIFIKASI', `${s.status}`)
+  cek('GET daftar intake → 200 (gerbang terbuka: sonnet-5 VERIFIED)', g.status === 200, `${g.status}`)
   const hal = await D.sA.ambil('/automation/intake')
-  cek('halaman /automation/intake → 404', hal.status === 404, `${hal.status}`)
+  cek('halaman /automation/intake → 200', hal.status === 200, `${hal.status}`)
+
+  // TEXT → rute EXPLICIT sonnet-5
+  const t = await kirim(D.sA, teksSumber(41, palsu(usulanBaru(41))))
+  if (t.json.intake?.id) D.intakes.add(t.json.intake.id)
+  cek('TEXT → 201', t.status === 201, `${t.status}`)
+  const runT = await jalanUntukHash(D.A.id, await hashIntake(t.json.intake?.id))
+  cek('TEXT: tepat 1 AgentRun SUCCEEDED/PROPOSAL_CREATED, inputKind TEXT, subjek = intake', runT.length === 1 && runT[0].status === 'SUCCEEDED' && runT[0].outcome === 'PROPOSAL_CREATED' && runT[0].inputKind === 'TEXT' && runT[0].subjectId === t.json.intake?.id && runT[0].tenantId === D.A.id)
+  cek('TEXT: 1 AgentModelCall OK, requestedModel = anthropic/claude-sonnet-5 (rute terverifikasi)', runT[0]?.modelCalls.length === 1 && runT[0].modelCalls[0].provider === 'FAKE' && runT[0].modelCalls[0].status === 'OK' && runT[0].modelCalls[0].requestedModel === S5, runT[0]?.modelCalls[0]?.requestedModel)
+
+  // Non-TEXT → LEGACY eksplisit (model bawaan), BUKAN sonnet-5
+  const berkas = [
+    ['PDF', { name: `s5-${ACAK}.pdf`, type: 'application/pdf', bytes: Buffer.from(`%PDF-1.4 ${ACAK}-42\n${palsu(usulanBaru(42))}`, 'latin1') }],
+    ['IMAGE', { name: `s5-${ACAK}.png`, type: 'image/png', bytes: Buffer.from(`\x89PNG ${ACAK}-43 ${palsu(usulanBaru(43))}`, 'latin1') }],
+    ['CSV', { name: `s5-${ACAK}.csv`, type: 'text/csv', bytes: Buffer.from(`kolom,nilai\n${SENTINEL} ${ACAK}-44,${palsu(usulanBaru(44))}\n`, 'utf8') }],
+  ]
+  for (const [jenis, f] of berkas) {
+    const r = await kirimBerkas(D.sA, f)
+    if (r.json.intake?.id) D.intakes.add(r.json.intake.id)
+    const runs = await jalanUntukHash(D.A.id, await hashIntake(r.json.intake?.id))
+    const mc = runs[0]?.modelCalls ?? []
+    cek(`${jenis} → 201, 1 AgentRun SUCCEEDED inputKind ${jenis}, requestedModel = model bawaan LEGACY (bukan sonnet-5)`, r.status === 201 && runs.length === 1 && runs[0].status === 'SUCCEEDED' && runs[0].inputKind === jenis && mc.length >= 1 && mc.every((m) => m.requestedModel === LEGACY && m.requestedModel !== S5), `${r.status} ${runs[0]?.inputKind} ${mc.map((m) => m.requestedModel).join(',')}`)
+  }
   const akhir = await hitungLedger()
-  cek('tak ada run / panggilan tercipta', akhir.run === awal.run && akhir.panggilan === awal.panggilan)
-  cek('tak ada intake tercipta', (await prisma.vesselCallIntake.count({ where: { tenantId: D.A.id, createdAt: { gte: D.mulai } } })) === 0)
+  cek('buku besar: tepat 4 AgentRun baru & ≥4 AgentModelCall baru (satu jalan per submit)', akhir.run - awal.run === 4 && akhir.panggilan - awal.panggilan >= 4, `${JSON.stringify(awal)} → ${JSON.stringify(akhir)}`)
 }
 
 async function main() {
@@ -382,8 +419,9 @@ async function main() {
   await siapkan()
   const tahSkrip = process.env.TAH_CORE_ENABLED === 'true'
   if ((MODE === 'OFF') === tahSkrip) throw new Error(`TAH_CORE_ENABLED skrip (${process.env.TAH_CORE_ENABLED ?? 'tak diset'}) tak cocok dengan mode ${MODE}.`)
+  if (MODE === 'S5_TEKS' && process.env.TAH_INTAKE_MODEL !== S5) throw new Error(`Mode --model-s5-text butuh TAH_INTAKE_MODEL=${S5} (server DAN skrip).`)
   if (MODE === 'OFF') await modeOff()
-  else if (MODE === 'PENDING') await modePending()
+  else if (MODE === 'S5_TEKS') await modeS5Teks()
   else {
     const expected = MODE === 'VERIFIED' ? 'anthropic/claude-sonnet-4.5' : process.env.OPENROUTER_SPK_MODEL || 'anthropic/claude-sonnet-4.5'
     await modeOn(expected)
