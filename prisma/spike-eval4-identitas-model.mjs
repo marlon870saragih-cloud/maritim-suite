@@ -57,13 +57,14 @@ export function periksaBadanPermintaanEval4(body, diminta = EXPECTED_MODEL_ID) {
 }
 
 /**
- * Gerbang lulus/gagal KUALITAS Eval-4 belum diimplementasikan di runner (spike-eval4-runner.mjs hanya
- * melaporkan metrik + regresi H20/H18, putusan terbaik MENUNGGU_GERBANG_OWNER). Selama false, kesiapan LIVE
- * mustahil — apa pun masukannya. Mengubahnya = keputusan owner + implementasi gerbang + uji.
+ * Gerbang lulus/gagal KUALITAS Eval-4 diimplementasikan di runner (evaluasiGerbangEval4: toleransi-nol terpisah,
+ * kelulusan held-out & konsistensi ulangan ≥ ambang owner) dan diuji di check-eval4-runner. Menjadikannya false
+ * mengembalikan penghalang GERBANG_KUALITAS_BELUM_DIIMPLEMENTASI_DI_RUNNER.
  */
-export const GERBANG_KUALITAS_EVAL4_DIIMPLEMENTASI = false
+export const GERBANG_KUALITAS_EVAL4_DIIMPLEMENTASI = true
 
 const SUMBER_GALAT_BATAS = /^(BATAS_|ULANGAN_|PLAFON_)/
+const SUMBER_GALAT_AMBANG = /^AMBANG_/
 
 export const JENIS_BUKTI_TRANSPORT = 'SONNET_5_TRANSPORT_CAPABILITY_PROVEN'
 const bulatPositif = (v) => Number.isSafeInteger(v) && v > 0
@@ -106,17 +107,22 @@ export function periksaBuktiTransport(bukti, harapan) {
  *                    Prompt v4) diterima penyedia & menghasilkan tool call; divalidasi periksaBuktiTransport
  *                    terhadap harapanTransport (identitas beku saat ini). Bukti ini TIDAK mengubah registri
  *                    (Sonnet 5 tetap PENDING_SPIKE, kemampuan null) dan hanya menghapus penghalang transport;
- *   ambang kualitas — konfigOwner.ambangKualitas (belum ada) DAN implementasi gerbang di runner.
+ *   galatAnggaran  — buktiAnggaranRencana(konfigOwner).galat dari runner (wajib array; kosong = terbukti);
+ *   ambang kualitas — konfigOwner.ambangKualitas DAN implementasi gerbang di runner.
  * Otorisasi LIVE owner tetap gerbang terpisah (frasa); tidak ada sakelar di repo.
  */
-export function kesiapanLiveEval4({ otorisasiOwnerLive = false, dilayani = EXPECTED_SERVED_MODEL_ID, konfigOwner = null, galatKonfig = null, buktiTransport = null, harapanTransport = null } = {}) {
+export function kesiapanLiveEval4({ otorisasiOwnerLive = false, dilayani = EXPECTED_SERVED_MODEL_ID, konfigOwner = null, galatKonfig = null, galatAnggaran = null, buktiTransport = null, harapanTransport = null } = {}) {
   const alasan = []
   if (typeof dilayani !== 'string' || !dilayani) alasan.push('SERVED_BELUM_DIVERIFIKASI')
   if (konfigOwner === null || konfigOwner === undefined) alasan.push('KONFIG_OWNER_EVAL4_BELUM_DIBEKUKAN', 'PAKET_HELDOUT_BELUM_DIBEKUKAN', 'BATAS_BIAYA_BELUM_DIBEKUKAN')
   else if (!Array.isArray(galatKonfig)) alasan.push('KONFIG_OWNER_EVAL4_BELUM_DIPERIKSA')
   else {
-    if (galatKonfig.some((g) => !SUMBER_GALAT_BATAS.test(g))) alasan.push('PAKET_HELDOUT_TIDAK_SAH')
+    if (galatKonfig.some((g) => !SUMBER_GALAT_BATAS.test(g) && !SUMBER_GALAT_AMBANG.test(g))) alasan.push('PAKET_HELDOUT_TIDAK_SAH')
     if (galatKonfig.some((g) => SUMBER_GALAT_BATAS.test(g))) alasan.push('BATAS_BIAYA_TIDAK_SAH')
+    if (galatKonfig.some((g) => SUMBER_GALAT_AMBANG.test(g))) alasan.push('AMBANG_KUALITAS_TIDAK_SAH')
+    // Anggaran RENCANA: panggilan maksimum × plafon per panggilan wajib TERBUKTI ≤ batas keras total.
+    if (!Array.isArray(galatAnggaran)) alasan.push('ANGGARAN_RENCANA_BELUM_DIBUKTIKAN')
+    else if (galatAnggaran.length) alasan.push('ANGGARAN_RENCANA_MELEBIHI_BATAS_KERAS')
   }
   if (!konfigOwner?.ambangKualitas) alasan.push('AMBANG_KUALITAS_BELUM_DIBEKUKAN')
   if (!GERBANG_KUALITAS_EVAL4_DIIMPLEMENTASI) alasan.push('GERBANG_KUALITAS_BELUM_DIIMPLEMENTASI_DI_RUNNER')

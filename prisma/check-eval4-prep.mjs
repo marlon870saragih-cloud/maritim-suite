@@ -290,13 +290,16 @@ bagian('E. Sonnet 5 gagal-tertutup (tanpa fallback Sonnet 4.5, tanpa ulang, tanp
     M.periksaBadanPermintaanEval4({}).includes('MODEL_TIDAK_ADA') && M.periksaBadanPermintaanEval4({ model: S45 }).includes('MODEL_HISTORIS_DIMINTA') &&
       M.periksaBadanPermintaanEval4({ model: S5, models: [S5, S45] }).includes('FALLBACK_DIMINTA') && M.periksaBadanPermintaanEval4({ model: S5, provider: { allow_fallbacks: true } }).includes('FALLBACK_DIMINTA'))
   const bawaan = M.kesiapanLiveEval4()
-  cek('E13 kesiapan LIVE Eval-4 bawaan: tidak siap; penghalang NYATA (konfig/paket/batas/ambang/gerbang/kapabilitas/otorisasi), tanpa alasan basi "runner belum dibangun"',
-    !bawaan.siap && ['KONFIG_OWNER_EVAL4_BELUM_DIBEKUKAN', 'PAKET_HELDOUT_BELUM_DIBEKUKAN', 'BATAS_BIAYA_BELUM_DIBEKUKAN', 'AMBANG_KUALITAS_BELUM_DIBEKUKAN', 'GERBANG_KUALITAS_BELUM_DIIMPLEMENTASI_DI_RUNNER', 'KAPABILITAS_TRANSPORT_S5_BELUM_DIBUKTIKAN', 'OTORISASI_LIVE_OWNER_TIDAK_ADA'].every((a) => bawaan.alasan.includes(a)) && !bawaan.alasan.includes('RUNNER_EVAL4_BELUM_DIBANGUN'), bawaan.alasan.join(','))
+  cek('E13 kesiapan LIVE Eval-4 bawaan (tanpa masukan): tidak siap; penghalang NYATA (konfig/paket/batas/ambang/kapabilitas/otorisasi); gerbang kualitas sudah diimplementasi',
+    !bawaan.siap && ['KONFIG_OWNER_EVAL4_BELUM_DIBEKUKAN', 'PAKET_HELDOUT_BELUM_DIBEKUKAN', 'BATAS_BIAYA_BELUM_DIBEKUKAN', 'AMBANG_KUALITAS_BELUM_DIBEKUKAN', 'KAPABILITAS_TRANSPORT_S5_BELUM_DIBUKTIKAN', 'OTORISASI_LIVE_OWNER_TIDAK_ADA'].every((a) => bawaan.alasan.includes(a)) && !bawaan.alasan.includes('RUNNER_EVAL4_BELUM_DIBANGUN') && !bawaan.alasan.includes('GERBANG_KUALITAS_BELUM_DIIMPLEMENTASI_DI_RUNNER'), bawaan.alasan.join(','))
   const R4 = await import('./spike-eval4-runner.mjs')
   const BT = { buktiTransport: R4.BUKTI_TRANSPORT_S5_EVAL4, harapanTransport: R4.harapanTransportEval4() }
-  const semua = M.kesiapanLiveEval4({ otorisasiOwnerLive: true, dilayani: S5, konfigOwner: { ambangKualitas: { x: 1 } }, galatKonfig: [], ...BT })
-  cek('E13b semua masukan terpenuhi → TETAP tidak siap: hanya GERBANG_KUALITAS_BELUM_DIIMPLEMENTASI_DI_RUNNER (gagal-tertutup di commit ini)', M.GERBANG_KUALITAS_EVAL4_DIIMPLEMENTASI === false && !semua.siap && JSON.stringify(semua.alasan) === JSON.stringify(['GERBANG_KUALITAS_BELUM_DIIMPLEMENTASI_DI_RUNNER']), semua.alasan.join(','))
-  const buruk = (x) => M.kesiapanLiveEval4({ otorisasiOwnerLive: true, dilayani: S5, konfigOwner: { ambangKualitas: { x: 1 } }, galatKonfig: [], ...BT, ...x }).alasan
+  const semua = (x = {}) => M.kesiapanLiveEval4({ otorisasiOwnerLive: true, dilayani: S5, konfigOwner: { ambangKualitas: { x: 1 } }, galatKonfig: [], galatAnggaran: [], ...BT, ...x })
+  cek('E13b fungsi murni: semua masukan sintetis terpenuhi → siap; tanpa otorisasi / anggaran tak terbukti / anggaran tak diperiksa → penghalang spesifik',
+    M.GERBANG_KUALITAS_EVAL4_DIIMPLEMENTASI === true && semua().siap === true && JSON.stringify(semua({ otorisasiOwnerLive: false }).alasan) === '["OTORISASI_LIVE_OWNER_TIDAK_ADA"]' &&
+      JSON.stringify(semua({ galatAnggaran: ['ANGGARAN_MAKS_RENCANA_MELEBIHI_BATAS_KERAS:x'] }).alasan) === '["ANGGARAN_RENCANA_MELEBIHI_BATAS_KERAS"]' && JSON.stringify(semua({ galatAnggaran: null }).alasan) === '["ANGGARAN_RENCANA_BELUM_DIBUKTIKAN"]' &&
+      semua({ galatKonfig: ['AMBANG_TOLERANSI_NOL_DILANGGAR:fatalPostMaks'] }).alasan.includes('AMBANG_KUALITAS_TIDAK_SAH'), semua().alasan.join(','))
+  const buruk = (x) => M.kesiapanLiveEval4({ otorisasiOwnerLive: true, dilayani: S5, konfigOwner: { ambangKualitas: { x: 1 } }, galatKonfig: [], galatAnggaran: [], ...BT, ...x }).alasan
   cek('E13c penghalang spesifik: galat paket / batas, konfig tak diperiksa, bukti transport served Sonnet 4.5 / tanpa tool paksa / objek longgar / tanpa harapan, served null',
     buruk({ galatKonfig: ['UJI-1:KASUS_SUDAH_TERLIHAT_TEKS'] }).includes('PAKET_HELDOUT_TIDAK_SAH') && buruk({ galatKonfig: ['BATAS_TIDAK_SAH:maksPanggilan'] }).includes('BATAS_BIAYA_TIDAK_SAH') &&
       buruk({ galatKonfig: null }).includes('KONFIG_OWNER_EVAL4_BELUM_DIPERIKSA') && buruk({ buktiTransport: { ...BT.buktiTransport, servedModel: S45 } }).includes('KAPABILITAS_TRANSPORT_S5_BELUM_DIBUKTIKAN') &&
@@ -309,8 +312,9 @@ bagian('F. kunci lingkup & efek samping')
   cek('F1 Sonnet 5 TETAP PENDING_SPIKE di registri (tanpa promosi)', MC.PETA_KEMAMPUAN_MODEL.find((m) => m.slug === 'anthropic/claude-sonnet-5')?.status === 'PENDING_SPIKE')
   const runnerEval4 = readdirSync(join(AKAR, 'prisma')).filter((f) => /eval4.*runner|runner.*eval4/i.test(f)).sort()
   const srcRunner4 = runnerEval4.includes('spike-eval4-runner.mjs') ? baca('prisma/spike-eval4-runner.mjs') : ''
-  cek('F2 runner Eval-4 hanya luring: konfigurasi owner null, jaringan dikunci kesiapanLiveEval4, tanpa skrip npm LIVE Eval-4',
-    JSON.stringify(runnerEval4) === JSON.stringify(['check-eval4-runner.mjs', 'spike-eval4-runner.mjs']) && srcRunner4.includes('export const KONFIG_OWNER_EVAL4 = null') && srcRunner4.includes('M.kesiapanLiveEval4(') &&
+  const R4 = await import('./spike-eval4-runner.mjs')
+  cek('F2 runner Eval-4: konfigurasi owner BEKU, jaringan dikunci kesiapanLiveEval4 (otorisasi owner), tanpa skrip npm LIVE Eval-4',
+    JSON.stringify(runnerEval4) === JSON.stringify(['check-eval4-runner.mjs', 'spike-eval4-runner.mjs']) && srcRunner4.includes('export const KONFIG_OWNER_EVAL4 = Object.freeze({') && srcRunner4.includes('M.kesiapanLiveEval4(') && JSON.stringify(R4.penghalangLiveEval4()) === JSON.stringify(['OTORISASI_LIVE_OWNER_TIDAK_ADA']) &&
       Object.entries(JSON.parse(baca('package.json')).scripts).filter(([k]) => /eval4/i.test(k)).every(([, v]) => /^node prisma\/check-eval4-(prep|runner)\.mjs$/.test(v)))
   cek('F3 modul Eval-4 luring tanpa jaringan/kunci/DB', ['prisma/spike-eval4-scorer.mjs', 'prisma/spike-gt-konsistensi.mjs', 'prisma/spike-eval4-identitas-model.mjs', 'prisma/fixtures/spike-intake/eval4-regresi-muatan.mjs'].every((f) => !/fetch\(|OPENROUTER_API_KEY|PrismaClient|process\.env/.test(baca(f))))
   cek('F4 fixture & scorer historis tidak berubah (Eval-3 SHA c6098c1a…, scorer-1 e5c89ca4…)', sha('prisma/fixtures/spike-intake/eval3-cases.mjs') === 'c6098c1a06a9cc771e202b15c65fd38d351a89a258f03985002ef4a3450853d1' && sha('prisma/spike-eval1-scorer.mjs') === 'e5c89ca4ca917ea51856ab74795e388ac91860e1cd8843fd16294cdda300f493')

@@ -49,6 +49,7 @@ const R = await import('./spike-eval4-runner.mjs')
 const M = await import('./spike-eval4-identitas-model.mjs')
 const R3 = await import('./spike-eval3-runner.mjs')
 const RG = await import('./fixtures/spike-intake/eval4-regresi-muatan.mjs')
+const FH = await import('./fixtures/spike-intake/eval4-heldout-cases.mjs')
 const F3 = await import('./fixtures/spike-intake/eval3-cases.mjs')
 const require = createRequire(import.meta.url)
 const jiti = require('jiti')(fileURLToPath(import.meta.url), { alias: { '@': join(AKAR, 'src') }, interopDefault: true })
@@ -71,20 +72,20 @@ const gtDasar = (x) => ({ larangNew: null, eta: A(), etb: A(), etc: A(), etd: A(
 const kapal = (x) => ({ ref: 'V1', name: A(), imo: A(), mmsi: A(), callSign: A(), vesselType: A(), role: A(), ...x })
 const UJI_X01 = {
   id: 'UJI-X01', kind: 'TEXT', kategori: 'UJI_SINTETIS',
-  teks: ['Mohon bantu keagenan untuk kunjungan MV SEROJA BIRU ke Pelabuhan Bitung.', 'Muatan: bongkar 1.200 MT semen.'].join('\n'),
-  gt: gtDasar({ classification: AC(['NEW_NOMINATION', 'NEW_APPOINTMENT']), vessels: { jumlah: Pn(1), daftar: [kapal({ name: Pn('SEROJA BIRU') })] }, portName: Pn('BITUNG'), cargoes: { bentukDiterima: [[{ name: Pn('semen'), quantity: Pn(1200), unit: Pn('MT'), operation: Pn('DISCHARGE') }]] } }),
+  teks: ['Mohon bantu keagenan untuk kunjungan MV KAYANGAN LESTARI ke Pelabuhan Bitung.', 'Muatan: bongkar 1.200 MT semen.'].join('\n'),
+  gt: gtDasar({ classification: AC(['NEW_NOMINATION', 'NEW_APPOINTMENT']), vessels: { jumlah: Pn(1), daftar: [kapal({ name: Pn('KAYANGAN LESTARI') })] }, portName: Pn('BITUNG'), cargoes: { bentukDiterima: [[{ name: Pn('semen'), quantity: Pn(1200), unit: Pn('MT'), operation: Pn('DISCHARGE') }]] } }),
 }
 const UJI_X02 = {
   id: 'UJI-X02', kind: 'TEXT', kategori: 'UJI_SINTETIS',
-  teks: ['Please arrange port agency for MV TELUK HIJAU calling Kendari.', 'No cargo operations planned; crew change only.'].join('\n'),
-  gt: gtDasar({ classification: AC(['NEW_NOMINATION', 'NEW_APPOINTMENT']), vessels: { jumlah: Pn(1), daftar: [kapal({ name: Pn('TELUK HIJAU') })] }, portName: Pn('KENDARI') }),
+  teks: ['Please arrange port agency for MV RENGGANIS UTAMA calling Kendari.', 'No cargo operations planned; crew change only.'].join('\n'),
+  gt: gtDasar({ classification: AC(['NEW_NOMINATION', 'NEW_APPOINTMENT']), vessels: { jumlah: Pn(1), daftar: [kapal({ name: Pn('RENGGANIS UTAMA') })] }, portName: Pn('KENDARI') }),
 }
 const paket = (kasus, x = {}) => {
   const p = { versi: 'uji-sintetis-1', kasus }
   return { ...p, hashGt: R.hitungHashPaket(p), ...x }
 }
 const BATAS_UJI = { maksPanggilan: 20, biayaLunakUsd: 0.9, biayaKerasUsd: 1, tokenInput: 1_000_000, tokenOutput: 100_000 }
-const konfig = (x = {}) => ({ paket: paket([UJI_X01, UJI_X02]), ulangan: 1, batas: BATAS_UJI, plafonPerPanggilanUsd: 0.02, ...x })
+const konfig = (x = {}) => ({ paket: paket([UJI_X01, UJI_X02]), ulangan: 1, batas: BATAS_UJI, plafonPerPanggilanUsd: 0.02, ambangKualitas: R.AMBANG_KUALITAS_EVAL4, ...x })
 
 /** Test-double penyedia: stub Eval-2 + penghitung & rekaman badan permintaan (model, fallback). */
 function penyedia(jawab = null, opsi = {}) {
@@ -98,7 +99,9 @@ function penyedia(jawab = null, opsi = {}) {
   return { fn, badan, catatan: stub.catatan, jumlah: stub.jumlah }
 }
 const R2 = await import('./spike-eval2-runner.mjs')
-const jalan = (o) => R.jalankanRunnerEval4({ env: ENV_UJI, hariIni: HARI, terlihatUji: TERLIHAT, ...o })
+// `jalan` = mode regresi-saja (konfigUji null); `jalanBeku` = konfigurasi owner BEKU (20 held-out × 2 + regresi).
+const jalan = (o) => R.jalankanRunnerEval4({ env: ENV_UJI, hariIni: HARI, terlihatUji: TERLIHAT, konfigUji: null, ...o })
+const jalanBeku = (o) => R.jalankanRunnerEval4({ env: ENV_UJI, hariIni: HARI, terlihatUji: TERLIHAT, ...o })
 const jalanLive = (tp, o = {}) => R.jalankanRunnerEval4({ mode: 'live', env: ENV_LIVE, hariIni: HARI, terlihatUji: TERLIHAT, transportUji: tp.fn, ...o })
 const H20_BASE = { classification: 'UNSUPPORTED_REQUEST', vessels: [{ name: 'MV LAYANG BENGAWAN', imo: '9998535' }], portName: 'Probolinggo', portUnlocode: 'IDPRO', eta: '2026-10-28' }
 const jawabH20 = (cargoes) => (k) => (k?.id === 'RG-H20' ? { ...H20_BASE, cargoes } : R3.jawabanSempurnaEval3(k))
@@ -108,7 +111,7 @@ bagian('A. preflight & penolakan (0 panggilan)')
 {
   cek('A1 tanpa mode → DITOLAK_MODE', (await R.jalankanRunnerEval4({})).verdict === 'DITOLAK_MODE')
   const liveBawaan = await R.jalankanRunnerEval4({ mode: 'live', env: ENV_LIVE, hariIni: HARI })
-  cek('A2 live jaringan dengan konfigurasi owner bawaan (null) → DITOLAK_KONFIG_OWNER, 0 panggilan', liveBawaan.verdict === 'DITOLAK_KONFIG_OWNER' && liveBawaan.galat.includes('KONFIG_OWNER_EVAL4_BELUM_DITETAPKAN') && liveBawaan.panggilanTransport === 0, liveBawaan.galat.join(','))
+  cek('A2 live jaringan (frasa + kunci palsu) dengan konfigurasi owner BEKU → DITOLAK_KESIAPAN_LIVE (kunci otorisasi owner repo = false), 0 panggilan', liveBawaan.verdict === 'DITOLAK_KESIAPAN_LIVE' && JSON.stringify(liveBawaan.galat) === JSON.stringify(['OTORISASI_LIVE_OWNER_TIDAK_ADA']) && liveBawaan.panggilanTransport === 0 && panggilanJaringan === 0, liveBawaan.galat.join(','))
   const seam = await R.jalankanRunnerEval4({ mode: 'live', env: ENV_LIVE, hariIni: HARI, konfigUji: konfig() })
   cek('A3 live jaringan + seam uji (konfigUji) → SEAM_UJI_DILARANG_SAAT_JARINGAN', seam.verdict === 'DITOLAK_PRASYARAT' && seam.galat.includes('SEAM_UJI_DILARANG_SAAT_JARINGAN'))
   const beku = await jalan({ mode: 'offline', bekuUji: () => ['SHA_BERKAS_BEKU_BERBEDA:x'] })
@@ -130,9 +133,9 @@ bagian('A. preflight & penolakan (0 panggilan)')
   const src = baca('prisma/spike-eval4-runner.mjs')
   cek('A15 jalur JARINGAN terkunci kesiapanLiveEval4 (masih selalu tidak siap) + checkpoint wajib', src.includes('M.kesiapanLiveEval4(') && src.includes('CHECKPOINT_WAJIB_UNTUK_JARINGAN') && M.kesiapanLiveEval4({ otorisasiOwnerLive: true, dilayani: S5 }).siap === false)
   const hal = R.penghalangLiveEval4({ terlihat: TERLIHAT })
-  cek('A16 penghalang LIVE repo saat ini = konfig/paket/batas/ambang/gerbang/otorisasi (transport TERBUKTI oleh bukti beku)', JSON.stringify(hal) === JSON.stringify(['KONFIG_OWNER_EVAL4_BELUM_DIBEKUKAN', 'PAKET_HELDOUT_BELUM_DIBEKUKAN', 'BATAS_BIAYA_BELUM_DIBEKUKAN', 'AMBANG_KUALITAS_BELUM_DIBEKUKAN', 'GERBANG_KUALITAS_BELUM_DIIMPLEMENTASI_DI_RUNNER', 'OTORISASI_LIVE_OWNER_TIDAK_ADA']), hal.join(','))
+  cek('A16 penghalang LIVE repo saat ini = HANYA otorisasi owner (dihitung, bukan ditanam)', JSON.stringify(hal) === JSON.stringify(['OTORISASI_LIVE_OWNER_TIDAK_ADA']), hal.join(','))
   const halSah = R.penghalangLiveEval4({ konfig: konfig(), terlihat: TERLIHAT })
-  cek('A17 konfig owner sah (paket+batas) → penghalang konfig hilang; ambang/gerbang/otorisasi TETAP', !halSah.some((a) => /KONFIG|PAKET|BATAS/.test(a)) && ['AMBANG_KUALITAS_BELUM_DIBEKUKAN', 'GERBANG_KUALITAS_BELUM_DIIMPLEMENTASI_DI_RUNNER', 'OTORISASI_LIVE_OWNER_TIDAK_ADA'].every((a) => halSah.includes(a)))
+  cek('A17 konfig uji sah (paket+batas+ambang, anggaran terbukti 4×0,02 ≤ 1) → HANYA otorisasi owner tersisa', JSON.stringify(halSah) === JSON.stringify(['OTORISASI_LIVE_OWNER_TIDAK_ADA']), halSah.join(','))
   const halRusak = R.penghalangLiveEval4({ konfig: konfig({ batas: { ...BATAS_UJI, biayaLunakUsd: 5 } }), terlihat: TERLIHAT })
   cek('A18 konfig owner dengan batas tak sah → BATAS_BIAYA_TIDAK_SAH', halRusak.includes('BATAS_BIAYA_TIDAK_SAH') && !halRusak.includes('PAKET_HELDOUT_TIDAK_SAH'))
 }
@@ -141,7 +144,7 @@ bagian('A. preflight & penolakan (0 panggilan)')
 bagian('B. paket held-out (D6: baru & belum terlihat; GT konsisten; hash beku)')
 {
   const pk = (k, x) => R.periksaPaketHeldout(paket(k, x), { terlihat: TERLIHAT })
-  cek('B1 paket/konfig owner tidak ada → PAKET_HELDOUT_TIDAK_ADA / KONFIG_OWNER_EVAL4_BELUM_DITETAPKAN', R.periksaPaketHeldout(null)[0] === 'PAKET_HELDOUT_TIDAK_ADA' && R.periksaKonfigOwner(null)[0] === 'KONFIG_OWNER_EVAL4_BELUM_DITETAPKAN' && R.KONFIG_OWNER_EVAL4 === null)
+  cek('B1 paket/konfig owner tidak ada → PAKET_HELDOUT_TIDAK_ADA / KONFIG_OWNER_EVAL4_BELUM_DITETAPKAN', R.periksaPaketHeldout(null)[0] === 'PAKET_HELDOUT_TIDAK_ADA' && R.periksaKonfigOwner(null)[0] === 'KONFIG_OWNER_EVAL4_BELUM_DITETAPKAN' && R.KONFIG_OWNER_EVAL4 !== null)
   cek('B2 paket sintetis baru + konfig sah → []', pk([UJI_X01, UJI_X02]).length === 0 && R.periksaKonfigOwner(konfig(), { terlihat: TERLIHAT }).length === 0, pk([UJI_X01, UJI_X02]).join(','))
   const k3 = Object.fromEntries(F3.bangunKasusEval3(HARI).map((k) => [k.id, k]))
   const salinH05 = { ...UJI_X02, id: 'UJI-X09', teks: k3.H05.teks, gt: k3.H05.gt }
@@ -159,7 +162,7 @@ bagian('B. paket held-out (D6: baru & belum terlihat; GT konsisten; hash beku)')
 }
 
 // =====================================================================
-bagian('C. run LURING bawaan (regresi saja, stub dari GT)')
+bagian('C. run LURING regresi-saja (konfigUji null; stub dari GT)')
 let lapC
 {
   const envSebelum = process.env.OPENROUTER_API_KEY
@@ -169,7 +172,7 @@ let lapC
   const lapC2 = await jalan({ mode: 'offline' })
   cek('C3 dua run → sidik rencana identik', lapC.rencana.sidik === lapC2.rencana.sidik && /^[0-9a-f]{64}$/.test(lapC.rencana.sidik))
   cek('C4 tiap panggilan: diminta & dilayani Sonnet 5 PERSIS; perekam Prompt v4 (hash cocok) + request id', lapC.slot.every((s) => s.panggilan.length === 1 && s.panggilan[0].requestedModel === S5 && s.panggilan[0].servedModel === S5 && s.perekam.length === 1 && s.perekam[0].promptVersion === '4' && s.perekam[0].promptHashCocok && /^gen-/.test(s.perekam[0].providerRequestId ?? '')))
-  cek('C5 tanpa held-out → verdict REGRESI_SAJA_TANPA_HELDOUT (bukan PASS); gerbang BELUM_DITETAPKAN_OWNER', lapC.verdict === 'REGRESI_SAJA_TANPA_HELDOUT' && lapC.gerbang.status === 'BELUM_DITETAPKAN_OWNER' && lapC.sumberBatas === 'BATAS_LURING_STUB')
+  cek('C5 tanpa held-out → verdict REGRESI_SAJA_TANPA_HELDOUT (bukan PASS); gerbang TANPA_KONFIG_OWNER', lapC.verdict === 'REGRESI_SAJA_TANPA_HELDOUT' && lapC.gerbang.status === 'TANPA_KONFIG_OWNER' && lapC.sumberBatas === 'BATAS_LURING_STUB')
   cek('C6 akuntansi: 2 dicoba, 2 selesai, 0 ulang, biaya stub 0,02, token dihitung', lapC.akuntansi.panggilanDicoba === 2 && lapC.akuntansi.panggilanSelesai === 2 && lapC.akuntansi.percobaanUlang === 0 && lapC.akuntansi.biayaUsd === 0.02 && lapC.akuntansi.token.input === 5000)
   const teks = JSON.stringify(lapC)
   cek('C7 privasi: lulus; laporan tanpa baris dokumen / nama kapal / kunci', lapC.privasi.lulus && !teks.includes('LAYANG BENGAWAN') && !teks.includes('to load sawn timber') && !teks.includes(R.KUNCI_STUB))
@@ -211,7 +214,7 @@ bagian('E. identitas served, tanpa fallback, tanpa ulang, galat penyedia → BER
     return { l, tp }
   }
   const s45 = await coba({ served: S45 })
-  cek('E1 dilayani Sonnet 4.5 → GAGAL INCONCLUSIVE_MODEL_IDENTITY, BERHENTI, tepat 1 panggilan', s45.l.slot[0].status.startsWith('GAGAL:INCONCLUSIVE_MODEL_IDENTITY') && s45.tp.jumlah() === 1 && s45.l.slot.slice(1).every((s) => s.status === 'TIDAK_DIJALANKAN') && s45.l.verdict === 'INCONCLUSIVE_BERHENTI', s45.l.slot[0].status)
+  cek('E1 dilayani Sonnet 4.5 → GAGAL INCONCLUSIVE_MODEL_IDENTITY, BERHENTI, tepat 1 panggilan', s45.l.slot[0].status.startsWith('GAGAL:INCONCLUSIVE_MODEL_IDENTITY') && s45.tp.jumlah() === 1 && s45.l.slot.slice(1).every((s) => s.status === 'TIDAK_DIJALANKAN') && s45.l.verdict === 'FAIL' && s45.l.gerbang.gerbang.G_IDENTITAS.lulus === false, s45.l.slot[0].status)
   const pv = await coba({ served: `${S5}-preview` })
   cek('E2 dilayani "sonnet-5-preview" (akhiran) → ditolak persis, 1 panggilan', pv.l.slot[0].status.startsWith('GAGAL:INCONCLUSIVE_MODEL_IDENTITY') && pv.tp.jumlah() === 1)
   const nul = await coba({ served: () => null })
@@ -265,9 +268,9 @@ bagian('E. identitas served, tanpa fallback, tanpa ulang, galat penyedia → BER
 // =====================================================================
 bagian('F. biaya & batas (proyeksi sebelum panggilan; lunak; batas rencana)')
 {
-  const tp = penyedia(null, { biaya: 0.45 })
-  const l = await jalanLive(tp, { konfigUji: konfig({ batas: { ...BATAS_UJI, biayaLunakUsd: 0.9, biayaKerasUsd: 0.9 }, plafonPerPanggilanUsd: 0.5 }) })
-  cek('F1 proyeksi: 0,45 teramati + plafon 0,5 > keras 0,9 → panggilan ke-2 DITOLAK sebelum transport', tp.jumlah() === 1 && l.ditolakPencegat.some((d) => d.alasan === 'PROYEKSI_BIAYA_KERAS') && l.akuntansi.biayaUsd === 0.45 && l.slot[1].status.startsWith('DIHENTIKAN:PROYEKSI_BIAYA_KERAS'), l.slot[1].status)
+  const tp = penyedia(null, { biaya: 0.045 })
+  const l = await jalanLive(tp, { konfigUji: konfig({ batas: { ...BATAS_UJI, biayaLunakUsd: 0.09, biayaKerasUsd: 0.09 }, plafonPerPanggilanUsd: 0.05 }) })
+  cek('F1 proyeksi: 0,045 teramati + plafon 0,05 > keras 0,09 → panggilan ke-2 DITOLAK sebelum transport', tp.jumlah() === 1 && l.ditolakPencegat.some((d) => d.alasan === 'PROYEKSI_BIAYA_KERAS') && l.akuntansi.biayaUsd === 0.045 && l.slot[1].status.startsWith('DIHENTIKAN:PROYEKSI_BIAYA_KERAS'), l.slot[1]?.status)
   const tp2 = penyedia(null, { biaya: 0.02 })
   const l2 = await jalanLive(tp2, { konfigUji: konfig({ batas: { ...BATAS_UJI, biayaLunakUsd: 0.02 } }) })
   cek('F2 batas lunak tercapai → panggilan berikut DITOLAK (BERHENTI_LUNAK_BIAYA), 1 panggilan', tp2.jumlah() === 1 && l2.ditolakPencegat.some((d) => d.alasan === 'BERHENTI_LUNAK_BIAYA'))
@@ -279,17 +282,17 @@ bagian('F. biaya & batas (proyeksi sebelum panggilan; lunak; batas rencana)')
 }
 
 // =====================================================================
-bagian('G. held-out: rencana deterministik & putusan (tanpa PASS)')
+bagian('G. held-out (paket uji kecil): rencana deterministik & putusan gerbang')
 {
   const tp = penyedia()
   const l = await jalanLive(tp, { konfigUji: konfig({ ulangan: 2 }) })
   cek('G1 rencana: 2 regresi dulu, lalu held-out × 2 ulangan dalam urutan paket', l.slot.map((s) => `${s.kasus}/u${s.ulangan}`).join(',') === 'RG-H20/u1,RG-H18/u1,UJI-X01/u1,UJI-X02/u1,UJI-X01/u2,UJI-X02/u2')
   cek('G2 label test-double tetap DRY_RUN; panggilanNyata 0; 6 panggilan transport', l.label === R.LABEL_DRY && l.transport === 'TEST_DOUBLE' && l.panggilanNyata === 0 && tp.jumlah() === 6)
-  cek('G3 lengkap tanpa gerbang owner → MENUNGGU_GERBANG_OWNER (tak pernah PASS)', l.verdict === 'MENUNGGU_GERBANG_OWNER' && !JSON.stringify(l).includes('"PASS"'))
+  cek('G3 lengkap + semua gerbang lulus (jawaban setia) → PASS; semua gerbang tercantum', l.verdict === 'PASS' && Object.values(l.gerbang.gerbang).every((g) => g.lulus === true) && l.gerbang.gagal.length === 0)
   cek('G4 agregat per blok: regresi 2/2 OK, held-out 4/4 OK; paket held-out tercatat (versi+hash)', l.agregat.REGRESI_MUATAN_S5_V4.ok === 2 && l.agregat.HELDOUT_S5_V4.ok === 4 && l.paketHeldout.hashGt === konfig().paket.hashGt)
   cek('G5 held-out UJI-X01: validator menerima muatan berbukti (semen 1200 MT DISCHARGE) → 0 FATAL POST', (() => { const s = l.slot.find((x) => x.kasus === 'UJI-X01'); return s.penilai.POST.FATAL === 0 && s.muatan.post === 1 })())
   const x02 = l.slot.find((x) => x.kasus === 'UJI-X02')
-  cek('G6 ringkasan slot tanpa nilai string model (hanya enum/hitungan/flag/sidik)', !JSON.stringify(x02).includes('TELUK') && x02.sumber.panjang === UJI_X02.teks.length && typeof x02.klasifikasi.benarPost === 'boolean')
+  cek('G6 ringkasan slot tanpa nilai string model (hanya enum/hitungan/flag/sidik)', !JSON.stringify(x02).includes('RENGGANIS') && x02.sumber.panjang === UJI_X02.teks.length && typeof x02.klasifikasi.benarPost === 'boolean')
   const gtKonflik = await jalanLive(penyedia((k) => (k?.id === 'RG-H18' ? { classification: 'NOT_RELEVANT', vessels: [], cargoes: [{ name: 'semen', operation: 'DISCHARGE' }] } : R3.jawabanSempurnaEval3(k))), { konfigUji: konfig() })
   cek('G7 muatan karangan di RG-H18 (tak tertulis di sumber) → dibuang validator; regresi H18 LULUS', gtKonflik.regresiMuatan['RG-H18'].hasil === 'LULUS' && gtKonflik.regresiMuatan['RG-H18'].RAW.f5Unsupported >= 1)
 }
@@ -302,11 +305,11 @@ bagian('H. titik-simpan & resume (jeda aman, tanpa ulang panggilan, akuntansi ku
   const tpA = penyedia()
   const penuh = await jalanLive(tpA, { konfigUji: K, checkpoint: toko1 })
   const akhir = toko1.isi()
-  cek('H1 run penuh: checkpoint SELESAI, 4 slot OK, inflight null, akuntansi = 4 panggilan', akhir.status === 'SELESAI' && akhir.slot.length === 4 && akhir.slot.every((s) => s.status === 'OK') && akhir.inflight === null && akhir.akuntansi.total === 4 && penuh.verdict === 'MENUNGGU_GERBANG_OWNER')
+  cek('H1 run penuh: checkpoint SELESAI, 4 slot OK, inflight null, akuntansi = 4 panggilan; ulangan 1 → konsistensi tak terukur → INCONCLUSIVE (bukan PASS)', akhir.status === 'SELESAI' && akhir.slot.length === 4 && akhir.slot.every((s) => s.status === 'OK') && akhir.inflight === null && akhir.akuntansi.total === 4 && penuh.verdict === 'INCONCLUSIVE' && penuh.gerbang.gerbang.G_KONSISTENSI_ULANGAN.lulus === null)
   const inflightSeq = toko1.riwayat.map((c) => c.inflight).filter((x) => x !== null)
   cek('H2 penanda inflight ditulis SEBELUM setiap panggilan (seq 1..4, berurutan)', JSON.stringify(inflightSeq) === '[1,2,3,4]')
   cek('H2b ikatan checkpoint memuat bentuk & profil transport Eval-4 (ubah bentuk → resume ditolak)', akhir.ikatan.bentukTransport?.temperature === 'DIHILANGKAN' && akhir.ikatan.profilTransport?.acceptsTemperature === false && R.periksaResume({ ...akhir, status: 'DIJEDA' }, { ...akhir.ikatan, profilTransport: { ...akhir.ikatan.profilTransport, acceptsTemperature: true } }).includes('IKATAN_CHECKPOINT_BERBEDA'))
-  cek('H3 checkpoint tersanitasi: tanpa teks dokumen / nama kapal / kunci', (() => { const t = JSON.stringify(toko1.riwayat); return !t.includes('LAYANG BENGAWAN') && !t.includes('SEROJA') && !t.includes(KUNCI_PALSU) && !t.includes('sawn timber') })())
+  cek('H3 checkpoint tersanitasi: tanpa teks dokumen / nama kapal / kunci', (() => { const t = JSON.stringify(toko1.riwayat); return !t.includes('LAYANG BENGAWAN') && !t.includes('KAYANGAN') && !t.includes(KUNCI_PALSU) && !t.includes('sawn timber') })())
 
   const toko2 = R.buatTokoCheckpointMemori()
   const tpB = penyedia()
@@ -351,14 +354,14 @@ bagian('H. titik-simpan & resume (jeda aman, tanpa ulang panggilan, akuntansi ku
   const rSesudah = await jalanLive(penyedia(), { konfigUji: K, checkpoint: R.buatTokoCheckpointMemori(toko5.isi()), lanjut: true })
   cek('H15 gagal tulis checkpoint sesudah panggilan → GAGAL_RUNNER, run berhenti; checkpoint masih INFLIGHT → resume DITOLAK', rTulis.verdict === 'GAGAL_RUNNER' && tpG.jumlah() === 1 && rSesudah.verdict === 'DITOLAK_RESUME' && rSesudah.galat.some((g) => g.startsWith('SLOT_INFLIGHT:1')))
 
-  // Anggaran kumulatif lintas resume: sesi 1 memakai 0,45; sesi 2 diproyeksi 0,45 + 0,5 > 0,9 → ditolak sebelum transport.
-  const KB = konfig({ batas: { ...BATAS_UJI, biayaLunakUsd: 0.9, biayaKerasUsd: 0.9 }, plafonPerPanggilanUsd: 0.5 })
+  // Anggaran kumulatif lintas resume: sesi 1 memakai 0,045; sesi 2 diproyeksi 0,045 + 0,05 > 0,09 → ditolak sebelum transport.
+  const KB = konfig({ batas: { ...BATAS_UJI, biayaLunakUsd: 0.09, biayaKerasUsd: 0.09 }, plafonPerPanggilanUsd: 0.05 })
   const toko6 = R.buatTokoCheckpointMemori()
   let n6 = 0
-  await jalanLive(penyedia(null, { biaya: 0.45 }), { konfigUji: KB, checkpoint: toko6, sinyalJeda: () => n6++ >= 1 })
-  const tpH = penyedia(null, { biaya: 0.45 })
+  await jalanLive(penyedia(null, { biaya: 0.045 }), { konfigUji: KB, checkpoint: toko6, sinyalJeda: () => n6++ >= 1 })
+  const tpH = penyedia(null, { biaya: 0.045 })
   const rBiaya = await jalanLive(tpH, { konfigUji: KB, checkpoint: toko6, lanjut: true })
-  cek('H16 batas biaya berlaku untuk SELURUH run lintas resume (proyeksi memakai biaya sesi lalu) → 0 panggilan baru', tpH.jumlah() === 0 && rBiaya.ditolakPencegat.some((d) => d.alasan === 'PROYEKSI_BIAYA_KERAS') && rBiaya.akuntansi.biayaUsd === 0.45)
+  cek('H16 batas biaya berlaku untuk SELURUH run lintas resume (proyeksi memakai biaya sesi lalu) → 0 panggilan baru', tpH.jumlah() === 0 && rBiaya.ditolakPencegat.some((d) => d.alasan === 'PROYEKSI_BIAYA_KERAS') && rBiaya.akuntansi.biayaUsd === 0.045)
 
   const cpRusak = { ...toko2.isi(), status: 'DIJEDA', slot: toko2.isi().slot.slice(0, 1), akuntansi: { ...toko2.isi().akuntansi, total: 99 } }
   cek('H17 periksaResume: akuntansi tak konsisten / format lain → ditolak', R.periksaResume(cpRusak, cpRusak.ikatan).includes('AKUNTANSI_CHECKPOINT_TIDAK_KONSISTEN') && R.periksaResume({ ...cpRusak, format: 'x' }, cpRusak.ikatan).includes('FORMAT_CHECKPOINT_BERBEDA'))
@@ -384,9 +387,10 @@ bagian('I. CLI (argumen & jalur)')
   const keluar = []
   const rc = await R.cli(['--mode', 'offline', '--report', join(dir, 'lap.json')], ENV_UJI, (s) => keluar.push(s))
   const lap = JSON.parse(readFileSync(join(dir, 'lap.json'), 'utf8'))
-  cek('I4 CLI luring: kode 0, laporan tertulis di luar repo, H20 & verdict tercetak', rc === 0 && lap.verdict === 'REGRESI_SAJA_TANPA_HELDOUT' && keluar.some((s) => s.includes('H20=LULUS')))
+  cek('I4 CLI luring (konfigurasi BEKU): rencana 42 slot + proyeksi DICETAK SEBELUM eksekusi; kode 0; laporan di luar repo; PASS (stub setia)', rc === 0 && lap.verdict === 'PASS' && lap.panggilanTransport === 42 && lap.panggilanNyata === 0 && keluar.some((s) => s.includes('H20=LULUS')) &&
+    keluar.findIndex((s) => s.startsWith('proyeksi maksimum')) >= 0 && keluar.findIndex((s) => s.startsWith('proyeksi maksimum')) < keluar.findIndex((s) => / RG-H20 u1 → (OK|GAGAL)/.test(s)) && keluar.filter((s) => /^ {2}#\d+ /.test(s)).length >= 42)
   const rcLive = await R.cli(['--mode', 'live', '--report', join(dir, 'l.json')], ENV_LIVE, () => {})
-  cek('I5 CLI live (frasa + kunci palsu) → DITOLAK (kode 3), 0 jaringan — konfigurasi owner belum ada', rcLive === 3 && !existsSync(join(dir, 'l.json')))
+  cek('I5 CLI live (frasa + kunci palsu) → DITOLAK (kode 3), 0 jaringan — kunci otorisasi owner repo = false', rcLive === 3 && !existsSync(join(dir, 'l.json')) && panggilanJaringan === 0)
   cek('I6 CLI tanpa argumen → kode 2 (cetak rencana saja)', (await R.cli([], ENV_UJI, () => {})) === 2)
   writeFileSync(join(dir, 'ada.json'), '{}')
 }
@@ -419,11 +423,159 @@ bagian('K. bukti kapabilitas transport Sonnet 5 (beku; hanya menghapus penghalan
   cek('K11 bukti lain yang rusak (argumen tak sah, HTTP ≠200, panggilan ≠1, pemakaian/biaya tak konsisten, biaya > batas probe) → penghalang kembali',
     kembali(ubah({ argumenStrukturSah: false })) && kembali(ubah({ httpStatus: 500 })) && kembali(ubah({ panggilanModel: 2 })) && kembali(ubah({ pemakaian: { input: 5997, output: 162, total: 1 } })) && kembali(ubah({ biayaUsd: 0.06 })) && kembali(ubah({ jenis: 'X' })) && kembali(ubah({ provider: '' })))
   const hal = R.penghalangLiveEval4({ terlihat: TERLIHAT })
-  cek('K12 penghalang lain TETAP (konfig, paket, batas, ambang, gerbang, otorisasi); kesiapan tetap FALSE', ['KONFIG_OWNER_EVAL4_BELUM_DIBEKUKAN', 'PAKET_HELDOUT_BELUM_DIBEKUKAN', 'BATAS_BIAYA_BELUM_DIBEKUKAN', 'AMBANG_KUALITAS_BELUM_DIBEKUKAN', 'GERBANG_KUALITAS_BELUM_DIIMPLEMENTASI_DI_RUNNER', 'OTORISASI_LIVE_OWNER_TIDAK_ADA'].every((a) => hal.includes(a)) && !hal.includes(KT) &&
+  cek('K12 penghalang lain TETAP (otorisasi owner); transport terbukti; kesiapan tetap FALSE', JSON.stringify(hal) === '["OTORISASI_LIVE_OWNER_TIDAK_ADA"]' && !hal.includes(KT) &&
     M.kesiapanLiveEval4({ otorisasiOwnerLive: true, dilayani: S5, konfigOwner: { ambangKualitas: { x: 1 } }, galatKonfig: [], buktiTransport: B, harapanTransport: HP }).siap === false)
   cek('K13 Sonnet 5 tetap PENDING_SPIKE, kemampuan null, dasar NONE; bawaan klien tetap Sonnet 4.5', MC.cariEntriModel(S5).status === 'PENDING_SPIKE' && MC.cariEntriModel(S5).kemampuan === null && MC.cariEntriModel(S5).dasar === 'NONE' && OR.SPK_MODEL === S45 && MC.resolusiModelIntake({ TAH_INTAKE_MODEL: S5 }).aktif === false)
   const lapLive = await R.jalankanRunnerEval4({ mode: 'live', env: ENV_LIVE, hariIni: HARI })
-  cek('K14 live jaringan tetap DITOLAK sebelum panggilan apa pun (konfig owner belum ada)', lapLive.verdict === 'DITOLAK_KONFIG_OWNER' && lapLive.panggilanTransport === 0 && panggilanJaringan === 0)
+  cek('K14 live jaringan tetap DITOLAK sebelum panggilan apa pun (kesiapan: otorisasi owner)', lapLive.verdict === 'DITOLAK_KESIAPAN_LIVE' && lapLive.panggilanTransport === 0 && panggilanJaringan === 0)
+}
+
+// =====================================================================
+bagian('L. paket held-out BEKU (20 kasus baru) & gerbang kualitas Eval-4')
+{
+  const KO = R.KONFIG_OWNER_EVAL4
+  const AMB = R.AMBANG_KUALITAS_EVAL4
+  const KH = FH.bangunKasusHeldoutEval4(HARI)
+  const ids = FH.KASUS_HELDOUT_EVAL4.map((k) => k.id)
+  cek('L1 tepat 20 kasus held-out: id unik Q01..Q20, semua TEXT, dibangun deterministik', ids.length === 20 && FH.JUMLAH_HELDOUT_EVAL4 === 20 && new Set(ids).size === 20 && JSON.stringify(ids) === JSON.stringify(Array.from({ length: 20 }, (_, i) => `Q${String(i + 1).padStart(2, '0')}`)) && KH.length === 20 && KH.every((k) => k.kind === 'TEXT') && JSON.stringify(FH.bangunKasusHeldoutEval4(HARI)) === JSON.stringify(KH))
+  cek('L2 hash spesifikasi paket = hash beku konfigurasi owner; SHA berkas fixture terkunci', R.hitungHashSpekHeldout(FH) === KO.paket.hashGtBeku && R.verifikasiBekuEval4().length === 0 && 'prisma/fixtures/spike-intake/eval4-heldout-cases.mjs' in R.SHA_BEKU_EVAL4)
+  const modUbah = { ...FH, KASUS_HELDOUT_EVAL4: FH.KASUS_HELDOUT_EVAL4.map((k, i) => (i === 4 ? { ...k, teks: () => 'teks diganti' } : k)) }
+  cek('L2b spesifikasi diubah (satu teks) → hash beda → PAKET_HASH_GT_BERBEDA (paket tak bisa diganti diam-diam)', R.hitungHashSpekHeldout(modUbah) !== KO.paket.hashGtBeku && R.periksaPaketHeldout({ modul: modUbah, hashGtBeku: KO.paket.hashGtBeku }, { terlihat: TERLIHAT, hariIni: HARI }).includes('PAKET_HASH_GT_BERBEDA'))
+  const lapK = R.laporanKemiripanHeldout(KH, TERLIHAT)
+  const maksW = Math.max(...lapK.map((r) => r.trigramKata.nilai))
+  const maksC = Math.max(...lapK.map((r) => r.ngramKarakter5.nilai))
+  cek('L3 anti-kebocoran: id/teks/penanda lama tak dipakai ulang; kemiripan maks di bawah ambang beku; 0 nama kapal tumpang-tindih; konfigurasi owner sah', R.periksaPaketHeldout(KO.paket, { terlihat: TERLIHAT, hariIni: HARI }).length === 0 && R.periksaKonfigOwner(KO, { terlihat: TERLIHAT, hariIni: HARI }).length === 0 && lapK.every((r) => !r.mencurigakan && r.namaKapalTumpangTindih === 0) && maksW < R.AMBANG_KEMIRIPAN.trigramKata && maksC < R.AMBANG_KEMIRIPAN.ngramKarakter5 && TERLIHAT.korpus.length >= 80, `maks trigram ${maksW}, maks 5-gram ${maksC}, korpus ${TERLIHAT.korpus.length}`)
+  const k3 = Object.fromEntries(F3.bangunKasusEval3(HARI).map((k) => [k.id, k]))
+  const parafrase = { id: 'UJI-P1', kind: 'TEXT', kategori: 'UJI', teks: k3.H07.teks.replace('We hereby nominate your company', 'We nominate your firm').replace(/KTX3AG/g, 'Zeta'), gt: k3.H07.gt }
+  const namaLama = { ...UJI_X01, id: 'UJI-P2', teks: 'Mohon bantu keagenan untuk kunjungan MV SEROJA BIRU ke Pelabuhan Bitung.\nMuatan: bongkar 1.200 MT semen.', gt: { ...UJI_X01.gt, vessels: { jumlah: Pn(1), daftar: [kapal({ name: Pn('SEROJA BIRU') })] } } }
+  const gp = R.periksaPaketHeldout(paket([parafrase, namaLama]), { terlihat: TERLIHAT, hariIni: HARI })
+  cek('L4 parafrase ringan kasus terlihat (H07) & nama kapal Eval-2 dipakai ulang → KEMIRIPAN_MENCURIGAKAN (tak diterima diam-diam)', gp.includes('UJI-P1:KEMIRIPAN_MENCURIGAKAN') && gp.includes('UJI-P2:KEMIRIPAN_MENCURIGAKAN'), gp.join(','))
+  const tag = (t) => KH.filter((k) => k.cakupan.includes(t)).length
+  const WAJIB = ['NORMAL', 'BAHASA_ID', 'BAHASA_EN', 'ANGKA_ID', 'TIDAK_LENGKAP', 'KONFLIK', 'MULTI_KAPAL', 'NON_KEAGENAN', 'INJEKSI', 'JEBAKAN_MUATAN', 'ASOSIASI_KAPAL_MUATAN', 'OPERASIONAL_REALISTIS']
+  cek('L5 cakupan: setiap kategori wajib owner ≥ 2 kasus; bahasa seimbang 10 ID / 10 EN', WAJIB.every((t) => tag(t) >= 2) && KH.filter((k) => k.bahasa === 'ID').length === 10 && KH.filter((k) => k.bahasa === 'EN').length === 10, WAJIB.map((t) => `${t}:${tag(t)}`).join(' '))
+
+  // Run penuh konfigurasi BEKU dengan stub SETIA (jawaban dari GT): gerbang harus lulus — GT konsisten dgn validator/penilai.
+  const logL = []
+  const lapL = await jalanBeku({ mode: 'offline', log: (x) => logL.push(x) })
+  cek('L6 konsistensi GT: jawaban setia untuk 42 slot → PASS, 0 FATAL/MAJOR POST, H20 LULUS (DRY_RUN, 0 panggilan nyata)', lapL.verdict === 'PASS' && lapL.label === R.LABEL_DRY && lapL.panggilanNyata === 0 && lapL.panggilanTransport === 42 && lapL.h20.hasil === 'LULUS' && lapL.agregat.HELDOUT_S5_V4.fatalPost === 0 && lapL.gerbang.gerbang.G_LULUS_HELDOUT.lulusSlot === 40)
+  const urut = ['1:REGRESI_MUATAN_S5_V4:RG-H20:u1', '2:REGRESI_MUATAN_S5_V4:RG-H18:u1', ...[1, 2].flatMap((u) => ids.map((id, i) => `${2 + (u - 1) * 20 + i + 1}:HELDOUT_S5_V4:${id}:u${u}`))]
+  const rr1 = R.rincianRencanaEval4(KO, HARI)
+  const rr2 = R.rincianRencanaEval4(KO, new Date('2027-01-15T00:00:00Z'))
+  cek('L7 rencana deterministik: 42 slot, RG-H20 → RG-H18 → Q01..Q20 u1 → Q01..Q20 u2; sidik sama lintas hari eksekusi', JSON.stringify(lapL.rencana.daftar) === JSON.stringify(urut) && rr1.sidik === rr2.sidik && rr1.sidik === lapL.rencana.sidik && rr1.rencana.length === 42)
+  cek('L8 ulangan = 2 untuk setiap kasus held-out; setiap slot TEPAT satu panggilan (0 ulang)', ids.every((id) => lapL.slot.filter((s) => s.kasus === id).map((s) => s.ulangan).join() === '1,2') && lapL.slot.every((s) => s.panggilan.length === 1) && lapL.operasional.tanpaUlang && lapL.akuntansi.percobaanUlang === 0)
+  cek('L9 laporan memisahkan: regresi, held-out RAW & POST, fatal, muatan tak berbukti, fakta/angka, kelulusan, konsistensi, total panggilan/token/biaya', ['G_H20_POST', 'G_REGRESI', 'G_MUATAN_TAK_BERBUKTI_POST', 'G_FATAL_POST', 'G_IDENTITAS', 'G_OUTPUT_TOOL', 'G_LULUS_HELDOUT', 'G_KONSISTENSI_ULANGAN', 'G_LENGKAP', 'G_INTEGRITAS_GT'].every((k) => k in lapL.gerbang.gerbang) &&
+    ['fatalRaw', 'fatalPost', 'f5UnsupportedRaw', 'f5UnsupportedPost'].every((k) => k in lapL.agregat.HELDOUT_S5_V4) && lapL.totalTokenInput === 42 * 2500 && lapL.totalTokenOutput === 42 * 400 && lapL.totalBiayaUsd === 0.42 && lapL.akuntansi.panggilanDicoba === 42)
+  const iRencana = logL.findIndex((x) => x.startsWith('RENCANA PANGGILAN'))
+  const iSlot1 = logL.findIndex((x) => / RG-H20 u1 → (OK|GAGAL)/.test(x))
+  cek('L10 rencana panggilan LENGKAP dicetak SEBELUM panggilan pertama (log runner)', iRencana >= 0 && iRencana < iSlot1 && logL.slice(iRencana + 1, iSlot1).length === 42)
+
+  // ── anggaran
+  const ang = R.buktiAnggaranRencana(KO)
+  cek('L11 anggaran rencana beku (owner D1): batas keras total = US$2,10; 42 × US$0,05 = US$2,10 ≤ US$2,10 → TERBUKTI & diterima preflight', ang.terbukti && ang.galat.length === 0 && ang.maksPanggilan === 42 && ang.maksBiayaUsd === 2.1 && ang.batasKerasUsd === 2.1 && KO.batas.biayaKerasUsd === R.BATAS_KERAS_MAKS_OWNER_USD && R.periksaKonfigOwner(KO, { terlihat: TERLIHAT, hariIni: HARI }).length === 0)
+  const kf2 = (x) => R.periksaKonfigOwner({ ...KO, ...x }, { terlihat: TERLIHAT, hariIni: HARI })
+  cek('L12 melewati US$2,10 DITOLAK: batas keras 2,20 / plafon 0,06 (kunci owner) & rencana 42 × 0,051 = 2,142 > 2,10 (anggaran tak terbukti)',
+    kf2({ batas: { ...KO.batas, biayaKerasUsd: 2.2, biayaLunakUsd: 2.2 } }).includes('BATAS_KERAS_MELEBIHI_KEPUTUSAN_OWNER') && kf2({ plafonPerPanggilanUsd: 0.06 }).includes('PLAFON_MELEBIHI_KEPUTUSAN_OWNER') &&
+      !R.buktiAnggaranRencana({ ...KO, plafonPerPanggilanUsd: 0.051 }).terbukti && !R.buktiAnggaranRencana({ ...KO, batas: { ...KO.batas, biayaKerasUsd: 2.09 } }).terbukti)
+  const tolakKeras = await jalanBeku({ mode: 'offline', konfigUji: { ...KO, batas: { ...KO.batas, biayaKerasUsd: 2.2, biayaLunakUsd: 2.2 } } })
+  const mahal = await jalanBeku({ mode: 'offline', opsiStub: { biaya: 0.05 } })
+  cek('L13 runner menolak batas keras > US$2,10 (0 panggilan); saat run total TAK PERNAH melewati US$2,10 walau setiap panggilan tepat US$0,05', tolakKeras.verdict === 'DITOLAK_KONFIG_OWNER' && tolakKeras.panggilanTransport === 0 && mahal.totalBiayaUsd <= 2.1 && mahal.panggilanTransport <= 42, `biaya ${mahal.totalBiayaUsd}, panggilan ${mahal.panggilanTransport}, verdict ${mahal.verdict}`)
+  const lewatPlafon = await jalanBeku({ mode: 'offline', opsiStub: { biaya: 0.06 } })
+  cek('L14 plafon per panggilan DITEGAKKAN: biaya 0,06 > 0,05 → slot gagal BIAYA_PER_PANGGILAN_MELEBIHI_PLAFON, berhenti, 1 panggilan, INCONCLUSIVE', lewatPlafon.slot[0].status === 'GAGAL:BIAYA_PER_PANGGILAN_MELEBIHI_PLAFON' && lewatPlafon.panggilanTransport === 1 && lewatPlafon.verdict === 'INCONCLUSIVE' && lewatPlafon.berhenti === 'BIAYA_PER_PANGGILAN_MELEBIHI_PLAFON')
+
+  // ── gerbang toleransi-nol (tak bisa ditutupi rata-rata)
+  const validatorBocor = (raw, ctx) => {
+    const r = P.validasiEkstraksi(structuredClone(raw), ctx)
+    r.proposal.cargoes = (raw.cargoes ?? []).map((c) => ({ name: c.name, quantity: c.quantity ?? null, unit: c.unit ?? null, operation: c.operation ?? null, source: 'SOURCE_DOCUMENT', flags: [] }))
+    return r
+  }
+  const h20Bocor = await jalanBeku({ mode: 'offline', jawabStub: jawabH20([{ name: 'coal', quantity: 5000, unit: 'MT', operation: 'LOAD' }]), validasiUji: validatorBocor })
+  cek('L15 H20 muatan karangan lolos POST → FAIL walau 40/40 held-out lulus (tanpa perataan)', h20Bocor.verdict === 'FAIL' && h20Bocor.gerbang.gerbang.G_H20_POST.lulus === false && h20Bocor.gerbang.gerbang.G_MUATAN_TAK_BERBUKTI_POST.lulus === false && h20Bocor.gerbang.gerbang.G_LULUS_HELDOUT.nilai === 1)
+  const jawabQ16 = (k) => (k?.id === 'Q16' ? { ...R3.jawabanSempurnaEval3(k), cargoes: [{ name: 'bijih nikel', quantity: 5000, unit: 'MT', operation: 'LOAD' }] } : R3.jawabanSempurnaEval3(k))
+  const q16Bocor = await jalanBeku({ mode: 'offline', jawabStub: jawabQ16, validasiUji: validatorBocor })
+  cek('L16 muatan karangan held-out (jumlah Q16 tak tertulis) lolos POST → FAIL (G_MUATAN_TAK_BERBUKTI_POST)', q16Bocor.verdict === 'FAIL' && q16Bocor.gerbang.gerbang.G_MUATAN_TAK_BERBUKTI_POST.nilai >= 2 && q16Bocor.gerbang.gerbang.G_MUATAN_TAK_BERBUKTI_POST.detail.some((d) => d.startsWith('Q16#u1:F5')))
+  const q16Aman = await jalanBeku({ mode: 'offline', jawabStub: jawabQ16 })
+  cek('L17 muatan karangan hanya di RAW (validator produksi menahannya) → dilaporkan terpisah di RAW, POST bersih → tidak FAIL', q16Aman.agregat.HELDOUT_S5_V4.f5UnsupportedRaw >= 2 && q16Aman.agregat.HELDOUT_S5_V4.f5UnsupportedPost === 0 && q16Aman.gerbang.gerbang.G_MUATAN_TAK_BERBUKTI_POST.lulus === true && q16Aman.verdict === 'PASS')
+  const q06 = await jalanBeku({ mode: 'offline', jawabStub: (k, m, n) => (k?.id === 'Q06' && n <= 22 ? { ...R3.jawabanSempurnaEval3(k), eta: KH.find((x) => x.id === 'Q06').tanggal.ETA1.iso } : R3.jawabanSempurnaEval3(k)) })
+  cek('L18 kesalahan fakta/angka kritis (ETA yang dibatalkan, tertulis & berlabel) lolos POST → F4 → FAIL (satu slot cukup)', q06.verdict === 'FAIL' && q06.gerbang.gerbang.G_FATAL_POST.detail.some((d) => d.startsWith('Q06#u1:F4')) && q06.gerbang.gerbang.G_LULUS_HELDOUT.nilai >= 0.95)
+
+  // ── ambang kelulusan & konsistensi (≥ 90%)
+  const salahKelas = (daftar) => (k) => (daftar.includes(k?.id) ? { ...R3.jawabanSempurnaEval3(k), classification: 'INSUFFICIENT_INFORMATION' } : R3.jawabanSempurnaEval3(k))
+  const lulus90 = await jalanBeku({ mode: 'offline', jawabStub: salahKelas(['Q01', 'Q18']) })
+  const lulus85 = await jalanBeku({ mode: 'offline', jawabStub: salahKelas(['Q01', 'Q18', 'Q19']) })
+  cek('L19 kelulusan held-out tepat 36/40 = 0,90 → lulus ambang; 34/40 = 0,85 → FAIL (G_LULUS_HELDOUT); konsistensi tetap 1,0', lulus90.gerbang.gerbang.G_LULUS_HELDOUT.nilai === 0.9 && lulus90.gerbang.gerbang.G_LULUS_HELDOUT.lulus === true && lulus90.verdict === 'PASS' && lulus85.gerbang.gerbang.G_LULUS_HELDOUT.nilai === 0.85 && lulus85.gerbang.gerbang.G_LULUS_HELDOUT.lulus === false && lulus85.verdict === 'FAIL' && lulus85.gerbang.gerbang.G_KONSISTENSI_ULANGAN.nilai === 1, `${lulus90.gerbang.gerbang.G_LULUS_HELDOUT.nilai}/${lulus85.gerbang.gerbang.G_LULUS_HELDOUT.nilai}`)
+  const tanpaEta = (daftar) => (k) => { const o = R3.jawabanSempurnaEval3(k); if (daftar.includes(k?.id)) delete o.eta; return o }
+  const major85 = await jalanBeku({ mode: 'offline', jawabStub: tanpaEta(['Q01', 'Q03', 'Q07']) })
+  cek('L19b klasifikasi BENAR tetapi field kritis hilang (ETA, MAJOR) di 3 kasus × 2 → 34/40 → FAIL (slot lulus wajib 0 MAJOR POST)', major85.gerbang.gerbang.G_LULUS_HELDOUT.nilai === 0.85 && major85.verdict === 'FAIL' && major85.gerbang.gerbang.G_FATAL_POST.lulus === true && major85.slot.filter((x) => ['Q01', 'Q03', 'Q07'].includes(x.kasus)).every((x) => x.klasifikasi.benarPost && x.penilai.POST.MAJOR > 0), `${major85.gerbang.gerbang.G_LULUS_HELDOUT.nilai}`)
+  const beda = (daftar) => (k, m, n) => (daftar.includes(k?.id) && n > 22 ? { ...R3.jawabanSempurnaEval3(k), vessels: [] } : R3.jawabanSempurnaEval3(k))
+  const kons90 = await jalanBeku({ mode: 'offline', jawabStub: beda(['Q10', 'Q11']) })
+  const kons85 = await jalanBeku({ mode: 'offline', jawabStub: beda(['Q10', 'Q11', 'Q20']) })
+  cek('L20 konsistensi antar-ulangan 18/20 = 0,90 → lulus; 17/20 = 0,85 → FAIL walau kelulusan 40/40', kons90.gerbang.gerbang.G_KONSISTENSI_ULANGAN.nilai === 0.9 && kons90.verdict === 'PASS' && kons85.gerbang.gerbang.G_KONSISTENSI_ULANGAN.nilai === 0.85 && kons85.gerbang.gerbang.G_KONSISTENSI_ULANGAN.lulus === false && kons85.gerbang.gerbang.G_LULUS_HELDOUT.nilai === 1 && kons85.verdict === 'FAIL' && JSON.stringify(kons85.gerbang.gerbang.G_KONSISTENSI_ULANGAN.tidakKonsisten) === '["Q10","Q11","Q20"]')
+
+  // ── konsistensi dihitung dari POST (owner D3), bukan RAW
+  const srcR = baca('prisma/spike-eval4-runner.mjs')
+  cek('L20b konsistensi gerbang = tanda tangan kritis scorer-1 atas tampilan POST; RAW hanya info', lapL.gerbang.gerbang.G_KONSISTENSI_ULANGAN.lapisan === 'POST' && srcR.includes("tidakKonsistenMenurut('sidikTandaTanganPost')") && srcR.includes('S.tandaTanganKritis(S.tampilanPost(post)') && 'infoRaw' in lapL.gerbang.gerbang.G_KONSISTENSI_ULANGAN && lapL.slot.every((x) => typeof x.sidikTandaTanganPost === 'string' && typeof x.sidikTandaTanganRaw === 'string'))
+  const rawBedaDikoreksi = await jalanBeku({ mode: 'offline', jawabStub: (k, m, n) => (['Q16', 'Q15', 'Q13'].includes(k?.id) && n > 22 ? { ...R3.jawabanSempurnaEval3(k), cargoes: [{ name: 'bijih nikel', quantity: 5000, unit: 'MT', operation: 'LOAD' }] } : R3.jawabanSempurnaEval3(k)) })
+  const gK = rawBedaDikoreksi.gerbang.gerbang.G_KONSISTENSI_ULANGAN
+  cek('L20c RAW tak konsisten (muatan karangan di ulangan 2) TETAPI dikoreksi validator → POST konsisten 20/20 → tidak FAIL karena konsistensi (RAW 17/20 hanya info)', gK.nilai === 1 && gK.lulus === true && gK.infoRaw.nilai === 0.85 && rawBedaDikoreksi.gerbang.gerbang.G_MUATAN_TAK_BERBUKTI_POST.lulus === true && rawBedaDikoreksi.verdict === 'PASS', `POST ${gK.nilai} RAW ${gK.infoRaw.nilai} verdict ${rawBedaDikoreksi.verdict}`)
+  const KH06 = KH.find((x) => x.id === 'Q06')
+  const postBeda = (daftar) => (k, m, n) => {
+    const o = R3.jawabanSempurnaEval3(k)
+    if (n <= 22 || !daftar.includes(k?.id)) return o
+    if (k.id === 'Q06') delete o.eta
+    if (k.id === 'Q07') o.cargoes = [{ ...o.cargoes[0], quantity: 5480 }]
+    if (k.id === 'Q11') delete o.eta
+    return o
+  }
+  const post90 = await jalanBeku({ mode: 'offline', jawabStub: postBeda(['Q06', 'Q07']) })
+  const post85 = await jalanBeku({ mode: 'offline', jawabStub: postBeda(['Q06', 'Q07', 'Q11']) })
+  cek('L20d POST tak konsisten (nilai lain yang sama-sama diterima GT & lolos validator) 18/20 → lulus; 17/20 → FAIL walau kelulusan 40/40', post90.gerbang.gerbang.G_KONSISTENSI_ULANGAN.nilai === 0.9 && post90.verdict === 'PASS' && post85.gerbang.gerbang.G_KONSISTENSI_ULANGAN.nilai === 0.85 && post85.gerbang.gerbang.G_KONSISTENSI_ULANGAN.lulus === false && post85.gerbang.gerbang.G_LULUS_HELDOUT.nilai === 1 && post85.verdict === 'FAIL' && JSON.stringify(post85.gerbang.gerbang.G_KONSISTENSI_ULANGAN.tidakKonsisten) === '["Q06","Q07","Q11"]' && KH06.tanggal.ETA2.iso.length === 10, `${post90.gerbang.gerbang.G_KONSISTENSI_ULANGAN.nilai}/${post85.gerbang.gerbang.G_KONSISTENSI_ULANGAN.nilai}`)
+
+  // ── UN/LOCODE: setiap pasangan pelabuhan/kode punya dasar verifikasi terdokumentasi
+  const VU = FH.VERIFIKASI_UNLOCODE_EVAL4
+  const kodeDiTeks = [...new Set(KH.flatMap((k) => k.teks.match(/\bID[A-Z]{3}\b/g) ?? []))].sort()
+  const nilaiGt = (n) => (n?.status === 'PRESENT' ? [n.value] : n?.status === 'ACCEPTABLE' ? n.values.filter((x) => x !== null) : [])
+  const pasangan = KH.flatMap((k) => nilaiGt(k.gt.portUnlocode).map((c) => ({ kasus: k.id, kode: c, nama: nilaiGt(k.gt.portName) })))
+  const kompak = (x) => String(x).toUpperCase().replace(/[^A-Z]/g, '')
+  cek('L33 setiap kode UN/LOCODE di teks 20 kasus tercatat di tabel verifikasi (sumber UNECE 2024.2, sha256 dataset), tanpa kode lama yang ditolak', kodeDiTeks.length > 0 && kodeDiTeks.every((c) => c in VU) && Object.keys(VU).sort().join() === kodeDiTeks.join() && /^[0-9a-f]{64}$/.test(FH.SUMBER_UNLOCODE.sha256) && !kodeDiTeks.some((c) => ['IDTPP', 'IDMRK', 'IDKBU', 'IDPNJ'].includes(c)), kodeDiTeks.join(','))
+  cek('L34 setiap pasangan GT pelabuhan/kode: kode berfungsi pelabuhan laut (1) & nama pelabuhan GT = nama resmi UNECE; entri QQ wajib didukung bukti repo', pasangan.length >= 18 && pasangan.every((p) => VU[p.kode] && VU[p.kode].fungsi.startsWith('1') && p.nama.every((n) => kompak(VU[p.kode].nama).startsWith(kompak(n)))) && Object.values(VU).filter((v) => v.status === 'QQ').every((v) => v.repo.length > 0) && Object.values(VU).every((v) => ['AI', 'RL', 'QQ'].includes(v.status)), pasangan.filter((p) => !(VU[p.kode] && p.nama.every((n) => kompak(VU[p.kode].nama).startsWith(kompak(n))))).map((p) => p.kasus + ':' + p.kode).join(','))
+
+  // ── identitas & output tool
+  const idTengah = await jalanBeku({ mode: 'offline', opsiStub: { served: (m, n) => (n === 10 ? S45 : m) } })
+  cek('L21 identitas berbeda di tengah run → berhenti SEGERA (tepat 10 panggilan), FAIL, sisa slot tak dijalankan', idTengah.panggilanTransport === 10 && idTengah.verdict === 'FAIL' && idTengah.gerbang.gerbang.G_IDENTITAS.lulus === false && idTengah.slot.slice(10).every((s) => s.status === 'TIDAK_DIJALANKAN'))
+  const toolRusak = await jalanBeku({ mode: 'offline', jawabStub: (k, m, n) => (n === 5 ? { __tanpaTool: true } : R3.jawabanSempurnaEval3(k)) })
+  const argRusak = await jalanBeku({ mode: 'offline', jawabStub: (k, m, n) => (n === 5 ? { __mentah: '{"classification": 7}' } : R3.jawabanSempurnaEval3(k)) })
+  cek('L22 output tool hilang / argumen tak sah → FAIL (G_OUTPUT_TOOL), berhenti, tanpa ulang', toolRusak.verdict === 'FAIL' && toolRusak.gerbang.gerbang.G_OUTPUT_TOOL.lulus === false && toolRusak.panggilanTransport === 5 && argRusak.verdict === 'FAIL' && argRusak.gerbang.gerbang.G_OUTPUT_TOOL.lulus === false, `${toolRusak.slot[4].status} / ${argRusak.slot[4].status}`)
+  const infra = await jalanBeku({ mode: 'offline', jawabStub: (k, m, n) => (n === 7 ? { __http: 503 } : R3.jawabanSempurnaEval3(k)) })
+  cek('L23 galat infrastruktur (HTTP 503) → INCONCLUSIVE (bukan FAIL model, bukan PASS), tanpa ulang', infra.verdict === 'INCONCLUSIVE' && infra.panggilanTransport === 7 && infra.gerbang.gerbang.G_LENGKAP.lulus === false)
+
+  // ── gerbang tak bisa dilewati
+  const longgar = [{ ...AMB, fatalPostMaks: 1 }, { ...AMB, muatanTakBerbuktiPostMaks: 2 }, { ...AMB, lulusHeldoutMin: 0.8 }, { ...AMB, konsistensiUlanganMin: 0.5 }, { ...AMB, identitasBerbedaMaks: undefined }, null]
+  cek('L24 ambang yang dilonggarkan / hilang DITOLAK periksaAmbangKualitas', longgar.every((a) => R.periksaAmbangKualitas(a).length > 0))
+  const tolakLonggar = await jalanBeku({ mode: 'offline', konfigUji: { ...KO, ambangKualitas: { ...AMB, fatalPostMaks: 3 } } })
+  cek('L25 runner menolak konfigurasi dengan ambang dilonggarkan (0 panggilan)', tolakLonggar.verdict === 'DITOLAK_KONFIG_OWNER' && tolakLonggar.galat.some((g) => g.startsWith('AMBANG_TOLERANSI_NOL_DILANGGAR')) && tolakLonggar.panggilanTransport === 0)
+  const sintetis = (fatalReg) => R.evaluasiGerbangEval4({
+    ringkas: lapL.slot.map((s) => (s.kasus === 'RG-H18' && fatalReg ? { ...s, penilai: { ...s.penilai, POST: { ...s.penilai.POST, FATAL: 1, fatal: ['F9@classification'] } } } : s)),
+    rencana: lapL.rencana.daftar.map((d) => { const [seq, blok, kasus, u] = d.split(':'); return { seq: Number(seq), blok, kasus, ulangan: Number(u.slice(1)) } }),
+    ambang: AMB, ulangan: 2, integritasGt: { status: 'OK', kasus: [] },
+  })
+  cek('L26 satu FATAL di regresi + 40/40 held-out + konsistensi 1,0 → tetap FAIL (tanpa perataan); tanpa FATAL → PASS', sintetis(true).putusan === 'FAIL' && sintetis(true).gerbang.G_REGRESI.lulus === false && sintetis(false).putusan === 'PASS')
+  let jedaN = 0
+  const jedaL = await jalanBeku({ mode: 'offline', sinyalJeda: () => jedaN++ >= 3 })
+  cek('L27 run tak lengkap (dijeda) tak pernah PASS', jedaL.verdict === 'DIJEDA' && jedaL.gerbang.putusan !== 'PASS')
+  cek('L28 gerbang kualitas terimplementasi (konstanta) & tak ada sakelar pelewat di runner', M.GERBANG_KUALITAS_EVAL4_DIIMPLEMENTASI === true && !/lewatiGerbang|skipGate|bypass/i.test(baca('prisma/spike-eval4-runner.mjs')))
+
+  // ── kesiapan
+  const halRepo = R.penghalangLiveEval4({ terlihat: TERLIHAT, hariIni: HARI })
+  const halAnggaranLama = R.penghalangLiveEval4({ konfig: { ...KO, batas: { ...KO.batas, biayaKerasUsd: 1.5, biayaLunakUsd: 1.5 } }, terlihat: TERLIHAT, hariIni: HARI })
+  cek('L29 kesiapan repo FALSE: penghalang tunggal = otorisasi owner (dihitung); dengan anggaran lama US$1,50 penghalang anggaran KEMBALI', JSON.stringify(halRepo) === JSON.stringify(['OTORISASI_LIVE_OWNER_TIDAK_ADA']) && JSON.stringify(halAnggaranLama) === JSON.stringify(['ANGGARAN_RENCANA_MELEBIHI_BATAS_KERAS', 'OTORISASI_LIVE_OWNER_TIDAK_ADA']))
+  const siapSintetis = (otor) => M.kesiapanLiveEval4({ otorisasiOwnerLive: otor, dilayani: S5, konfigOwner: { ambangKualitas: AMB }, galatKonfig: [], galatAnggaran: [], buktiTransport: R.BUKTI_TRANSPORT_S5_EVAL4, harapanTransport: R.harapanTransportEval4() })
+  cek('L30 tanpa otorisasi LIVE owner kesiapan SELALU false (fungsi murni: semua prasyarat lain terpenuhi)', siapSintetis(false).siap === false && JSON.stringify(siapSintetis(false).alasan) === '["OTORISASI_LIVE_OWNER_TIDAK_ADA"]' && siapSintetis(true).siap === true)
+  const liveRepo = await R.jalankanRunnerEval4({ mode: 'live', env: ENV_LIVE, hariIni: HARI })
+  cek('L31 live jaringan dengan konfigurasi beku (frasa + kunci palsu) → DITOLAK_KESIAPAN_LIVE (OTORISASI), 0 panggilan, 0 jaringan', liveRepo.verdict === 'DITOLAK_KESIAPAN_LIVE' && JSON.stringify(liveRepo.galat) === '["OTORISASI_LIVE_OWNER_TIDAK_ADA"]' && liveRepo.panggilanTransport === 0 && panggilanJaringan === 0)
+  cek('L31b frasa di env TIDAK cukup: kunci otorisasi owner repo = false → otorisasiLiveOwner false; kunci true + frasa → true (fungsi murni)', R.OTORISASI_LIVE_EVAL4_OWNER === false && R.otorisasiLiveOwner(ENV_LIVE) === false && R.otorisasiLiveOwner(ENV_LIVE, true) === true && R.otorisasiLiveOwner({ SPIKE_AUTHORIZED: 'lain' }, true) === false)
+  const keluarCetak = []
+  R.cetakRencana((x) => keluarCetak.push(x), KO, HARI)
+  cek('L32 cetakRencana: 42 baris rencana + proyeksi maksimum (42 × 0,05 = 2,1 ≤ 2,1 TERBUKTI) — tanpa panggilan', keluarCetak.filter((x) => /^ {2}#/.test(x)).length === 42 && keluarCetak.some((x) => x.includes('US$2.1 vs batas keras US$2.1') && x.includes('TERBUKTI ≤ batas')) && panggilanJaringan === 0)
 }
 
 // =====================================================================
@@ -431,7 +583,8 @@ bagian('J. kunci lingkup & nol jaringan')
 {
   cek('J1 Sonnet 5 TETAP PENDING_SPIKE, kemampuan null; gerbang produksi TAH_INTAKE_MODEL tertutup', (() => { const e = MC.cariEntriModel(S5); return e.status === 'PENDING_SPIKE' && e.kemampuan === null && e.dasar === 'NONE' && MC.resolusiModelIntake({ TAH_INTAKE_MODEL: S5 }).aktif === false })())
   cek('J2 model bawaan klien tetap Sonnet 4.5; prompt produksi tetap v3', OR.SPK_MODEL === S45 && X.VERSI_PROMPT_INTAKE === '3' && X.PROMPT_INTAKE_V3.versi === '3')
-  cek('J3 konfigurasi owner Eval-4 = null (tak ada paket/anggaran/ambang yang ditebak)', R.KONFIG_OWNER_EVAL4 === null)
+  const KO = R.KONFIG_OWNER_EVAL4
+  cek('J3 konfigurasi owner Eval-4 BEKU = keputusan owner persis (20 × 2, keras US$2,10 = lunak, plafon US$0,05, 42 maks, ambang terkunci)', Object.isFrozen(KO) && Object.isFrozen(KO.batas) && KO.jumlahKasusHeldout === 20 && KO.ulangan === 2 && KO.batas.biayaKerasUsd === 2.1 && KO.batas.biayaLunakUsd === 2.1 && KO.plafonPerPanggilanUsd === 0.05 && KO.batas.maksPanggilan === 42 && KO.ambangKualitas === R.AMBANG_KUALITAS_EVAL4 && R.periksaAmbangKualitas(KO.ambangKualitas).length === 0)
   const skrip = JSON.parse(baca('package.json')).scripts
   cek('J4 skrip npm Eval-4 hanya uji luring (prep/runner check) — tak ada skrip run live', Object.entries(skrip).filter(([k]) => /eval4/i.test(k)).every(([, v]) => /^node prisma\/check-eval4-(prep|runner)\.mjs$/.test(v)) && !Object.values(skrip).some((v) => /spike-eval4-runner|--mode\s+live/.test(v)))
   const src = baca('prisma/spike-eval4-runner.mjs')
