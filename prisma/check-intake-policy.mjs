@@ -97,7 +97,9 @@ const RAW_BAIK = {
   cek('UN/LOCODE dinormalisasi', p.portUnlocode.value === 'IDSRI')
   cek('cargo: jumlah "5,000" → 5000, operasi LOAD', p.cargoes[0].quantity === 5000 && p.cargoes[0].operation === 'LOAD')
   cek('cargo: "12,5" → 12.5; negatif/teks → null', (() => {
-    const c = validasi({ ...RAW_BAIK, cargoes: [{ name: 'a', quantity: '12,5' }, { name: 'b', quantity: -3 }, { name: 'c', quantity: 'banyak' }] }, 'TEXT', SUMBER).proposal.cargoes
+    // Uji parser angka keluaran AI — jalur PDF (tanpa grounding teks; nama a/b/c tidak ada di SUMBER
+    // sehingga di jalur TEXT barisnya kini DIBUANG — lihat bagian grounding muatan).
+    const c = validasi({ ...RAW_BAIK, cargoes: [{ name: 'a', quantity: '12,5' }, { name: 'b', quantity: -3 }, { name: 'c', quantity: 'banyak' }] }, 'PDF', null).proposal.cargoes
     return c[0].quantity === 12.5 && c[1].quantity === null && c[2].quantity === null
   })())
   cek('angka uang di keluaran AI diabaikan (tak ada field uang)', !JSON.stringify(p).includes('1500') && !('agencyFee' in p) && !('price' in p.cargoes[0]))
@@ -1033,7 +1035,7 @@ console.log('\n[7] Kunci sumber (batas tulis, skema, pagar)')
     cek('B-1: batas jumlah muatan dipakai dari kebijakan, bukan angka tertulis di UI',
       /MAKS_CARGO_INTAKE/.test(ui) && /p\.cargoes\.length >= MAKS_CARGO_INTAKE/.test(ui))
     cek('B-1: PATCH muatan mempertahankan jejak asal baris yang tidak berubah',
-      /asal\.p\.cargoes\.find\(/.test(svc) && /sama \? sama\.source : \('USER_EDITED' as const\)/.test(svc))
+      /asal\.p\.cargoes\.find\(/.test(svc) && /if \(!sama\) return \{ \.\.\.baru, source: 'USER_EDITED' as const/.test(svc) && /source: sama\.source, \.\.\.\(sama\.flags \? \{ flags: sama\.flags \} : \{\}\)/.test(svc))
     cek('B-2: status MMSI dibawa sebagai data, bukan teks Indonesia di dalam label',
       !/belum terverifikasi/.test(pol.match(/function labelKapal[\s\S]*?\n}/)?.[0] ?? '') &&
         /mmsiUnverified\?: boolean/.test(pol) &&
@@ -1110,6 +1112,113 @@ console.log('\n[7] Kunci sumber (batas tulis, skema, pagar)')
   }
   cek('intake tidak menyalakan pemantauan otomatis', !/mulaiPemantauan|monitoredVoyage/.test(svc))
   cek('intake tak bergantung pada AIS', !/services\/ais|\bais\b/i.test(svc.replace(/^\s*\/\/.*$/gm, '')))
+}
+
+// =================================================================== 8. grounding muatan (Eval-4 prep, audit H20)
+// Muatan usulan AI WAJIB berbukti di sumber (masukan berteks). Nilai tak berbukti dikosongkan / baris
+// dibuang; muatan belum tepercaya (PDF/gambar, OCR, operasi ambigu, baris lama) memblok approval.
+console.log('\n[8] Grounding muatan & gerbang approval (Eval-4 prep)')
+{
+  const H20 = [
+    'Dear Sir/Madam,',
+    'We are evaluating a possible call of MV LAYANG BENGAWAN (IMO 9998535) at Probolinggo (IDPRO), ETA 28 October 2026, to load sawn timber.',
+    'Could you kindly advise your agency fee and indicative port costs for such a call?',
+  ].join('\n')
+  const dasarRaw = { classification: 'UNSUPPORTED_REQUEST', vessels: [{ name: 'MV LAYANG BENGAWAN', imo: '9998535' }], portName: 'Probolinggo', portUnlocode: 'IDPRO' }
+  const muat = (cargoes, sumber = H20, jenis = 'TEXT') => validasi({ ...dasarRaw, cargoes }, jenis, sumber).proposal
+  const sama = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+
+  // R1 — H20 setia
+  const r1 = muat([{ name: 'sawn timber', operation: 'LOAD' }])
+  cek('R1 H20 setia: sawn timber / LOAD dipertahankan, SOURCE_DOCUMENT, tanpa flag, tepercaya',
+    r1.cargoes.length === 1 && r1.cargoes[0].name === 'sawn timber' && r1.cargoes[0].operation === 'LOAD' && r1.cargoes[0].quantity === null &&
+      r1.cargoes[0].source === 'SOURCE_DOCUMENT' && sama(r1.cargoes[0].flags, []) && P.cargoTepercaya(r1.cargoes[0]) && r1.cargoesDropped === 0)
+  // R2 — jumlah karangan
+  const r2 = muat([{ name: 'sawn timber', quantity: 5000, unit: 'CBM', operation: 'LOAD' }])
+  cek('R2 jumlah karangan 5000 CBM: nama & LOAD tetap, jumlah & satuan null + flag',
+    r2.cargoes.length === 1 && r2.cargoes[0].name === 'sawn timber' && r2.cargoes[0].operation === 'LOAD' && r2.cargoes[0].quantity === null && r2.cargoes[0].unit === null &&
+      r2.cargoes[0].flags.includes('CARGO_QUANTITY_NOT_IN_SOURCE') && r2.cargoes[0].flags.includes('CARGO_UNIT_NOT_IN_SOURCE'))
+  cek('R2 jumlah karangan tak pernah tersimpan di proposal', !JSON.stringify(r2).includes('5000') && !/CBM/.test(JSON.stringify(r2.cargoes.map(({ flags, ...x }) => x))))
+  cek('R2b angka IMO / tanggal tidak menjadi bukti jumlah', muat([{ name: 'sawn timber', quantity: 9998535 }]).cargoes[0].quantity === null &&
+    muat([{ name: 'sawn timber', quantity: 2026 }]).cargoes[0].quantity === null && muat([{ name: 'sawn timber', quantity: 28 }]).cargoes[0].quantity === null)
+  // R3 — komoditas karangan
+  const r3 = muat([{ name: 'coal', quantity: 5000, unit: 'MT', operation: 'LOAD' }], 'ETA Probolinggo 28 October 2026')
+  cek('R3 komoditas karangan "coal" → baris dibuang, dihitung cargoesDropped', r3.cargoes.length === 0 && r3.cargoesDropped === 1 && !JSON.stringify(r3).toUpperCase().includes('COAL'))
+  cek('R3b kata utuh, bukan substring: "ore" tidak berbukti oleh "before"', muat([{ name: 'ore' }], 'Arrival before noon, port Probolinggo').cargoes.length === 0)
+  // R4 — jumlah berbukti & format angka
+  const r4 = (sumber, q, unit = 'MT', name = 'coal') => muat([{ name, quantity: q, unit, operation: 'LOAD' }], sumber).cargoes[0]
+  cek('R4 "5,000 MT coal" → 5000 MT dipertahankan', (() => { const c = r4('Please load 5,000 MT coal at Taboneo', 5000); return c.quantity === 5000 && c.unit === 'MT' && sama(c.flags, []) })())
+  cek('R4 "5.000 MT batubara" (ribuan gaya ID) → 5000', r4('Muat 5.000 MT batubara', 5000, 'MT', 'batubara').quantity === 5000)
+  cek('R4 "5.000" TIDAK ditafsirkan 5 (tafsiran tunggal, gagal-tertutup)', (() => { const c = r4('Muat 5.000 MT batubara', 5, 'MT', 'batubara'); return c.quantity === null && c.flags.includes('CARGO_QUANTITY_NOT_IN_SOURCE') })())
+  cek('R4 "12.500.000" & "1,234.5" & "12,5" → 12500000 / 1234.5 / 12.5', P.nilaiAngkaSumber('12.500.000') === 12500000 && P.nilaiAngkaSumber('1,234.5') === 1234.5 && P.nilaiAngkaSumber('1.234,5') === 1234.5 && P.nilaiAngkaSumber('12,5') === 12.5 && P.nilaiAngkaSumber('5000') === 5000)
+  cek('R4 alias satuan sempit: "metric tons" ↔ MT, "m³" ↔ CBM; satuan lain harus tertulis', r4('load coal 5000 metric tons', 5000).unit === 'MT' &&
+    r4('load 300 m³ coal', 300, 'CBM').unit === 'CBM' && r4('load 300 bags coal', 300, 'MT').unit === null)
+  // R5 — operasi
+  const r5 = (sumber, op) => muat([{ name: 'coal', operation: op }], sumber).cargoes[0]
+  cek('R5 "discharge coal" + model LOAD → operasi null + CONTRADICTS', (() => { const c = r5('Please discharge coal at Gresik', 'LOAD'); return c.operation === null && c.flags.includes('CARGO_OPERATION_CONTRADICTS_SOURCE') })())
+  cek('R5 "discharge coal" + model DISCHARGE → diterima, tepercaya', (() => { const c = r5('Please discharge coal at Gresik', 'DISCHARGE'); return c.operation === 'DISCHARGE' && P.cargoTepercaya(c) })())
+  cek('R5 tanpa kata operasi → null + NOT_IN_SOURCE; "muatan" bukan bukti LOAD', (() => { const c = r5('Muatan: coal, tujuan Gresik', 'LOAD'); return c.operation === null && c.flags.includes('CARGO_OPERATION_NOT_IN_SOURCE') })())
+  cek('R5 "bongkar muat coal" (kedua operasi) → dipertahankan, AMBIGUOUS, wajib konfirmasi', (() => { const c = r5('Jasa bongkar muat coal di Gresik', 'LOAD'); return c.operation === 'LOAD' && c.flags.includes('CARGO_OPERATION_AMBIGUOUS') && !P.cargoTepercaya(c) })())
+  // R6 — tanpa nama
+  cek('R6 baris tanpa nama tetap dilewati (perilaku lama)', muat([{ quantity: 5000, operation: 'LOAD' }, { name: '  ' }]).cargoes.length === 0)
+  // R7 — mutasi H18 / H19
+  const H18 = 'VOYAGE COMPLETION REPORT\nMV NILAM SARI - Dumai (IDDUM)\nArrival: 06/09/2026\nDeparture: 09/09/2026\nDischarging completed without incident.'
+  const H19 = 'REVISED ETA - existing appointment ref KTX3AS/APPT/0921\nMV KASUARI JAYA (IMO 9998468) - Ambon (IDAMQ)\nCargo, berth and principal details are not affected by this revision.'
+  cek('R7a H18 operasi tanpa nama muatan → tak ada baris', muat([{ operation: 'DISCHARGE' }], H18).cargoes.length === 0)
+  cek('R7b H18 nama muatan karangan → dibuang', (() => { const p = muat([{ name: 'iron ore', quantity: 30000, unit: 'MT', operation: 'DISCHARGE' }], H18); return p.cargoes.length === 0 && p.cargoesDropped === 1 })())
+  cek('R7c H19 kata umum "Cargo"/"muatan" bukan komoditas → dibuang', (() => { const p = muat([{ name: 'Cargo' }, { name: 'muatan' }], H19); return p.cargoes.length === 0 && p.cargoesDropped === 2 })())
+  // R9 — PDF/gambar
+  const pdf = muat([{ name: 'coal', quantity: 5000, unit: 'MT', operation: 'LOAD' }], null, 'PDF')
+  cek('R9 PDF/gambar: nilai dipertahankan + UNVERIFIED_SOURCE, TIDAK tepercaya', pdf.cargoes[0].quantity === 5000 && pdf.cargoes[0].flags.includes('UNVERIFIED_SOURCE') && !P.cargoTepercaya(pdf.cargoes[0]) &&
+    !P.cargoTepercaya(muat([{ name: 'coal' }], null, 'IMAGE').cargoes[0]))
+  cek('R9 OCR-dipulihkan → wajib konfirmasi', (() => { const c = muat([{ name: 'COAL' }], 'load C0AL at Gresik').cargoes[0]; return c?.flags.includes('OCR_CORRECTED') && !P.cargoTepercaya(c) })())
+  // R10 — baris lama
+  cek('R10 baris lama tanpa flags (SOURCE_DOCUMENT) TIDAK tepercaya; USER_EDITED lama tepercaya; confirmed → tepercaya',
+    !P.cargoTepercaya({ name: 'coal', quantity: 5000, unit: 'MT', operation: 'LOAD', source: 'SOURCE_DOCUMENT' }) &&
+      P.cargoTepercaya({ name: 'coal', quantity: 5000, unit: 'MT', operation: 'LOAD', source: 'USER_EDITED' }) &&
+      P.cargoTepercaya({ ...pdf.cargoes[0], confirmed: true }))
+
+  // Gerbang approval
+  const SUMBER_OK = 'MV SEA STAR IMO 9074729 ke Samarinda IDSRI ETA 2026-09-20, principal PT Surya Perkasa Samudera, load 5,000 MT coal'
+  const { classification, proposal: p } = validasi({
+    classification: 'NEW_NOMINATION', vessels: [{ name: 'MV SEA STAR', imo: '9074729' }],
+    principalName: 'PT Surya Perkasa Samudera', portUnlocode: 'IDSRI', eta: '2026-09-20', cargoes: [{ name: 'coal', quantity: 5000, unit: 'MT', operation: 'LOAD' }],
+  }, 'TEXT', SUMBER_OK)
+  const master = { vessels: KAPAL, principals: [{ id: 'p1', name: 'PT Surya Perkasa Samudera' }], customers: [], ports: [{ id: 'po1', name: 'Samarinda', unlocode: 'IDSRI' }] }
+  const m0 = P.cocokkanSemua(p, master, NORM, null)
+  const mOk = { ...m0, principal: { ...m0.principal, confirmed: true }, customer: { ...m0.customer, leftEmpty: true } }
+  const dasar = { status: 'NEEDS_REVIEW', classification, proposal: p, matches: mOk, duplicateLevel: 'NO_DUPLICATE', portalAccessCount: 0,
+    keputusan: { duplicateDecision: null, decisionReason: null, duplicateConfirmed: false, portalExposureAck: false } }
+  cek('gerbang: muatan teks berbukti → boleh approve', P.syaratApproval(dasar).length === 0)
+  const denganMuatan = (cargoes) => P.syaratApproval({ ...dasar, proposal: { ...p, cargoes } })
+  cek('gerbang: muatan PDF belum dikonfirmasi → CARGO_CONFIRMATION_REQUIRED', denganMuatan(pdf.cargoes).includes('CARGO_CONFIRMATION_REQUIRED'))
+  cek('gerbang: muatan baris lama tanpa flags → CARGO_CONFIRMATION_REQUIRED', denganMuatan([{ name: 'coal', quantity: 5000, unit: 'MT', operation: 'LOAD', source: 'SOURCE_DOCUMENT' }]).includes('CARGO_CONFIRMATION_REQUIRED'))
+  cek('gerbang: sesudah dikonfirmasi peninjau → lolos', denganMuatan([{ ...pdf.cargoes[0], confirmed: true }]).length === 0)
+
+  // R11 — non-keagenan tak pernah membuat catatan operasional
+  cek('R11 NOT_RELEVANT/UNSUPPORTED dengan muatan berbukti & syarat lain lengkap → CLASSIFICATION_NOT_SUPPORTED',
+    ['NOT_RELEVANT', 'UNSUPPORTED_REQUEST'].every((c) => P.syaratApproval({ ...dasar, classification: c }).includes('CLASSIFICATION_NOT_SUPPORTED')))
+  cek('R11 fakta berbukti tetap terlihat di proposal non-keagenan (KEEP_GROUNDED_FACTS)', r1.cargoes.length === 1 && validasi({ ...dasarRaw, cargoes: [] }, 'TEXT', H20).classification === 'UNSUPPORTED_REQUEST')
+  const svc = baca('src/services/intake/intake.service.ts')
+  const fungsi = (nama) => svc.match(new RegExp(`(?:export )?async function ${nama}\\([\\s\\S]*?\\n}\\n`))?.[0] ?? ''
+  const penulis = ['await createVoyage(', 'await createCargo(', 'await setVoyageVessels(']
+  cek('R11 createVoyage/createCargo/setVoyageVessels HANYA dipanggil (sekali) di jalankanPembuatan',
+    penulis.every((w) => svc.split(w).length - 1 === 1 && fungsi('jalankanPembuatan').includes(w)) &&
+      !/prisma\.(voyage|cargo)\.(create|upsert)|\.(voyage|cargo)\.create(Many)?\(/.test(svc) &&
+      ['submitIntake', 'updateIntake', 'rejectIntake', 'linkExistingIntake', 'getIntake', 'listIntakes'].every((f) => fungsi(f) && penulis.every((w) => !fungsi(f).includes(w))))
+  cek('R11 jalankanPembuatan hanya dari approveIntake & retryIntake, keduanya SESUDAH syaratApproval menolak bila ada syarat',
+    svc.split('jalankanPembuatan(').length - 1 === 3 &&
+      ['approveIntake', 'retryIntake'].every((f) => {
+        const b = fungsi(f)
+        const iS = b.indexOf('P.syaratApproval('), iT = b.indexOf('if (syarat.length > 0) throw'), iJ = b.indexOf('jalankanPembuatan(')
+        return iS > 0 && iT > iS && iJ > iT
+      }))
+  cek('R11 klasifikasi non-keagenan tak bisa diubah menjadi NEW_* oleh peninjau (hanya dari INSUFFICIENT)',
+    /if \(row\.classification !== 'INSUFFICIENT_INFORMATION' \|\| !\(P\.KLASIFIKASI_PILOT as readonly string\[\]\)\.includes\(c\)\)/.test(svc))
+  cek('R11 pertahanan berlapis: baris muatan belum tepercaya dilewati di jalankanPembuatan', /if \(!P\.cargoTepercaya\(c\)\) \{\n\s*cargoGagal\+\+\n\s*continue/.test(fungsi('jalankanPembuatan')))
+  cek('gerbang: konfirmasi muatan peninjau tercatat eksplisit di audit (cargoes.confirmed); baris tak berubah membawa flags-nya',
+    /perubahan\.push\(\{ field: 'cargoes\.confirmed', lama: null, baru: dikonfirmasi \}\)/.test(fungsi('updateIntake')) && /source: sama\.source, \.\.\.\(sama\.flags \? \{ flags: sama\.flags \} : \{\}\)/.test(fungsi('updateIntake')))
+  cek('R11 submitIntake tak memicu finance/automation', !/autofill|disbursement|createTask|mulaiPemantauan/i.test(fungsi('submitIntake')))
 }
 
 console.log(`\n${gagal === 0 ? '✅' : '❌'} ${lulus} lulus, ${gagal} gagal`)

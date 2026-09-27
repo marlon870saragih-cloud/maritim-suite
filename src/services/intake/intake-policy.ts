@@ -123,12 +123,36 @@ export type KapalUsulan = {
   excluded: boolean
 }
 
+/**
+ * PRD-005 Eval-4 prep — flag validasi baris muatan. Nilai yang tak berbukti DIKOSONGKAN (flag hanya
+ * jejak); flag di PERLU_KONFIRMASI_CARGO berarti nilainya DIPERTAHANKAN tetapi wajib dikonfirmasi manusia.
+ */
+export type FlagCargo =
+  | 'UNVERIFIED_SOURCE'
+  | 'OCR_CORRECTED'
+  | 'CARGO_QUANTITY_NOT_IN_SOURCE'
+  | 'CARGO_UNIT_NOT_IN_SOURCE'
+  | 'CARGO_UNIT_WITHOUT_QUANTITY'
+  | 'CARGO_OPERATION_NOT_IN_SOURCE'
+  | 'CARGO_OPERATION_CONTRADICTS_SOURCE'
+  | 'CARGO_OPERATION_AMBIGUOUS'
+
+export const PERLU_KONFIRMASI_CARGO: readonly FlagCargo[] = ['UNVERIFIED_SOURCE', 'OCR_CORRECTED', 'CARGO_OPERATION_AMBIGUOUS']
+
 export type CargoUsulan = {
   name: string
   quantity: number | null
   unit: string | null
   operation: 'LOAD' | 'DISCHARGE' | null
+  /** Asal baris. SOURCE_DOCUMENT = dari dokumen; kepercayaan ditentukan `flags` (lihat cargoTepercaya). */
   source: SumberField
+  /**
+   * Eval-4 prep — hasil validasi grounding. OPSIONAL hanya demi baris lama: proposal tersimpan tanpa
+   * field ini TIDAK dipercaya otomatis (wajib dikonfirmasi — cargoTepercaya).
+   */
+  flags?: FlagCargo[]
+  /** true bila peninjau sudah memeriksa baris ini. */
+  confirmed?: boolean
 }
 
 export type KontakUsulan = { name: string | null; email: string | null; phone: string | null }
@@ -158,6 +182,11 @@ export type Proposal = {
    * ditolak TIDAK disimpan di mana pun. Opsional: baris lama tanpa field ini = 0.
    */
   vesselsDropped?: number
+  /**
+   * Eval-4 prep — jumlah baris muatan usulan AI yang DIBUANG validator: nama muatan tidak tertulis di
+   * sumber, atau hanya kata umum ("cargo"/"muatan"). Hanya hitungan; baris lama tanpa field ini = 0.
+   */
+  cargoesDropped?: number
 }
 
 export type StatusCocok = 'MATCHED' | 'AMBIGUOUS' | 'NOT_FOUND' | 'CONFLICT'
@@ -716,17 +745,18 @@ export function validasiEkstraksi(raw: unknown, k: KonteksValidasi): HasilValida
 
   const cargoMentah = Array.isArray(o.cargoes) ? o.cargoes : []
   const cargoes: CargoUsulan[] = []
+  let cargoesDropped = 0
+  const buktiMuatan = berteks ? buktiMuatanDari(k.sourceText ?? '') : null
   for (const c of cargoMentah.slice(0, MAKS_CARGO_INTAKE)) {
     const v = isObj(c) ? c : {}
     const name = teks(v.name)
     if (!name) continue
-    cargoes.push({
-      name,
-      quantity: angkaTakNegatif(v.quantity),
-      unit: teks(v.unit, 20),
-      operation: pilih(v.operation, OPERASI_CARGO).value,
-      source: 'SOURCE_DOCUMENT',
-    })
+    const baris = barisMuatan(
+      { name, quantity: angkaTakNegatif(v.quantity), unit: teks(v.unit, 20), operation: pilih(v.operation, OPERASI_CARGO).value },
+      buktiMuatan,
+    )
+    if (baris) cargoes.push(baris)
+    else cargoesDropped++
   }
 
   const kontak = isObj(o.contact) ? o.contact : null
@@ -753,6 +783,7 @@ export function validasiEkstraksi(raw: unknown, k: KonteksValidasi): HasilValida
     contact: contact && (contact.name || contact.email || contact.phone) ? contact : null,
     classificationReason: null,
     vesselsDropped,
+    cargoesDropped,
   }
 
   let classification: Klasifikasi = (KLASIFIKASI as readonly string[]).includes(o.classification as string)
@@ -781,6 +812,176 @@ function angkaTakNegatif(v: unknown): number | null {
   else if (s.includes(',')) s = /,\d{3}(?:\D|$)/.test(s) ? s.replace(/,/g, '') : s.replace(/,/g, '.')
   const n = Number(s)
   return Number.isFinite(n) && n >= 0 ? n : null
+}
+
+// ----------------------------------------------------------------- grounding muatan (Eval-4 prep)
+//
+// H20 (audit Eval-3): baris muatan usulan AI dulu lolos hanya dengan uji tipe (nama tak kosong,
+// jumlah ≥ 0, enum operasi) dan dicap SOURCE_DOCUMENT tanpa diuji — jumlah karangan ikut ke voyage
+// dan tonase autofill finance. Untuk masukan berteks setiap bagian baris kini WAJIB berbukti di
+// sumber; aturannya sempit dan deterministik (kata utuh, daftar tetap), tanpa kemiripan/fuzzy.
+
+/** Kata umum yang BUKAN komoditas — baris bernama ini dibuang (bukan fakta muatan). */
+export const NAMA_MUATAN_UMUM: readonly string[] = ['CARGO', 'CARGOES', 'THE CARGO', 'MUATAN', 'BARANG', 'GOODS', 'COMMODITY', 'KOMODITAS']
+/** Bukti operasi: kata utuh di sumber. "MUATAN" (kata benda) ≠ "MUAT"; "bongkar muat" = kedua-duanya → ambigu. */
+export const LEKSIKON_OPERASI_CARGO: Readonly<Record<'LOAD' | 'DISCHARGE', readonly string[]>> = {
+  LOAD: ['LOAD', 'LOADING', 'MUAT', 'MEMUAT'],
+  DISCHARGE: ['DISCHARGE', 'DISCHARGING', 'UNLOAD', 'BONGKAR'],
+}
+/** Alias satuan — HANYA grup ini; satuan lain harus tertulis persis. */
+export const ALIAS_SATUAN_CARGO: readonly (readonly string[])[] = [
+  ['MT', 'METRIC TON', 'METRIC TONS', 'TONNE', 'TONNES'],
+  ['CBM', 'M3'],
+]
+/** Kata kunci jumlah — baris sumber yang memuatnya boleh menjadi bukti angka jumlah. */
+const KATA_JUMLAH = ['QTY', 'QUANTITY', 'JUMLAH', 'KUANTITAS']
+/** Label pengenal: angka tepat sesudahnya BUKAN jumlah muatan (IMO 9998535, Ref 0412, …). */
+const LABEL_BUKAN_JUMLAH = /(?:^|[^A-Z0-9])(?:IMO|MMSI|NO|NR|NOMOR|REF|VOY|VOYAGE|HULL|YARD|PO|CALL\s*SIGN)\s*[:.#]?\s*$/i
+const POLA_BULAN = 'JAN|FEB|MAR|APR|MAY|MEI|JUN|JUL|AUG|AGU|AGT|SEP|OCT|OKT|NOV|DEC|DES'
+const POLA_TANGGAL_SUMBER = [
+  /\b\d{1,4}[/.-]\d{1,2}[/.-]\d{2,4}\b/g,
+  new RegExp(`\\b\\d{1,2}[\\s-]+(?:${POLA_BULAN})[A-Z]*\\.?[\\s-]+\\d{2,4}\\b`, 'gi'),
+  new RegExp(`\\b(?:${POLA_BULAN})[A-Z]*\\.?\\s+\\d{1,2},?\\s+\\d{4}\\b`, 'gi'),
+  /\b\d{1,2}:\d{2}\b/g,
+]
+
+/** Token kata utuh: huruf besar A-Z0-9 ("m³" → "M3"). */
+export function tokenMuatan(s: string): string[] {
+  return s.toUpperCase().replace(/³/g, '3').split(/[^A-Z0-9]+/).filter(Boolean)
+}
+function adaUrutanToken(cari: readonly string[], sumber: readonly string[]): boolean {
+  if (cari.length === 0) return false
+  for (let i = 0; i + cari.length <= sumber.length; i++) if (cari.every((t, j) => sumber[i + j] === t)) return true
+  return false
+}
+
+/**
+ * Nilai SATU token angka dari dokumen sumber — aturan tetap, satu tafsiran per token:
+ *   • tanpa pemisah → apa adanya ("5000");
+ *   • dua jenis pemisah → yang TERAKHIR desimal ("1,234.5" / "1.234,5");
+ *   • satu jenis pemisah, tiap grup sesudahnya TEPAT 3 digit → RIBUAN ("5,000" / "5.000" / "12.500.000");
+ *   • satu pemisah dengan bukan-3 digit sesudahnya → desimal ("12,5" / "12.5").
+ * Tafsiran lain dari token yang sama TIDAK pernah dicoba: model yang membaca "5.000" sebagai 5 tidak
+ * berbukti → jumlahnya dikosongkan (gagal-tertutup), bukan ditebak.
+ */
+export function nilaiAngkaSumber(tok: string): number | null {
+  if (!/^\d+(?:[.,]\d+)*$/.test(tok)) return null
+  const titik = tok.includes('.')
+  const koma = tok.includes(',')
+  let s: string
+  if (titik && koma) {
+    const desimal = tok.lastIndexOf('.') > tok.lastIndexOf(',') ? '.' : ','
+    const ribu = desimal === '.' ? ',' : '.'
+    const [utuh, pecahan, ...lebih] = tok.split(ribu).join('').split(desimal)
+    if (lebih.length) return null
+    s = `${utuh}.${pecahan}`
+  } else if (!titik && !koma) {
+    s = tok
+  } else {
+    const bagian = tok.split(titik ? '.' : ',')
+    if (bagian.slice(1).every((b) => b.length === 3)) s = bagian.join('')
+    else if (bagian.length === 2) s = bagian.join('.')
+    else return null
+  }
+  const n = Number(s)
+  return Number.isFinite(n) ? n : null
+}
+
+type BuktiMuatan = { token: string[]; baris: string[][]; angkaPerBaris: number[][] }
+
+/** Bukti muatan dari teks sumber: token kata utuh + angka kandidat jumlah per baris (tanggal/jam & angka ber-label pengenal dibuang). */
+function buktiMuatanDari(sumber: string): BuktiMuatan {
+  const barisTeks = sumber.split(/\r?\n/)
+  const baris = barisTeks.map(tokenMuatan)
+  const angkaPerBaris = barisTeks.map((l) => {
+    let x = l
+    for (const pola of POLA_TANGGAL_SUMBER) x = x.replace(pola, ' ')
+    const hasil: number[] = []
+    // Tanpa lookbehind (berkas ini ikut dibundel ke peramban lama): awal token = awal baris atau bukan angka/pemisah.
+    const pola = /(^|[^\d.,])(\d+(?:[.,]\d+)*)(?!\d)/g
+    for (let m = pola.exec(x); m; m = pola.exec(x)) {
+      const awal = m.index + m[1].length
+      if (LABEL_BUKAN_JUMLAH.test(x.slice(Math.max(0, awal - 16), awal))) continue
+      const n = nilaiAngkaSumber(m[2])
+      if (n !== null) hasil.push(n)
+    }
+    return hasil
+  })
+  return { token: baris.flat(), baris, angkaPerBaris }
+}
+
+function satuanBerbukti(unit: string, b: BuktiMuatan): boolean {
+  const t = tokenMuatan(unit)
+  if (adaUrutanToken(t, b.token)) return true
+  const grup = ALIAS_SATUAN_CARGO.find((g) => g.includes(t.join(' ')))
+  return !!grup && grup.some((a) => adaUrutanToken(a.split(' '), b.token))
+}
+
+/**
+ * Satu baris muatan usulan AI → baris tervalidasi, atau null (DIBUANG) bila namanya tak berbukti.
+ * `b` null = masukan tanpa teks (PDF/gambar): tak bisa dibuktikan → UNVERIFIED_SOURCE, wajib dikonfirmasi.
+ */
+function barisMuatan(
+  v: { name: string; quantity: number | null; unit: string | null; operation: 'LOAD' | 'DISCHARGE' | null },
+  b: BuktiMuatan | null,
+): CargoUsulan | null {
+  const flags: FlagCargo[] = []
+  const tNama = tokenMuatan(v.name)
+  if (NAMA_MUATAN_UMUM.includes(tNama.join(' '))) return null
+  let { quantity, unit, operation } = v
+  if (!b) {
+    flags.push('UNVERIFIED_SOURCE')
+  } else {
+    // nama: urutan kata utuh di sumber; jalur OCR sempit (lipatOcr) hanya sesudah uji harfiah gagal.
+    if (!adaUrutanToken(tNama, b.token)) {
+      const lipat = tNama.map(lipatOcr)
+      if (lipat.join('').length < MIN_PANJANG_OCR || !adaUrutanToken(lipat, b.token.map(lipatOcr))) return null
+      flags.push('OCR_CORRECTED')
+    }
+    // jumlah: angka yang SAMA tertulis pada baris sumber yang juga memuat nama muatan / satuan / kata jumlah.
+    if (quantity !== null) {
+      const q = quantity
+      const berbukti = b.baris.some(
+        (t, i) =>
+          b.angkaPerBaris[i].some((n) => Math.abs(n - q) < 1e-9) &&
+          (adaUrutanToken(tNama, t) || KATA_JUMLAH.some((x) => t.includes(x)) || ALIAS_SATUAN_CARGO.flat().some((a) => adaUrutanToken(a.split(' '), t))),
+      )
+      if (!berbukti) {
+        quantity = null
+        flags.push('CARGO_QUANTITY_NOT_IN_SOURCE')
+      }
+    }
+    if (unit !== null && !satuanBerbukti(unit, b)) {
+      unit = null
+      flags.push('CARGO_UNIT_NOT_IN_SOURCE')
+    }
+    // operasi: leksikon tetap, kata utuh.
+    if (operation !== null) {
+      const ada = (op: 'LOAD' | 'DISCHARGE') => LEKSIKON_OPERASI_CARGO[op].some((w) => b.token.includes(w))
+      const lawan = operation === 'LOAD' ? 'DISCHARGE' : 'LOAD'
+      if (ada(operation) && ada(lawan)) flags.push('CARGO_OPERATION_AMBIGUOUS')
+      else if (!ada(operation)) {
+        flags.push(ada(lawan) ? 'CARGO_OPERATION_CONTRADICTS_SOURCE' : 'CARGO_OPERATION_NOT_IN_SOURCE')
+        operation = null
+      }
+    }
+  }
+  // Satuan tanpa jumlah bukan fakta muatan (termasuk bila jumlahnya baru saja dikosongkan).
+  if (quantity === null && unit !== null) {
+    unit = null
+    flags.push('CARGO_UNIT_WITHOUT_QUANTITY')
+  }
+  return { name: v.name, quantity, unit, operation, source: 'SOURCE_DOCUMENT', flags, confirmed: false }
+}
+
+/**
+ * Baris muatan boleh menjadi data operasional (voyage cargo → tonase autofill finance) tanpa
+ * konfirmasi lagi? Gagal-tertutup: baris lama tanpa `flags` (sebelum grounding) TIDAK dipercaya.
+ */
+export function cargoTepercaya(c: CargoUsulan): boolean {
+  if (c.confirmed === true || c.source === 'USER_EDITED') return true
+  if (c.source !== 'SOURCE_DOCUMENT' || !Array.isArray(c.flags)) return false
+  return !c.flags.some((f) => PERLU_KONFIRMASI_CARGO.includes(f))
 }
 
 /**
@@ -1252,6 +1453,7 @@ export type SyaratApproval =
   | 'PRINCIPAL_UNRESOLVED'
   | 'CUSTOMER_UNRESOLVED'
   | 'SOURCE_FIELDS_UNCONFIRMED'
+  | 'CARGO_CONFIRMATION_REQUIRED'
   | 'DUPLICATE_DECISION_REQUIRED'
   | 'DUPLICATE_REVIEW_CONFIRMATION_REQUIRED'
   | 'DUPLICATE_REASON_REQUIRED'
@@ -1327,6 +1529,9 @@ export function syaratApproval(a: {
   if (!p.eta.value || !tanggalSah(p.eta.value)) s.push('ETA_MISSING')
   if (!m.principal.leftEmpty && !idTerpakai(m.principal)) s.push('PRINCIPAL_UNRESOLVED')
   if (!m.customer.leftEmpty && !idTerpakai(m.customer)) s.push('CUSTOMER_UNRESOLVED')
+  // Eval-4 prep — muatan yang belum tepercaya (PDF/gambar, OCR, operasi ambigu, baris lama tanpa
+  // jejak validasi) tak boleh menjadi voyage cargo / tonase finance tanpa konfirmasi manusia.
+  if (p.cargoes.some((c) => !cargoTepercaya(c))) s.push('CARGO_CONFIRMATION_REQUIRED')
   // Step 4F — SOURCE_FIELDS_UNCONFIRMED tidak lagi disyaratkan: untuk masukan PDF/gambar
   // setiap kecocokan master wajib dikonfirmasi satu per satu (cocokkanSemua konfirmasiSemua),
   // sehingga pemeriksaan tetap nyata walau dokumen asli tidak disimpan.

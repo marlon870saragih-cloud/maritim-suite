@@ -984,9 +984,16 @@ export async function updateIntake(
       const sama = asal.p.cargoes.find(
         (a) => a.name === baru.name && a.quantity === baru.quantity && a.unit === baru.unit && a.operation === baru.operation,
       )
-      return { ...baru, source: sama ? sama.source : ('USER_EDITED' as const) }
+      // Eval-4 prep — baris yang tak berubah membawa jejak validasinya (flags); `confirmed: true` dari
+      // peninjau = konfirmasi eksplisit baris itu (dicatat di audit sebagai cargoes.confirmed). Baris ketikan peninjau
+      // (USER_EDITED) adalah keputusan manusia → tanpa flag validasi AI.
+      if (!sama) return { ...baru, source: 'USER_EDITED' as const, flags: [], confirmed: true }
+      return { ...baru, source: sama.source, ...(sama.flags ? { flags: sama.flags } : {}), confirmed: sama.confirmed === true || c.confirmed === true }
     })
     perubahan.push({ field: 'cargoes', lama: asal.p.cargoes.length, baru: p.cargoes.length })
+    // Konfirmasi muatan oleh peninjau tercatat eksplisit di audit (nama baris, bukan hanya jumlah).
+    const dikonfirmasi = p.cargoes.filter((c) => c.confirmed && c.source !== 'USER_EDITED' && !asal.p.cargoes.some((a) => a.confirmed && a.name === c.name)).map((c) => c.name)
+    if (dikonfirmasi.length) perubahan.push({ field: 'cargoes.confirmed', lama: null, baru: dikonfirmasi })
   }
 
   if (body.classification !== undefined) {
@@ -1284,6 +1291,11 @@ async function jalankanPembuatan(
   }
   let cargoGagal = 0
   for (const c of p.cargoes) {
+    // Pertahanan berlapis (syaratApproval sudah menolak): baris belum tepercaya tak pernah menjadi voyage cargo.
+    if (!P.cargoTepercaya(c)) {
+      cargoGagal++
+      continue
+    }
     try {
       await createCargo(ctx, voyageId, { cargoName: c.name, quantity: c.quantity, unit: c.unit, operation: c.operation })
     } catch {

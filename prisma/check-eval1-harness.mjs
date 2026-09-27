@@ -181,13 +181,17 @@ bagian('C. Keluaran SEMPURNA (dari GT) — tak boleh ada FATAL palsu')
   // PRD-005 E5 Step 2: verifikasi OCR-aman (0↔O, 1↔I, l↔I; IMO tetap wajib check digit) kini
   // mempertahankan nama & IMO hasil koreksi OCR di POST dengan flag OCR_CORRECTED (wajib konfirmasi).
   // "Balikpapn"→"BALIKPAPAN" bukan salah baca OCR (huruf hilang) → pelabuhan TETAP dibuang validator.
+  // PRD-005 Eval-4 prep (grounding muatan): "1O.000" (huruf O) bukan angka sumber → jumlah kosong (GT menerima
+  // kosong) dan satuannya ikut kosong (MINOR); operasi "DISCH" (singkatan di luar leksikon tetap) dikosongkan →
+  // cargoes.operation MISSING (MAJOR, VALIDATOR) — trade-off gagal-tertutup yang diketahui; tetap 0 FATAL.
   const postMissing = h.POST.baris.filter((b) => b.hasil === 'MISSING')
   cek(
-    'C-K3b E10 POST: hanya pelabuhan MISSING (MAJOR, VALIDATOR, NOT_IN_SOURCE); nama koreksi OCR bertahan CORRECT + OCR_CORRECTED',
-    JSON.stringify(postMissing.map((b) => b.generik).sort()) === '["portName"]' &&
-      postMissing.every((b) => b.keparahan.tingkat === 'MAJOR' && b.atribusi === 'VALIDATOR' && b.flags.includes('NOT_IN_SOURCE')) &&
+    'C-K3b E10 POST: pelabuhan (NOT_IN_SOURCE) & operasi muatan MISSING (MAJOR) + satuan ikut kosong (MINOR), semua VALIDATOR; nama koreksi OCR bertahan CORRECT + OCR_CORRECTED',
+    JSON.stringify(postMissing.map((b) => b.generik).sort()) === '["cargoes.operation","cargoes.unit","portName"]' &&
+      postMissing.every((b) => b.keparahan.tingkat === (b.generik === 'cargoes.unit' ? 'MINOR' : 'MAJOR') && b.atribusi === 'VALIDATOR') &&
+      postMissing.find((b) => b.generik === 'portName').flags.includes('NOT_IN_SOURCE') &&
       h.POST.baris.some((b) => b.generik === 'vessels.name' && b.hasil === 'CORRECT' && b.flags.includes('OCR_CORRECTED')),
-    JSON.stringify(h.POST.baris.filter((b) => ['portName', 'vessels.name'].includes(b.generik)).map((b) => [b.jalur, b.hasil, b.atribusi, b.flags])),
+    JSON.stringify(h.POST.baris.filter((b) => b.hasil !== 'CORRECT' || ['portName', 'vessels.name'].includes(b.generik)).map((b) => [b.jalur, b.hasil, b.atribusi, b.flags])),
   )
   const imoPost = h.POST.baris.find((b) => b.generik === 'vessels.imo')
   cek(
@@ -201,7 +205,8 @@ bagian('C. Keluaran SEMPURNA (dari GT) — tak boleh ada FATAL palsu')
     delete r.vessels[0].imo
     r.portName = 'Balikpapn'
   })
-  cek('C-K3d E10 varian literal (B0REAS, IMO kosong, Balikpapn): POST 0 FATAL 0 MAJOR', lit.h.POST.jumlah.FATAL === 0 && lit.h.POST.jumlah.MAJOR === 0, JSON.stringify(lit.h.POST.jumlah))
+  cek('C-K3d E10 varian literal (B0REAS, IMO kosong, Balikpapn): POST 0 FATAL; satu-satunya MAJOR = operasi muatan (grounding "DISCH")',
+    lit.h.POST.jumlah.FATAL === 0 && lit.h.POST.jumlah.MAJOR === 1 && lit.h.POST.baris.filter((b) => b.keparahan?.tingkat === 'MAJOR').map((b) => b.generik).join() === 'cargoes.operation', JSON.stringify(lit.h.POST.jumlah))
   // K1 & K5
   const k1 = mutasi('E01', (r) => (r.classification = 'NEW_APPOINTMENT'))
   cek('C-K1 E01 NEW_APPOINTMENT diterima setara (0 MAJOR)', k1.h.POST.klasifikasi.hasil === 'CORRECT' && k1.h.POST.jumlah.MAJOR === 0)
@@ -309,7 +314,13 @@ harapFatal('D09c E09 tanggal muat sebagai ETA', mutasi('E09', (r) => (r.eta = K.
   harapFatal('D12c E12 uang invoice (string "45.600.000") di kuantitas: RAW F7; POST — validator membuang kuantitas tak terurai', d12c, [], ['F7'])
   cek('D12d validator (perilaku yang ADA) membuang "45.600.000" → kuantitas POST null', d12c.post.proposal.cargoes[0]?.quantity === null)
 }
-harapFatal('D13a E13 port dues 12,500 sebagai kuantitas', mutasi('E13', (r) => (r.cargoes[0].quantity = 12500)), ['F5', 'F7'])
+// PRD-005 Eval-4 prep: 12500 tertulis sebagai UANG, bukan pada baris muatan → validator mengosongkan jumlah
+// (CARGO_QUANTITY_NOT_IN_SOURCE). RAW tetap F5+F7 (kualitas model); POST kini bersih (dulu F5+F7 lolos).
+{
+  const d13 = mutasi('E13', (r) => (r.cargoes[0].quantity = 12500))
+  harapFatal('D13a E13 port dues 12,500 sebagai kuantitas: RAW F5+F7; POST — grounding muatan mengosongkan jumlah', d13, [], ['F5', 'F7'])
+  cek('D13b E13 jumlah uang dikosongkan + flag CARGO_QUANTITY_NOT_IN_SOURCE', d13.post.proposal.cargoes[0].quantity === null && d13.post.proposal.cargoes[0].flags.includes('CARGO_QUANTITY_NOT_IN_SOURCE'))
+}
 harapFatal('D13b E13 token "USD 3,000" di clientReference', mutasi('E13', (r) => (r.clientReference = 'USD 3,000')), ['F7'])
 {
   const d13c = mutasi('E13', (r) => {
@@ -360,7 +371,12 @@ harapFatal(
 )
 harapFatal('D22 E04 MMSI tug disalin ke barge (PDF)', mutasi('E04', (r) => (r.vessels[1].mmsi = '990010401')), ['F1'])
 harapFatal('D23 E16 kapal tambahan karangan', mutasi('E16', (r) => r.vessels.push({ name: 'MV SNTLQP ZENITH' })), ['F2'])
-harapFatal('D24 E01 baris muatan karangan ber-kuantitas', mutasi('E01', (r) => r.cargoes.push({ name: 'Bunker', quantity: 500, operation: 'LOAD' })), ['F5'])
+// PRD-005 Eval-4 prep: "Bunker" tidak tertulis di sumber → baris DIBUANG validator (dulu lolos ke POST sebagai F5).
+{
+  const d24 = mutasi('E01', (r) => r.cargoes.push({ name: 'Bunker', quantity: 500, operation: 'LOAD' }))
+  harapFatal('D24 E01 baris muatan karangan ber-kuantitas: RAW F5; POST — baris dibuang grounding', d24, [], ['F5'])
+  cek('D24b E01 baris karangan dibuang, dihitung cargoesDropped', d24.post.proposal.cargoesDropped === 1 && !d24.post.proposal.cargoes.some((c) => c.name === 'Bunker'))
+}
 
 // ============================================================ N. regresi angka Indonesia (validator produksi TIDAK diubah)
 bagian('N. Regresi parsing angka Indonesia — bukti keterbatasan validator produksi')
@@ -371,7 +387,9 @@ bagian('N. Regresi parsing angka Indonesia — bukti keterbatasan validator prod
   cek('N2 RAW dinilai MANDIRI: "30.000" = 30000 → CORRECT (model benar)', q1(n1.h.RAW).hasil === 'CORRECT' && n1.h.RAW.jumlah.FATAL === 0)
   cek('N3 POST: 30 ≠ 30000 → WRONG, FATAL F5, atribusi VALIDATOR', q1(n1.h.POST).hasil === 'WRONG' && q1(n1.h.POST).keparahan.kode === 'F5' && q1(n1.h.POST).atribusi === 'VALIDATOR' && kodeFatal(n1.h.POST).join() === 'F5')
   const n2 = mutasi('E13', (r) => (r.cargoes[0].quantity = '50.000'))
-  cek('N4 kasus TEKS E13 "50.000" → POST 50 → F5 (VALIDATOR); RAW CORRECT', n2.post.proposal.cargoes[0].quantity === 50 && q1(n2.h.POST).keparahan.kode === 'F5' && q1(n2.h.POST).atribusi === 'VALIDATOR' && q1(n2.h.RAW).hasil === 'CORRECT')
+  // PRD-005 Eval-4 prep: masukan TEKS kini di-grounding — 50 (salah urai "50.000") tak tertulis di sumber (50.000 = 50000)
+  // → dikosongkan (MISSING, MAJOR) alih-alih WRONG F5 yang lolos. Jalur PDF (N1–N3) tak bisa di-grounding → tetap.
+  cek('N4 kasus TEKS E13 "50.000" → POST dikosongkan grounding (MISSING/MAJOR, bukan F5); RAW CORRECT', n2.post.proposal.cargoes[0].quantity === null && n2.post.proposal.cargoes[0].flags.includes('CARGO_QUANTITY_NOT_IN_SOURCE') && q1(n2.h.POST).hasil === 'MISSING' && n2.h.POST.jumlah.FATAL === 0 && q1(n2.h.RAW).hasil === 'CORRECT')
   const n3 = mutasi('E02', (r) => (r.cargoes[0].quantity = '45.600.000'))
   cek('N5 validator (perilaku yang ADA): "45.600.000" → POST kuantitas dibuang (null)', n3.post.proposal.cargoes[0].quantity === null)
   cek('N6 "45.600.000" di E02: RAW 45600000 → WRONG F5; POST dibuang → MISSING (MAJOR) — lapisan dinilai terpisah', q1(n3.h.RAW).hasil === 'WRONG' && kodeFatal(n3.h.RAW).join() === 'F5' && q1(n3.h.POST).hasil === 'MISSING' && q1(n3.h.POST).keparahan.tingkat === 'MAJOR' && n3.h.POST.jumlah.FATAL === 0)
