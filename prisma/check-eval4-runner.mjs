@@ -517,20 +517,20 @@ bagian('L. paket held-out BEKU (20 kasus baru) & gerbang kualitas Eval-4')
     return r
   }
   const h20Bocor = await jalanBeku({ mode: 'offline', jawabStub: jawabH20([{ name: 'coal', quantity: 5000, unit: 'MT', operation: 'LOAD' }]), validasiUji: validatorBocor })
-  cek('L15 H20 muatan karangan lolos POST → FAIL walau 40/40 held-out lulus (tanpa perataan)', h20Bocor.verdict === 'FAIL' && h20Bocor.gerbang.gerbang.G_H20_POST.lulus === false && h20Bocor.gerbang.gerbang.G_MUATAN_TAK_BERBUKTI_POST.lulus === false && h20Bocor.gerbang.gerbang.G_LULUS_HELDOUT.nilai === 1)
+  cek('L15 H20 muatan karangan lolos POST → FAIL (tanpa perataan) & run BERHENTI sebelum panggilan berikut (kebijakan toleransi-nol owner): 1 panggilan, slot 2..42 tak dijalankan', h20Bocor.verdict === 'FAIL' && h20Bocor.gerbang.gerbang.G_H20_POST.lulus === false && h20Bocor.gerbang.gerbang.G_MUATAN_TAK_BERBUKTI_POST.lulus === false && h20Bocor.panggilanTransport === 1 && h20Bocor.berhenti === 'TOLERANSI_NOL_FATAL_POST' && h20Bocor.slot.slice(1).every((x) => x.status === 'TIDAK_DIJALANKAN') && h20Bocor.pelanggaranToleransiNol.some((x) => x.startsWith('TOLERANSI_NOL_FATAL_POST:RG-H20#u1:F5')))
   const jawabQ16 = (k) => (k?.id === 'Q16' ? { ...R3.jawabanSempurnaEval3(k), cargoes: [{ name: 'bijih nikel', quantity: 5000, unit: 'MT', operation: 'LOAD' }] } : R3.jawabanSempurnaEval3(k))
   const q16Bocor = await jalanBeku({ mode: 'offline', jawabStub: jawabQ16, validasiUji: validatorBocor })
-  cek('L16 muatan karangan held-out (jumlah Q16 tak tertulis) lolos POST → FAIL (G_MUATAN_TAK_BERBUKTI_POST)', q16Bocor.verdict === 'FAIL' && q16Bocor.gerbang.gerbang.G_MUATAN_TAK_BERBUKTI_POST.nilai >= 2 && q16Bocor.gerbang.gerbang.G_MUATAN_TAK_BERBUKTI_POST.detail.some((d) => d.startsWith('Q16#u1:F5')))
+  cek('L16 muatan karangan held-out (jumlah Q16 tak tertulis) lolos POST → FAIL (G_MUATAN_TAK_BERBUKTI_POST) & berhenti di slot Q16 u1 (seq 18): 18 panggilan', q16Bocor.verdict === 'FAIL' && q16Bocor.gerbang.gerbang.G_MUATAN_TAK_BERBUKTI_POST.nilai >= 1 && q16Bocor.gerbang.gerbang.G_MUATAN_TAK_BERBUKTI_POST.detail.some((d) => d.startsWith('Q16#u1:F5')) && q16Bocor.panggilanTransport === 18 && q16Bocor.berhenti === 'TOLERANSI_NOL_FATAL_POST')
   const q16Aman = await jalanBeku({ mode: 'offline', jawabStub: jawabQ16 })
   cek('L17 muatan karangan hanya di RAW (validator produksi menahannya) → dilaporkan terpisah di RAW, POST bersih → tidak FAIL', q16Aman.agregat.HELDOUT_S5_V4.f5UnsupportedRaw >= 2 && q16Aman.agregat.HELDOUT_S5_V4.f5UnsupportedPost === 0 && q16Aman.gerbang.gerbang.G_MUATAN_TAK_BERBUKTI_POST.lulus === true && q16Aman.verdict === 'PASS')
   const q06 = await jalanBeku({ mode: 'offline', jawabStub: (k, m, n) => (k?.id === 'Q06' && n <= 22 ? { ...R3.jawabanSempurnaEval3(k), eta: KH.find((x) => x.id === 'Q06').tanggal.ETA1.iso } : R3.jawabanSempurnaEval3(k)) })
-  cek('L18 kesalahan fakta/angka kritis (ETA yang dibatalkan, tertulis & berlabel) lolos POST → F4 → FAIL (satu slot cukup)', q06.verdict === 'FAIL' && q06.gerbang.gerbang.G_FATAL_POST.detail.some((d) => d.startsWith('Q06#u1:F4')) && q06.gerbang.gerbang.G_LULUS_HELDOUT.nilai >= 0.95)
+  cek('L18 kesalahan fakta/angka kritis (ETA yang dibatalkan, tertulis & berlabel) lolos POST → F4 → FAIL (satu slot cukup) & berhenti di Q06 u1 (seq 8): 8 panggilan', q06.verdict === 'FAIL' && q06.gerbang.gerbang.G_FATAL_POST.detail.some((d) => d.startsWith('Q06#u1:F4')) && q06.panggilanTransport === 8 && q06.slot.slice(8).every((x) => x.status === 'TIDAK_DIJALANKAN'))
 
   // ── koreksi owner heldout-2 (RCA run heldout-1): Q16 GT & Q17 teks sumber
   const slotKasus = (lap, id) => lap.slot.filter((s) => s.kasus === id)
   const bersih = (s) => s.status === 'OK' && s.penilai.POST.FATAL === 0 && s.penilai.POST.MAJOR === 0 && s.penilai.POST.MINOR === 0 && s.penilai.RAW.FATAL === 0 && s.penilai.RAW.MAJOR === 0 && s.penilai.integritasGt === 'OK' && s.penilai.POST.konflikGt === 0
   const q16Verbatim = await jalanBeku({ mode: 'offline', jawabStub: (k) => (k?.id === 'Q16' ? { ...R3.jawabanSempurnaEval3(k), cargoes: [{ name: 'bijih nikel (nickel ore)', operation: 'LOAD' }] } : R3.jawabanSempurnaEval3(k)) })
-  cek('L18b Q16 bentuk verbatim sumber "bijih nikel (nickel ore)" (tanpa jumlah) → 0 FATAL/MAJOR/MINOR, tanpa konflik GT, PASS', FH.VERSI_HELDOUT_EVAL4 === 'prd005-eval4/heldout-2' && slotKasus(q16Verbatim, 'Q16').length === 2 && slotKasus(q16Verbatim, 'Q16').every(bersih) && q16Verbatim.verdict === 'PASS')
+  cek('L18b Q16 bentuk verbatim sumber "bijih nikel (nickel ore)" (tanpa jumlah) → 0 FATAL/MAJOR/MINOR, tanpa konflik GT, PASS', FH.VERSI_HELDOUT_EVAL4 === 'prd005-eval4/heldout-3' && slotKasus(q16Verbatim, 'Q16').length === 2 && slotKasus(q16Verbatim, 'Q16').every(bersih) && q16Verbatim.verdict === 'PASS')
   const q16Lain = await jalanBeku({ mode: 'offline', jawabStub: (k) => (k?.id === 'Q16' ? { ...R3.jawabanSempurnaEval3(k), cargoes: [{ name: 'ore', operation: 'LOAD' }] } : R3.jawabanSempurnaEval3(k)) })
   cek('L18c Q16: pencocokan TIDAK dilonggarkan global — nama lain ("ore") tetap bukan pasangan GT (konflik GT, INCONCLUSIVE_GT)', slotKasus(q16Lain, 'Q16').every((s) => s.penilai.integritasGt === 'INCONCLUSIVE_GT' && s.penilai.POST.MAJOR === 1) && q16Lain.verdict !== 'PASS')
   const q17 = KH.find((k) => k.id === 'Q17')
@@ -538,6 +538,33 @@ bagian('L. paket held-out BEKU (20 kasus baru) & gerbang kualitas Eval-4')
   cek('L18e Q17 jawaban satu-port-call yang dimaksud (4 kapal ber-peran, 2 baris muatan) → 0 FATAL/MAJOR/MINOR (run setia L6)', slotKasus(lapL, 'Q17').length === 2 && slotKasus(lapL, 'Q17').every(bersih))
   const q17Unsup = await jalanBeku({ mode: 'offline', jawabStub: (k) => (k?.id === 'Q17' ? { ...R3.jawabanSempurnaEval3(k), classification: 'UNSUPPORTED_REQUEST' } : R3.jawabanSempurnaEval3(k)) })
   cek('L18f Q17 GT tidak dilonggarkan: UNSUPPORTED_REQUEST tetap MAJOR (klasifikasi salah), slot tidak lulus', slotKasus(q17Unsup, 'Q17').every((s) => s.penilai.POST.MAJOR === 1 && s.klasifikasi.benarPost === false) && q17Unsup.gerbang.gerbang.G_LULUS_HELDOUT.lulusSlot === 38)
+
+  // ── KEBIJAKAN BERHENTI TOLERANSI-NOL (keputusan owner sesudah heldout-2; ditegakkan runner)
+  cek('L18g kebijakan berhenti tercatat di laporan; runner-3; nilai pelanggaran murni: slot OK + FATAL POST → alasan, slot bersih/gagal → []', R.KEBIJAKAN_BERHENTI_EVAL4 === 'SEMUA_PELANGGARAN_TOLERANSI_NOL_HENTIKAN_SEBELUM_PANGGILAN_BERIKUT' && R.VERSI_RUNNER_EVAL4 === 'prd005-eval4/runner-3' && lapL.kebijakanBerhenti === R.KEBIJAKAN_BERHENTI_EVAL4 && lapL.pelanggaranToleransiNol.length === 0 &&
+    R.pelanggaranToleransiNolSlot({ status: 'OK', kasus: 'Q01', ulangan: 2, penilai: { POST: { fatal: ['F3@portName'] } } })[0] === 'TOLERANSI_NOL_FATAL_POST:Q01#u2:F3@portName' && R.pelanggaranToleransiNolSlot({ status: 'OK', kasus: 'Q01', ulangan: 1, penilai: { POST: { fatal: [] } } }).length === 0 && R.pelanggaranToleransiNolSlot({ status: 'GAGAL:X', penilai: null }).length === 0)
+  // Slot held-out SEMBARANG (u1 & u2, awal/tengah/akhir): muatan karangan disuntik di slot target & validator bocor
+  // (seam uji, seperti L15/L16) → F5 FATAL POST di slot itu SAJA → berhenti; tepat seq panggilan, 0 sesudahnya.
+  const karanganDi = (seqTarget) => (k, m, n) => (n === seqTarget ? { ...R3.jawabanSempurnaEval3(k), cargoes: [...(R3.jawabanSempurnaEval3(k).cargoes ?? []), { name: 'karet sintetis', quantity: 4321, unit: 'MT', operation: 'LOAD' }] } : R3.jawabanSempurnaEval3(k))
+  const hasilSeq = []
+  for (const seqT of [3, 14, 23, 35, 42]) {
+    const lap = await jalanBeku({ mode: 'offline', jawabStub: karanganDi(seqT), validasiUji: validatorBocor })
+    const s = lap.slot.find((x) => x.seq === seqT)
+    const fatalPostSlot = s?.penilai?.POST.FATAL ?? 0
+    hasilSeq.push({ seqT, ok: lap.verdict === 'FAIL' && fatalPostSlot > 0 && lap.panggilanTransport === seqT && lap.berhenti === 'TOLERANSI_NOL_FATAL_POST' && lap.slot.filter((x) => x.seq > seqT).every((x) => x.status === 'TIDAK_DIJALANKAN' && x.panggilan.length === 0), calls: lap.panggilanTransport, fatal: fatalPostSlot, verdict: lap.verdict })
+  }
+  cek('L18h F5 FATAL POST (muatan karangan lolos validator) di slot held-out SEMBARANG (seq 3, 14, 23 [u2 pertama], 35, 42 [terakhir]) → run berhenti: transport TEPAT = seq, 0 panggilan sesudahnya, verdict FAIL', hasilSeq.every((x) => x.ok), JSON.stringify(hasilSeq.filter((x) => !x.ok)))
+  const tokoZ = R.buatTokoCheckpointMemori()
+  const lapZ = await jalanBeku({ mode: 'offline', jawabStub: karanganDi(27), validasiUji: validatorBocor, checkpoint: tokoZ })
+  const rZ = await jalanBeku({ mode: 'offline', validasiUji: validatorBocor, checkpoint: R.buatTokoCheckpointMemori(tokoZ.isi()), lanjut: true })
+  cek('L18i berhenti toleransi-nol → checkpoint BERHENTI (bukan DIJEDA), inflight null; resume DITOLAK (0 panggilan)', lapZ.panggilanTransport === 27 && tokoZ.isi().status === 'BERHENTI' && tokoZ.isi().inflight === null && rZ.verdict === 'DITOLAK_RESUME' && rZ.galat.some((g) => g.startsWith('STATUS_TIDAK_BISA_DILANJUTKAN')) && rZ.panggilanTransport === 0)
+  const lapIdent = await jalanBeku({ mode: 'offline', opsiStub: { served: (m, n) => (n === 30 ? 'anthropic/claude-sonnet-5-mini' : m) } })
+  const lapTool = await jalanBeku({ mode: 'offline', jawabStub: (k, m, n) => (n === 12 ? { __mentah: '{bukan json' } : R3.jawabanSempurnaEval3(k)) })
+  const lapTanpaTool = await jalanBeku({ mode: 'offline', jawabStub: (k, m, n) => (n === 40 ? { __tanpaTool: true } : R3.jawabanSempurnaEval3(k)) })
+  cek('L18j identitas berbeda (seq 30) / output tool rusak (seq 12) / tanpa tool call (seq 40) → berhenti di slot itu, 0 panggilan sesudahnya, FAIL', [[lapIdent, 30, 'G_IDENTITAS'], [lapTool, 12, 'G_OUTPUT_TOOL'], [lapTanpaTool, 40, 'G_OUTPUT_TOOL']].every(([l, n, g]) => l.panggilanTransport === n && l.verdict === 'FAIL' && l.gerbang.gerbang[g].lulus === false && l.slot.filter((x) => x.seq > n).every((x) => x.status === 'TIDAK_DIJALANKAN')), [lapIdent, lapTool, lapTanpaTool].map((l) => `${l.panggilanTransport}/${l.verdict}`).join(' '))
+  cek('L18k TIDAK berhenti bila muatan karangan hanya di RAW dan ditahan validator (POST bersih) — kebijakan menilai POST, sesuai gerbang (L17: 42 panggilan, PASS)', q16Aman.panggilanTransport === 42 && q16Aman.pelanggaranToleransiNol.length === 0 && q16Aman.verdict === 'PASS')
+  // Replay Q19 heldout-2 (keluaran terekonstruksi = sidik POST e1366ce1…: semua benar kecuali portName "Pel. Pontianak").
+  const q19Replay = await jalanBeku({ mode: 'offline', jawabStub: (k) => (k?.id === 'Q19' ? { ...R3.jawabanSempurnaEval3(k), portName: 'Pel. Pontianak' } : R3.jawabanSempurnaEval3(k)) })
+  cek('L18l replay Q19 ("Pel. Pontianak (IDPNK)") dengan normalisasi terkoreksi → 0 FATAL/MAJOR/MINOR, tanpa F3, integritas GT OK; run 42 slot PASS', slotKasus(q19Replay, 'Q19').length === 2 && slotKasus(q19Replay, 'Q19').every((x) => bersih(x) && !x.penilai.POST.fatal.some((f) => f.startsWith('F3'))) && q19Replay.verdict === 'PASS' && q19Replay.panggilanTransport === 42)
 
   // ── ambang kelulusan & konsistensi (≥ 90%)
   const salahKelas = (daftar) => (k) => (daftar.includes(k?.id) ? { ...R3.jawabanSempurnaEval3(k), classification: 'INSUFFICIENT_INFORMATION' } : R3.jawabanSempurnaEval3(k))

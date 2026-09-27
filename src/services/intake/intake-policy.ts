@@ -422,14 +422,18 @@ export function normalisasiNamaPihak(v: unknown): string | null {
   return s === '' ? null : s
 }
 
-/** Nama pelabuhan: huruf besar, tanda baca → spasi, awalan "PORT OF"/"PELABUHAN" dibuang. */
+/**
+ * Nama pelabuhan: huruf besar, tanda baca → spasi, awalan "PORT OF"/"PELABUHAN"/"PEL" (singkatan "Pel.") dibuang.
+ * Awalan hanya dibuang di AWAL dan sebagai TOKEN UTUH diikuti nama (sesudah tanda baca → spasi), jadi kata yang
+ * sekadar diawali PEL (mis. "PELITA") tidak tersentuh.
+ */
 export function normalisasiNamaPort(v: unknown): string | null {
   if (typeof v !== 'string') return null
   const s = v
     .toUpperCase()
     .replace(/[^A-Z0-9]+/g, ' ')
     .trim()
-    .replace(/^(PORT OF|PELABUHAN) /, '')
+    .replace(/^(PORT OF|PELABUHAN|PEL) /, '')
   return s === '' ? null : s
 }
 

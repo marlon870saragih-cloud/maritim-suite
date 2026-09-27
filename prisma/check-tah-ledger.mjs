@@ -77,7 +77,8 @@ bagian('1. KUNCI SUMBER — yang tak boleh berubah di Step 3B')
     // Perubahan berikutnya pada berkas ini tetap harus memperbarui sidik ini secara eksplisit.
     // Lalu PRD-005 Eval-4 prep (remediasi H20, DISETUJUI OWNER): grounding muatan + CARGO_CONFIRMATION_REQUIRED (4b82b8c7… → baru).
     // Lalu PRD-005 Eval-4 final (DISETUJUI OWNER): leksikon maritim, jumlah/satuan/operasi berbasis baris muatan, APPROXIMATE_QUANTITY, OCR angka, bolehTautkanVoyage.
-    'src/services/intake/intake-policy.ts': '7997f6f0039d13ffd942f5f0ff3605b8872ca8eb1979763bb144dc793716201d',
+    // Lalu PRD-005 Eval-4 akar masalah Q19 (DISETUJUI OWNER): normalisasiNamaPort juga membuang awalan "PEL" (singkatan "Pel.") (7997f6f0… → baru).
+    'src/services/intake/intake-policy.ts': '4f5b1273d9a01ceee308f201a40a7594ce6fabc2220cacc0657f139f50f2059c',
     'src/services/intake/intake-hash.ts': '862d3e086c24f578bdd4a07a70664de6fff96d6831e289dcb1d5ccd69e4525d3',
     'src/services/saas/quota.service.ts': '777e86317b23f3f1ebf3a4c0db9a941fa6159585d0071350f622019a844f29ce',
     'src/services/saas/usage.service.ts': '183fa3bbb9af7278d780d62431df5f91961130a8d84cd2392195b834cff0c23d',

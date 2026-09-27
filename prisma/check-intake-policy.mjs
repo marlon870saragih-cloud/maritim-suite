@@ -459,6 +459,30 @@ const cocok = (u) => P.cocokkanKapal({ name: null, imo: null, mmsi: null, callSi
   cek('port tak ada → NOT_FOUND', P.cocokkanPort('Tanjung Priok', 'IDTPP', PORT).status === 'NOT_FOUND')
 }
 {
+  // Awalan pelabuhan Indonesia "Pel." / "Pel" / "Pelabuhan" (akar masalah Q19 Eval-4 heldout-2; KEPUTUSAN OWNER).
+  const N = P.normalisasiNamaPort
+  cek('port: "Pel. Pontianak" = "Pontianak"', N('Pel. Pontianak') === 'PONTIANAK' && N('Pontianak') === 'PONTIANAK')
+  cek('port: "Pel Pontianak" = "Pontianak"', N('Pel Pontianak') === 'PONTIANAK')
+  cek('port: "Pelabuhan Pontianak" = "Pontianak" (perilaku lama tetap)', N('Pelabuhan Pontianak') === 'PONTIANAK')
+  cek('port: "Port of ..." tetap dibuang (perilaku lama)', N('Port of Balikpapan') === 'BALIKPAPAN' && N('PORT OF  Samarinda') === 'SAMARINDA')
+  cek('port: awalan tak peka huruf besar/kecil', ['PEL. PONTIANAK', 'pel. pontianak', 'pEl PoNtIaNaK', 'PELABUHAN pontianak'].every((x) => N(x) === 'PONTIANAK'))
+  cek('port: tanda baca/spasi di sekitar awalan aman', ['Pel.Pontianak', ' Pel.  Pontianak ', 'Pel.-Pontianak', 'Pel., Pontianak', 'Pel.\tPontianak'].every((x) => N(x) === 'PONTIANAK'))
+  cek('port: kata yang sekadar diawali PEL TIDAK dipotong', N('Pelita Jaya') === 'PELITA JAYA' && N('Pelindo Terminal') === 'PELINDO TERMINAL' && N('Pelabuhanratu') === 'PELABUHANRATU' && N('Pelra') === 'PELRA')
+  cek('port: PEL hanya dibuang di AWAL (tidak di tengah) dan awalan tanpa nama tidak dikosongkan', N('Tanjung Pel Raya') === 'TANJUNG PEL RAYA' && N('Pel.') === 'PEL' && N('Pelabuhan') === 'PELABUHAN')
+  cek('port: nama pelabuhan lain tak berubah', N('Samarinda') === 'SAMARINDA' && N('Muara Berau Anchorage') === 'MUARA BERAU ANCHORAGE' && N('Tanjung Priok') === 'TANJUNG PRIOK' && N('Bitung') === 'BITUNG' && N(null) === null && N('  ') === null)
+  // Skenario persis Q19: sumber "Pel. Pontianak (IDPNK)".
+  const PORT_Q19 = [
+    { id: 'pnk', name: 'Pontianak', unlocode: 'IDPNK' },
+    { id: 'bpn', name: 'Balikpapan', unlocode: 'IDBPN' },
+  ]
+  const { proposal: q } = validasi({ classification: 'NEW_NOMINATION', vessels: [{ name: 'MV BUANA SETIA', imo: '9742510' }], portName: 'Pel. Pontianak', portUnlocode: 'IDPNK' }, 'TEXT', 'Pak, mohon bantu handle MV BUANA SETIA ya, IMO 9742510\ntujuan Pel. Pontianak (IDPNK)')
+  cek('Q19: portName "Pel. Pontianak" berbukti di sumber, UN/LOCODE IDPNK diterima', q.portName.value === 'Pel. Pontianak' && q.portName.source === 'SOURCE_DOCUMENT' && q.portName.flags.length === 0 && q.portUnlocode.value === 'IDPNK')
+  cek('Q19: nama kanonik = PONTIANAK (sama dengan "Pontianak")', N(q.portName.value) === N('Pontianak'))
+  const viaNama = P.cocokkanPort('Pel. Pontianak', null, PORT_Q19)
+  const viaKeduanya = P.cocokkanPort('Pel. Pontianak', 'IDPNK', PORT_Q19)
+  cek('Q19: "Pel. Pontianak" (nama saja) → MATCHED Pontianak via NAME_NORMALIZED; nama + IDPNK → MATCHED, tanpa CONFLICT', viaNama.status === 'MATCHED' && viaNama.selectedId === 'pnk' && viaNama.basis === 'NAME_NORMALIZED' && viaKeduanya.status === 'MATCHED' && viaKeduanya.selectedId === 'pnk')
+}
+{
   const SUMBER_PAIR = 'TB MANDIRI 23 dan OB PATRA 33 ke Samarinda ETA 2026-09-20'
   const { proposal: p } = validasi({
     classification: 'NEW_NOMINATION',

@@ -56,7 +56,7 @@ import * as FH from './fixtures/spike-intake/eval4-heldout-cases.mjs'
 const AKAR = fileURLToPath(new URL('..', import.meta.url))
 const sha256 = (x) => createHash('sha256').update(x).digest('hex')
 
-export const VERSI_RUNNER_EVAL4 = 'prd005-eval4/runner-2'
+export const VERSI_RUNNER_EVAL4 = 'prd005-eval4/runner-3'
 /** USULAN — belum diotorisasi. Hanya frasa ini (persis) yang kelak membuka mode live Eval-4. */
 export const FRASA_OTORISASI_EVAL4 = 'PRD-005-EVAL4-LIVE'
 /**
@@ -97,7 +97,9 @@ export const SHA_BEKU_EVAL4 = Object.freeze({
   'prisma/fixtures/spike-intake/eval4-regresi-muatan.mjs': '01871bf6cd2c266cb0070497a071a211c8601f92c8a8341e00890dacc6921012',
   'prisma/spike-eval4-scorer.mjs': 'a513cf676862f356cf1e242736b17bd94d0af06bc9c08718b415b602ef3bb12d',
   'src/lib/maritim-lexicon.ts': '864e4e3bf4cb47ef6e1d112ad42b5c9efd9d402c459e2d8be465f0bbab41fb83',
-  'prisma/fixtures/spike-intake/eval4-heldout-cases.mjs': '17c12b7988fd3909dfae064a79af39dc75de82abb6e389639e6ac9f1f2eaa4b6',
+  'prisma/fixtures/spike-intake/eval4-heldout-cases.mjs': 'd6135a2f12843ab4b8fe1db3cf2bd3398799d67b5cb6cded4b9233269c459fab',
+  // heldout-3: validator/normalisasi produksi ikut dibekukan (akar masalah Q19 — normalisasiNamaPort "Pel.").
+  'src/services/intake/intake-policy.ts': '4f5b1273d9a01ceee308f201a40a7594ce6fabc2220cacc0657f139f50f2059c',
 })
 /** Identitas Prompt v4 kandidat (hash sistem + skema tool) yang diikat run Eval-4. */
 export const IKATAN_PROMPT_V4 = Object.freeze({ idPrompt: 'vessel-call-extract', versiPrompt: '4', versiSkema: '4', hashPrompt: '6ed1edba38780badcff111e70f63e83d95668f15b99644f174bac1984ce65959' })
@@ -128,7 +130,7 @@ export const AMBANG_KUALITAS_EVAL4 = Object.freeze({
 export const BATAS_KERAS_MAKS_OWNER_USD = 2.1
 export const PLAFON_PER_PANGGILAN_MAKS_OWNER_USD = 0.05
 export const KONFIG_OWNER_EVAL4 = Object.freeze({
-  paket: Object.freeze({ modul: FH, hashGtBeku: 'faf6393685df71867acb8e805d1dc5f834bf8ad499d793830340a007fae87de3' }),
+  paket: Object.freeze({ modul: FH, hashGtBeku: '00a6e44d071f96de286066ff0ab7efbb788a82c4f96cf5e1a20af6927acf0018' }),
   jumlahKasusHeldout: 20,
   ulangan: 2,
   batas: Object.freeze({ maksPanggilan: 42, biayaLunakUsd: 2.1, biayaKerasUsd: 2.1, tokenInput: 1_050_000, tokenOutput: 210_000 }),
@@ -627,6 +629,21 @@ export function ringkasSlot({ slot, kasus, raw, post, nilai, P, tandaTanganPost 
   }
 }
 
+/**
+ * KEBIJAKAN BERHENTI TOLERANSI-NOL (keputusan owner sesudah heldout-2): pelanggaran toleransi-nol apa pun
+ * menghentikan run SEBELUM panggilan model berikutnya — ditegakkan RUNNER, bukan driver.
+ *   • slot OK dengan FATAL di POST (mencakup F5 muatan tak berbukti/karangan termasuk H20, F1–F4 fakta/angka kritis,
+ *     dan FATAL regresi) → TOLERANSI_NOL_FATAL_POST;
+ *   • identitas/fallback, pagar, output tool tak sah/hilang, dan kegagalan slot lain sudah menghentikan run lewat
+ *     `keadaan.berhenti` (status slot ≠ OK) sebelum pemeriksaan ini.
+ * Mengembalikan daftar alasan (kosong = tidak ada pelanggaran). Ambang kualitas TIDAK berubah.
+ */
+export const KEBIJAKAN_BERHENTI_EVAL4 = 'SEMUA_PELANGGARAN_TOLERANSI_NOL_HENTIKAN_SEBELUM_PANGGILAN_BERIKUT'
+export function pelanggaranToleransiNolSlot(r) {
+  if (!r || r.status !== 'OK' || !r.penilai) return []
+  return r.penilai.POST.fatal.map((f) => `TOLERANSI_NOL_FATAL_POST:${r.kasus}#u${r.ulangan}:${f}`)
+}
+
 // ------------------------------------------------------------------ H20 & agregat
 /** Hasil regresi muatan satu slot: LULUS bila POST tanpa F5 (tak ada muatan tak berbukti yang lolos validator). */
 export function hasilRegresi(r) {
@@ -818,6 +835,7 @@ export async function jalankanRunnerEval4({
     for (const s of cp.slot) selesaiSebelumnya.set(s.seq, s)
   }
   const ringkas = []
+  const pelanggaranToleransiNol = []
   let dijeda = false
   let galatFatal = null
   const simpan = (status, inflight) => {
@@ -968,7 +986,12 @@ export async function jalankanRunnerEval4({
       const tandaTanganPost = nilai && post ? S.tandaTanganKritis(S.tampilanPost(post), NORM_SKOR, k.gt.classification) : null
       const rk = ringkasSlot({ slot, kasus: k, raw, post, nilai, P, tandaTanganPost })
       ringkas.push(rk)
-      simpan(slot.status === 'OK' ? 'BERJALAN' : 'BERHENTI', null)
+      const nolToleransi = pelanggaranToleransiNolSlot(rk)
+      if (nolToleransi.length) {
+        berhenti('TOLERANSI_NOL_FATAL_POST')
+        pelanggaranToleransiNol.push(...nolToleransi)
+      }
+      simpan(slot.status === 'OK' && !nolToleransi.length ? 'BERJALAN' : 'BERHENTI', null)
       log(`  ${String(r.seq).padStart(3)} ${r.blok.padEnd(20)} ${r.kasus} u${r.ulangan} → ${slot.status}; FATAL RAW/POST=${rk.penilai?.RAW.FATAL ?? '-'}/${rk.penilai?.POST.FATAL ?? '-'}`)
     }
     const semuaOk = ringkas.length === rencana.length && ringkas.every((r) => r.status === 'OK')
@@ -1041,6 +1064,8 @@ export async function jalankanRunnerEval4({
     akuntansi: R3.ringkasAkuntansi(keadaan, ringkas),
     checkpoint: checkpoint ? { jalur: checkpoint.jalur === 'memori' ? 'memori' : '[di luar repo]', dilanjutkan: !!cp, sesi: (cp?.sesi ?? 0) + 1, slotDariCheckpoint: ringkas.filter((r) => r.dariCheckpoint).length } : null,
     berhenti: keadaan.berhenti,
+    kebijakanBerhenti: KEBIJAKAN_BERHENTI_EVAL4,
+    pelanggaranToleransiNol,
     dijeda,
     ditolakPencegat: keadaan.ditolak,
     jaringanTerblokir,

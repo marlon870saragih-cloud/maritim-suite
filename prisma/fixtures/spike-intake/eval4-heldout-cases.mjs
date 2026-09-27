@@ -3,7 +3,8 @@
 // Keputusan owner: HELD-OUT = 20 kasus baru, ULANGAN = 2, regresi RG-H20 & RG-H18 tetap wajib (terpisah).
 // Riwayat paparan: saat dibekukan sebagai heldout-1, kasus belum pernah dikirim ke model mana pun; run heldout-1
 // (2026-09-27, EVAL4_INCONCLUSIVE, HTTP 402 di slot 20) mengirim Q01–Q17 masing-masing SATU kali ke Sonnet 5
-// (Q17 dengan teks lama). Ditulis manual & deterministik (tanpa panggilan AI,
+// (Q17 dengan teks lama); run heldout-2 (2026-09-27, EVAL4_FAIL, FATAL F3 di Q19 u1) mengirim Q01–Q19 masing-masing
+// SATU kali lagi. Ditulis manual & deterministik (tanpa panggilan AI,
 // tanpa generator) oleh asisten pengkodean pada sesi implementasi — lihat catatan keterbatasan di laporan.
 // GT memakai skema penilai yang sama dengan Eval-1/2/3 (PRESENT / ABSENT / ACCEPTABLE / NOT_SCORED).
 //
@@ -22,7 +23,10 @@ import { tetapkanTanggalEval3 } from './eval3-cases.mjs'
 
 // heldout-2 (koreksi owner sesudah RCA run heldout-1 = EVAL4_INCONCLUSIVE): Q16 GT menerima bentuk verbatim
 // sumber "BIJIH NIKEL (NICKEL ORE)"; teks Q17 menegaskan satu penunjukan keagenan / satu port call.
-export const VERSI_HELDOUT_EVAL4 = 'prd005-eval4/heldout-2'
+// heldout-3 (keputusan owner sesudah run heldout-2 = EVAL4_FAIL, akar masalah Q19 = cacat normalisasi validator):
+// 20 kasus, teks & GT IDENTIK dengan heldout-2; identitas baru karena semantik validator produksi berubah
+// (normalisasiNamaPort membuang awalan "Pel.") dan intake-policy.ts kini ikut dibekukan di SHA_BEKU_EVAL4.
+export const VERSI_HELDOUT_EVAL4 = 'prd005-eval4/heldout-3'
 export const JUMLAH_HELDOUT_EVAL4 = 20
 
 // ------------------------------------------------------------------ pembentuk GT (sama dengan Eval-3)
