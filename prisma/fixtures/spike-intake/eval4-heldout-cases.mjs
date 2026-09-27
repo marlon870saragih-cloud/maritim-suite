@@ -1,7 +1,9 @@
 // PRD-005 Eval-4 — PAKET HELD-OUT (20 kasus BARU; Sonnet 5 saja; Prompt v4 kandidat).
 //
 // Keputusan owner: HELD-OUT = 20 kasus baru, ULANGAN = 2, regresi RG-H20 & RG-H18 tetap wajib (terpisah).
-// Kasus di sini BELUM PERNAH dikirim ke model mana pun. Ditulis manual & deterministik (tanpa panggilan AI,
+// Riwayat paparan: saat dibekukan sebagai heldout-1, kasus belum pernah dikirim ke model mana pun; run heldout-1
+// (2026-09-27, EVAL4_INCONCLUSIVE, HTTP 402 di slot 20) mengirim Q01–Q17 masing-masing SATU kali ke Sonnet 5
+// (Q17 dengan teks lama). Ditulis manual & deterministik (tanpa panggilan AI,
 // tanpa generator) oleh asisten pengkodean pada sesi implementasi — lihat catatan keterbatasan di laporan.
 // GT memakai skema penilai yang sama dengan Eval-1/2/3 (PRESENT / ABSENT / ACCEPTABLE / NOT_SCORED).
 //
@@ -18,7 +20,9 @@
 
 import { tetapkanTanggalEval3 } from './eval3-cases.mjs'
 
-export const VERSI_HELDOUT_EVAL4 = 'prd005-eval4/heldout-1'
+// heldout-2 (koreksi owner sesudah RCA run heldout-1 = EVAL4_INCONCLUSIVE): Q16 GT menerima bentuk verbatim
+// sumber "BIJIH NIKEL (NICKEL ORE)"; teks Q17 menegaskan satu penunjukan keagenan / satu port call.
+export const VERSI_HELDOUT_EVAL4 = 'prd005-eval4/heldout-2'
 export const JUMLAH_HELDOUT_EVAL4 = 20
 
 // ------------------------------------------------------------------ pembentuk GT (sama dengan Eval-3)
@@ -228,14 +232,14 @@ export const KASUS_HELDOUT_EVAL4 = Object.freeze([
     orisinalitas: 'Komoditas + operasi tertulis, jumlah sengaja belum ada (umpan jumlah karangan) — varian baru.',
     tanggal: { ETA: { offset: 23 } },
     teks: (t) => ['Dengan ini kami menominasikan Saudara sebagai agen untuk MV WIJAYA KUSUMA (IMO 9741970).', 'Pelabuhan: Kolaka (IDKOL)', `ETA: ${t.ETA.dmy}`, 'Muatan: bijih nikel (nickel ore), muat; jumlah menyusul setelah draft survey.', 'Principal: PT Kolaka Ore Transport'].join('\n'),
-    gt: dasar({ classification: AC(['NEW_NOMINATION'], 'Kata "menominasikan" tertulis.'), vessels: { jumlah: P(1), daftar: [kapal('V1', { name: P('WIJAYA KUSUMA'), imo: P('9741970') })] }, portName: P('KOLAKA'), portUnlocode: P('IDKOL'), eta: P(T('ETA')), principalName: P('KOLAKA ORE TRANSPORT'), cargoes: { bentukDiterima: [[muatan('bijih nikel', null, null, 'LOAD', ['NICKEL ORE', 'NIKEL'])]] } }),
+    gt: dasar({ classification: AC(['NEW_NOMINATION'], 'Kata "menominasikan" tertulis.'), vessels: { jumlah: P(1), daftar: [kapal('V1', { name: P('WIJAYA KUSUMA'), imo: P('9741970') })] }, portName: P('KOLAKA'), portUnlocode: P('IDKOL'), eta: P(T('ETA')), principalName: P('KOLAKA ORE TRANSPORT'), cargoes: { bentukDiterima: [[muatan('bijih nikel', null, null, 'LOAD', ['NICKEL ORE', 'NIKEL', 'BIJIH NIKEL (NICKEL ORE)'])]] } }),
   },
   {
     id: 'Q17', kind: 'TEXT', kategori: 'D_MULTI_KAPAL', bahasa: 'ID', cakupan: ['MULTI_KAPAL', 'ASOSIASI_KAPAL_MUATAN', 'BAHASA_ID', 'ANGKA_ID'],
-    judul: 'Dua rangkaian tug-tongkang, jumlah muatan berbeda per tongkang',
-    orisinalitas: 'Empat kapal (2 tug + 2 tongkang) dengan dua baris muatan — lebih kompleks dari H21–H24.',
+    judul: 'Dua rangkaian tug-tongkang dalam SATU penunjukan keagenan / satu port call, jumlah muatan berbeda per tongkang',
+    orisinalitas: 'Empat kapal (2 tug + 2 tongkang) dengan dua baris muatan — lebih kompleks dari H21–H24. heldout-2: sumber menegaskan satu penunjukan keagenan & satu port call (koreksi ambiguitas "dua rangkaian" vs "lebih dari satu kunjungan terpisah").',
     tanggal: { ETA: { offset: 19 } },
-    teks: (t) => ['Mohon disiapkan keagenan di Batulicin (IDBTW) untuk dua rangkaian berikut.', 'Rangkaian 1: TB SURYA MANDALA 5 (call sign YDSM5) menarik BG SURYA MANDALA 3301, muatan batubara 7.500 MT', 'Rangkaian 2: TB SURYA MANDALA 6 (call sign YDSM6) menarik BG SURYA MANDALA 3302, muatan batubara 7.320 MT', `ETA kedua rangkaian: ${t.ETA.idLong}`, 'Kegiatan: muat. Principal: PT Kalimantan Batubara Nusantara'].join('\n'),
+    teks: (t) => ['Mohon disiapkan keagenan di Batulicin (IDBTW) untuk SATU kunjungan (satu port call) dengan satu penunjukan keagenan.', 'Kunjungan ini terdiri atas dua rangkaian tug-tongkang yang datang dan dilayani bersama di Batulicin di bawah penunjukan keagenan yang sama:', 'Rangkaian 1: TB SURYA MANDALA 5 (call sign YDSM5) menarik BG SURYA MANDALA 3301, muatan batubara 7.500 MT', 'Rangkaian 2: TB SURYA MANDALA 6 (call sign YDSM6) menarik BG SURYA MANDALA 3302, muatan batubara 7.320 MT', `ETA kedua rangkaian: ${t.ETA.idLong}`, 'Kegiatan: muat. Principal: PT Kalimantan Batubara Nusantara'].join('\n'),
     gt: dasar({
       classification: KEAGENAN(),
       vessels: { jumlah: P(4), daftar: [peran('V1', 'TUG', { name: P('SURYA MANDALA 5'), callSign: P('YDSM5') }), peran('V2', 'BARGE', { name: P('SURYA MANDALA 3301', { alias: ['BG SURYA MANDALA 3301'] }) }), peran('V3', 'TUG', { name: P('SURYA MANDALA 6'), callSign: P('YDSM6') }), peran('V4', 'BARGE', { name: P('SURYA MANDALA 3302', { alias: ['BG SURYA MANDALA 3302'] }) })] },

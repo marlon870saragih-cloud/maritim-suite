@@ -366,6 +366,34 @@ bagian('H. titik-simpan & resume (jeda aman, tanpa ulang panggilan, akuntansi ku
   const cpRusak = { ...toko2.isi(), status: 'DIJEDA', slot: toko2.isi().slot.slice(0, 1), akuntansi: { ...toko2.isi().akuntansi, total: 99 } }
   cek('H17 periksaResume: akuntansi tak konsisten / format lain → ditolak', R.periksaResume(cpRusak, cpRusak.ikatan).includes('AKUNTANSI_CHECKPOINT_TIDAK_KONSISTEN') && R.periksaResume({ ...cpRusak, format: 'x' }, cpRusak.ikatan).includes('FORMAT_CHECKPOINT_BERBEDA'))
 
+  // ── ikatan TANGGAL EFEKTIF (checkpoint-2): teks kasus memuat tanggal turunan hari eksekusi.
+  const BESOK = new Date('2026-09-28T00:00:00Z')
+  cek('H17b ikatan checkpoint memuat tanggal efektif run (YYYY-MM-DD) + sidik sumber; format checkpoint-2', R.FORMAT_CHECKPOINT === 'prd005-eval4/checkpoint-2' && akhir.format === R.FORMAT_CHECKPOINT && akhir.ikatan.tanggalEfektif === '2026-09-27' && /^[0-9a-f]{64}$/.test(akhir.ikatan.sidikSumber ?? ''))
+  const toko7 = R.buatTokoCheckpointMemori()
+  let n7 = 0
+  await jalanLive(penyedia(), { konfigUji: K, checkpoint: toko7, sinyalJeda: () => n7++ >= 1 })
+  const tpI = penyedia()
+  const rTanggal = await jalanLive(tpI, { konfigUji: K, checkpoint: R.buatTokoCheckpointMemori(toko7.isi()), lanjut: true, hariIni: BESOK })
+  const tpJ = penyedia()
+  const rTanggalSama = await jalanLive(tpJ, { konfigUji: K, checkpoint: R.buatTokoCheckpointMemori(toko7.isi()), lanjut: true })
+  cek('H17c resume checkpoint DIJEDA pada tanggal efektif LAIN → DITOLAK_RESUME IKATAN_CHECKPOINT_BERBEDA, 0 panggilan; kontrol tanggal sama → lanjut 3 slot', toko7.isi().status === 'DIJEDA' && rTanggal.verdict === 'DITOLAK_RESUME' && rTanggal.galat.includes('IKATAN_CHECKPOINT_BERBEDA') && tpI.jumlah() === 0 && tpJ.jumlah() === 3 && rTanggalSama.checkpoint.dilanjutkan === true)
+  // Paket BEKU owner (held-out ber-ETA relatif): tanggal lain → teks sumber lain → sidik sumber lain.
+  const tokoH = R.buatTokoCheckpointMemori()
+  let nH = 0
+  await jalanBeku({ mode: 'offline', checkpoint: tokoH, sinyalJeda: () => nH++ >= 1 })
+  const tokoH2 = R.buatTokoCheckpointMemori()
+  let nH2 = 0
+  await jalanBeku({ mode: 'offline', checkpoint: tokoH2, hariIni: BESOK, sinyalJeda: () => nH2++ >= 1 })
+  const ikH = tokoH.isi().ikatan
+  const ikH2 = tokoH2.isi().ikatan
+  const rBekuTanggal = await jalanBeku({ mode: 'offline', checkpoint: R.buatTokoCheckpointMemori(tokoH.isi()), lanjut: true, hariIni: BESOK })
+  cek('H17d paket beku: checkpoint hari H dilanjutkan hari H+1 → DITOLAK_RESUME IKATAN_CHECKPOINT_BERBEDA; tanggal efektif & sidik sumber berbeda, sidik rencana sama', tokoH.isi().status === 'DIJEDA' && rBekuTanggal.verdict === 'DITOLAK_RESUME' && rBekuTanggal.galat.includes('IKATAN_CHECKPOINT_BERBEDA') && ikH.tanggalEfektif === '2026-09-27' && ikH2.tanggalEfektif === '2026-09-28' && ikH.sidikSumber !== ikH2.sidikSumber && ikH.sidikRencana === ikH2.sidikRencana)
+  const cpJeda = { ...tokoH.isi() }
+  cek('H17e periksaResume murni: sidik sumber beda (tanggal sama) / tanggal beda (sidik sama) → IKATAN_CHECKPOINT_BERBEDA; ikatan identik → boleh', R.periksaResume(cpJeda, { ...ikH, sidikSumber: '0'.repeat(64) }).includes('IKATAN_CHECKPOINT_BERBEDA') && R.periksaResume(cpJeda, { ...ikH, tanggalEfektif: '2026-09-28' }).includes('IKATAN_CHECKPOINT_BERBEDA') && R.periksaResume(cpJeda, ikH).length === 0)
+  const { tanggalEfektif: _t, sidikSumber: _s, ...ikatanLama } = ikH
+  const cpLama = { ...cpJeda, format: 'prd005-eval4/checkpoint-1', ikatan: { ...ikatanLama, format: 'prd005-eval4/checkpoint-1', runner: 'prd005-eval4/runner-1', paket: { versi: 'prd005-eval4/heldout-1', hashGt: '8dca7b6c609d0e07955f67f8db1dd088a2c4381bf3a7540edda2c7235c6c541e' } } }
+  cek('H17f checkpoint bentuk LAMA (checkpoint-1, tanpa tanggal efektif, paket heldout-1) → FORMAT & IKATAN berbeda → tak bisa dilanjutkan', (() => { const g = R.periksaResume(cpLama, ikH); return g.includes('FORMAT_CHECKPOINT_BERBEDA') && g.includes('IKATAN_CHECKPOINT_BERBEDA') })())
+
   // Toko BERKAS nyata (direktori sementara di luar repo): tulis atomik & dapat dibaca kembali.
   const dir = mkdtempSync(join(tmpdir(), 'eval4-ckpt-'))
   const jalurCk = join(dir, 'eval4.ckpt.json')
@@ -497,6 +525,19 @@ bagian('L. paket held-out BEKU (20 kasus baru) & gerbang kualitas Eval-4')
   cek('L17 muatan karangan hanya di RAW (validator produksi menahannya) → dilaporkan terpisah di RAW, POST bersih → tidak FAIL', q16Aman.agregat.HELDOUT_S5_V4.f5UnsupportedRaw >= 2 && q16Aman.agregat.HELDOUT_S5_V4.f5UnsupportedPost === 0 && q16Aman.gerbang.gerbang.G_MUATAN_TAK_BERBUKTI_POST.lulus === true && q16Aman.verdict === 'PASS')
   const q06 = await jalanBeku({ mode: 'offline', jawabStub: (k, m, n) => (k?.id === 'Q06' && n <= 22 ? { ...R3.jawabanSempurnaEval3(k), eta: KH.find((x) => x.id === 'Q06').tanggal.ETA1.iso } : R3.jawabanSempurnaEval3(k)) })
   cek('L18 kesalahan fakta/angka kritis (ETA yang dibatalkan, tertulis & berlabel) lolos POST → F4 → FAIL (satu slot cukup)', q06.verdict === 'FAIL' && q06.gerbang.gerbang.G_FATAL_POST.detail.some((d) => d.startsWith('Q06#u1:F4')) && q06.gerbang.gerbang.G_LULUS_HELDOUT.nilai >= 0.95)
+
+  // ── koreksi owner heldout-2 (RCA run heldout-1): Q16 GT & Q17 teks sumber
+  const slotKasus = (lap, id) => lap.slot.filter((s) => s.kasus === id)
+  const bersih = (s) => s.status === 'OK' && s.penilai.POST.FATAL === 0 && s.penilai.POST.MAJOR === 0 && s.penilai.POST.MINOR === 0 && s.penilai.RAW.FATAL === 0 && s.penilai.RAW.MAJOR === 0 && s.penilai.integritasGt === 'OK' && s.penilai.POST.konflikGt === 0
+  const q16Verbatim = await jalanBeku({ mode: 'offline', jawabStub: (k) => (k?.id === 'Q16' ? { ...R3.jawabanSempurnaEval3(k), cargoes: [{ name: 'bijih nikel (nickel ore)', operation: 'LOAD' }] } : R3.jawabanSempurnaEval3(k)) })
+  cek('L18b Q16 bentuk verbatim sumber "bijih nikel (nickel ore)" (tanpa jumlah) → 0 FATAL/MAJOR/MINOR, tanpa konflik GT, PASS', FH.VERSI_HELDOUT_EVAL4 === 'prd005-eval4/heldout-2' && slotKasus(q16Verbatim, 'Q16').length === 2 && slotKasus(q16Verbatim, 'Q16').every(bersih) && q16Verbatim.verdict === 'PASS')
+  const q16Lain = await jalanBeku({ mode: 'offline', jawabStub: (k) => (k?.id === 'Q16' ? { ...R3.jawabanSempurnaEval3(k), cargoes: [{ name: 'ore', operation: 'LOAD' }] } : R3.jawabanSempurnaEval3(k)) })
+  cek('L18c Q16: pencocokan TIDAK dilonggarkan global — nama lain ("ore") tetap bukan pasangan GT (konflik GT, INCONCLUSIVE_GT)', slotKasus(q16Lain, 'Q16').every((s) => s.penilai.integritasGt === 'INCONCLUSIVE_GT' && s.penilai.POST.MAJOR === 1) && q16Lain.verdict !== 'PASS')
+  const q17 = KH.find((k) => k.id === 'Q17')
+  cek('L18d Q17 teks sumber tegas SATU kunjungan / satu port call / satu penunjukan keagenan; 4 kapal, 2 jumlah, Batulicin IDBTW, ETA tetap; GT klasifikasi = KEAGENAN saja', /SATU kunjungan \(satu port call\) dengan satu penunjukan keagenan/.test(q17.teks) && /di bawah penunjukan keagenan yang sama/.test(q17.teks) && ['TB SURYA MANDALA 5', 'BG SURYA MANDALA 3301', 'TB SURYA MANDALA 6', 'BG SURYA MANDALA 3302', '7.500 MT', '7.320 MT', 'Batulicin (IDBTW)', q17.tanggal.ETA.idLong].every((x) => q17.teks.includes(x)) && JSON.stringify(q17.gt.classification.values) === JSON.stringify(['NEW_NOMINATION', 'NEW_APPOINTMENT']))
+  cek('L18e Q17 jawaban satu-port-call yang dimaksud (4 kapal ber-peran, 2 baris muatan) → 0 FATAL/MAJOR/MINOR (run setia L6)', slotKasus(lapL, 'Q17').length === 2 && slotKasus(lapL, 'Q17').every(bersih))
+  const q17Unsup = await jalanBeku({ mode: 'offline', jawabStub: (k) => (k?.id === 'Q17' ? { ...R3.jawabanSempurnaEval3(k), classification: 'UNSUPPORTED_REQUEST' } : R3.jawabanSempurnaEval3(k)) })
+  cek('L18f Q17 GT tidak dilonggarkan: UNSUPPORTED_REQUEST tetap MAJOR (klasifikasi salah), slot tidak lulus', slotKasus(q17Unsup, 'Q17').every((s) => s.penilai.POST.MAJOR === 1 && s.klasifikasi.benarPost === false) && q17Unsup.gerbang.gerbang.G_LULUS_HELDOUT.lulusSlot === 38)
 
   // ── ambang kelulusan & konsistensi (≥ 90%)
   const salahKelas = (daftar) => (k) => (daftar.includes(k?.id) ? { ...R3.jawabanSempurnaEval3(k), classification: 'INSUFFICIENT_INFORMATION' } : R3.jawabanSempurnaEval3(k))

@@ -56,7 +56,7 @@ import * as FH from './fixtures/spike-intake/eval4-heldout-cases.mjs'
 const AKAR = fileURLToPath(new URL('..', import.meta.url))
 const sha256 = (x) => createHash('sha256').update(x).digest('hex')
 
-export const VERSI_RUNNER_EVAL4 = 'prd005-eval4/runner-1'
+export const VERSI_RUNNER_EVAL4 = 'prd005-eval4/runner-2'
 /** USULAN — belum diotorisasi. Hanya frasa ini (persis) yang kelak membuka mode live Eval-4. */
 export const FRASA_OTORISASI_EVAL4 = 'PRD-005-EVAL4-LIVE'
 /**
@@ -74,7 +74,14 @@ export const TRANSPORT = R1.TRANSPORT
 export const LABEL_DRY = R1.LABEL_DRY
 export const LABEL_LIVE = R1.LABEL_LIVE
 export const KUNCI_STUB = 'stub-kunci-eval4-runner-luring-000000'
-export const FORMAT_CHECKPOINT = 'prd005-eval4/checkpoint-1'
+/**
+ * checkpoint-2: ikatan memuat TANGGAL EFEKTIF run + sidik teks sumber ter-resolusi. Teks kasus memuat tanggal
+ * turunan hari eksekusi (offset ETA), jadi lanjutan di tanggal lain akan diam-diam mengubah sumber — ditolak.
+ * Checkpoint-1 (run heldout-1 historis) tak pernah bisa dilanjutkan dengan runner ini (FORMAT_CHECKPOINT_BERBEDA).
+ */
+export const FORMAT_CHECKPOINT = 'prd005-eval4/checkpoint-2'
+/** Sidik deterministik teks sumber (sesudah normalisasi) semua kasus rencana, urut id. */
+export const sidikSumberKasus = (kasus) => sha256(JSON.stringify(kasus.map((k) => [k.id, sha256(k.teksNormal)]).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))))
 
 export const BLOK_REGRESI = 'REGRESI_MUATAN_S5_V4'
 export const BLOK_HELDOUT = 'HELDOUT_S5_V4'
@@ -90,7 +97,7 @@ export const SHA_BEKU_EVAL4 = Object.freeze({
   'prisma/fixtures/spike-intake/eval4-regresi-muatan.mjs': '01871bf6cd2c266cb0070497a071a211c8601f92c8a8341e00890dacc6921012',
   'prisma/spike-eval4-scorer.mjs': 'a513cf676862f356cf1e242736b17bd94d0af06bc9c08718b415b602ef3bb12d',
   'src/lib/maritim-lexicon.ts': '864e4e3bf4cb47ef6e1d112ad42b5c9efd9d402c459e2d8be465f0bbab41fb83',
-  'prisma/fixtures/spike-intake/eval4-heldout-cases.mjs': 'e66b8fd4d113252e8742155b65e0a237af541bddd55c5d215269d2d72d91b75a',
+  'prisma/fixtures/spike-intake/eval4-heldout-cases.mjs': '17c12b7988fd3909dfae064a79af39dc75de82abb6e389639e6ac9f1f2eaa4b6',
 })
 /** Identitas Prompt v4 kandidat (hash sistem + skema tool) yang diikat run Eval-4. */
 export const IKATAN_PROMPT_V4 = Object.freeze({ idPrompt: 'vessel-call-extract', versiPrompt: '4', versiSkema: '4', hashPrompt: '6ed1edba38780badcff111e70f63e83d95668f15b99644f174bac1984ce65959' })
@@ -121,7 +128,7 @@ export const AMBANG_KUALITAS_EVAL4 = Object.freeze({
 export const BATAS_KERAS_MAKS_OWNER_USD = 2.1
 export const PLAFON_PER_PANGGILAN_MAKS_OWNER_USD = 0.05
 export const KONFIG_OWNER_EVAL4 = Object.freeze({
-  paket: Object.freeze({ modul: FH, hashGtBeku: '8dca7b6c609d0e07955f67f8db1dd088a2c4381bf3a7540edda2c7235c6c541e' }),
+  paket: Object.freeze({ modul: FH, hashGtBeku: 'faf6393685df71867acb8e805d1dc5f834bf8ad499d793830340a007fae87de3' }),
   jumlahKasusHeldout: 20,
   ulangan: 2,
   batas: Object.freeze({ maksPanggilan: 42, biayaLunakUsd: 2.1, biayaKerasUsd: 2.1, tokenInput: 1_050_000, tokenOutput: 210_000 }),
@@ -774,6 +781,8 @@ export async function jalankanRunnerEval4({
     batas,
     plafonUsd,
     sidikRencana: sidikRencana(rencana),
+    tanggalEfektif: hariIso,
+    sidikSumber: sidikSumberKasus(kasus),
     bentukTransport: BENTUK_TRANSPORT_EVAL4,
     profilTransport: PROFIL_TRANSPORT_EVAL4,
   }
