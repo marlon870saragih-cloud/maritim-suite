@@ -65,7 +65,9 @@
     "test:eval5-runner": "node prisma/check-eval5-runner.mjs",
     "eval5:bekukan": "node prisma/spike-eval5-bekukan.mjs",
     "test:validator-remediasi": "node prisma/check-validator-remediasi.mjs",
-    "test:regresi-eval5-produksi": "node prisma/check-regresi-eval5-produksi.mjs"
+    "test:regresi-eval5-produksi": "node prisma/check-regresi-eval5-produksi.mjs",
+    "test:eval6-runner": "node prisma/check-eval6-runner.mjs",
+    "eval6:bekukan": "node prisma/spike-eval6-bekukan.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
