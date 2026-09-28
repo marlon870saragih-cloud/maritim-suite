@@ -652,7 +652,11 @@ export function pindaiLaporanEval3(teks, { kunci, kasus, rahasiaEnv = [] }) {
   const temuan = H.pindaiPrivasiEval1(t, { kunci, frasa: FRASA_OTORISASI_EVAL3, kasus, rahasiaEnv })
   if (FRASA_LAMA.some((f) => t.includes(f))) temuan.push('FRASA_OTORISASI')
   if (F.POLA_SENTINEL_EVAL3.test(t)) temuan.push('SENTINEL_EVAL3')
-  const up = t.toUpperCase()
+  // Sidik HMAC bergaram acak (12 hex) & hash (64 hex) adalah string JSON UTUH buatan mesin; nilai GT
+  // pendek yang semuanya digit (mis. '60417') bisa muncul di dalamnya secara kebetulan (~936 sidik × 8 posisi × 16⁻⁵ ≈ 0,7%/run) →
+  // laporan ditahan palsu. Hanya token hex UTUH panjang 12/64 yang dikosongkan; nilai GT terpanjang
+  // yang berupa hex = 9 karakter, jadi kebocoran nilai GT utuh tetap tertangkap.
+  const up = t.replace(/"(?:[0-9a-f]{12}|[0-9a-f]{64})"/g, '""').toUpperCase()
   if (nilaiGtTerlarangEval3(kasus).some((v) => up.includes(v.toUpperCase()))) temuan.push('NILAI_GT_UTUH')
   return [...new Set(temuan)]
 }

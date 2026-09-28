@@ -593,6 +593,13 @@ bagian('M. Privasi — perlindungan Eval-2 dipakai ulang + uji mutasi pemindai')
   }
   cek('M5 jalur laporan di dalam repo → ditolak', typeof dalamRepo === 'string' && dalamRepo.startsWith('EVAL3_') && !existsSync(join(AKAR, 'prisma/laporan-eval3.json')))
   cek('M6 kunci stub runner bukan pola kunci nyata & tak pernah = kunci uji', !/sk-or-/.test(R.KUNCI_STUB) && R.KUNCI_STUB !== KUNCI_PALSU)
+  // Sidik bergaram acak yang kebetulan memuat nilai GT pendek tak boleh menahan laporan (positif palsu),
+  // tetapi nilai GT utuh di luar token hex 12/64 tetap tertangkap.
+  const sisip = (v) => R.pindaiLaporanEval3(dasar.replace('"diagnostik":[', `"diagnostik":[${JSON.stringify(v)},`), { kasus: KASUS })
+  const nilaiHex = R.nilaiGtTerlarangEval3(KASUS).filter((x) => /^[0-9a-f]+$/i.test(x))
+  cek('M7 nilai GT berbentuk hex ≤ 9 karakter (token hex 12/64 tak pernah = nilai GT utuh)', nilaiHex.length > 0 && nilaiHex.every((x) => x.length <= 9), nilaiHex.filter((x) => x.length > 9).join(','))
+  cek('M7 sidik 12-hex / hash 64-hex memuat nilai GT → BUKAN temuan', sisip({ sidik: 'a60417bcdef0' }).length === 0 && sisip({ sha: `9998494${'0'.repeat(57)}` }).length === 0)
+  cek('M7 nilai GT utuh / dalam teks / hex panjang lain → tetap NILAI_GT_UTUH', ['60417', 'Job 60417', 'a60417bcdef', 'a60417bcdef01', `ab${'9998494'}`].every((v) => sisip({ bocor: v }).includes('NILAI_GT_UTUH')))
 }
 
 // ============================================================================ N
