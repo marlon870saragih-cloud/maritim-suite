@@ -68,6 +68,7 @@
     "test:regresi-eval5-produksi": "node prisma/check-regresi-eval5-produksi.mjs",
     "test:eval6-runner": "node prisma/check-eval6-runner.mjs",
     "test:eval7-runner": "node prisma/check-eval7-runner.mjs",
+    "test:eval8-runner": "node prisma/check-eval8-runner.mjs",
     "eval6:bekukan": "node prisma/spike-eval6-bekukan.mjs"
   },
   "dependencies": {
