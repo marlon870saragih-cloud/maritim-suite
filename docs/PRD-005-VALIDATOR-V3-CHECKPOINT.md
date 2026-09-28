@@ -1,19 +1,17 @@
-# PRD-005 Validator V3 — CHECKPOINT: final remediation implemented, FINAL freeze ON HOLD
+# PRD-005 Validator V3 — FINAL FREEZE
 
-Status: Addendum-2 (AM7 seksi daftar multi-muatan, AM8 token operasi patah-baris, AM9 jendela ikat per klausa) diimplementasikan.
-Manifes kandidat `prd005-intake-text/kandidat-validator-v3-2` diregenerasi (sidik `175582baf274c44a…`, 21 berkas), tetapi
-BELUM dinyatakan FINAL: `V3_FINAL_FREEZE = ON HOLD` menunggu keputusan owner atas temuan §2. Blind-B BELUM dibuat.
-Sonnet 5 = `PENDING_SPIKE` (4cd338d). 0 panggilan model, 0 deploy.
+Status: `V3_FINAL_FREEZE = YES` — kandidat `prd005-intake-text/kandidat-validator-v3-2` (manifes `prisma/spike-kandidat-v3.mjs`;
+SPEC:V3 + Addendum-1 AM1–AM6 + Addendum-2 AM7–AM9 & AM4b). Owner: V3 TIDAK BOLEH diubah lagi berdasarkan hasil Blind-B.
+Sonnet 5 = `PENDING_SPIKE` (4cd338d). Bukan persetujuan produksi; 0 panggilan model, 0 deploy, 0 promosi.
 
-## 1. Bukti (luring)
-- Blind-A (Eval-7, REGRESSION ONLY): 7/7 kelas kegagalan tertutup oleh aturan umum; jawaban sempurna 80/80; GT tidak diubah.
-- check-validator-v3 215/216: diferensial 42.519 varian (Eval-1..7 + RG) 0 tak terklasifikasi; orakel tanpa-dukungan 0,
-  misatribusi 0; invarian I1–I5 lulus; Eval-5 78/80 (Z23), Eval-6 70/80, Eval-7 80/80, 0 FATAL, 0 nilai tepercaya salah.
-- Suite TAH/intake/eval lulus; check-validator-remediasi 61/70 = identik v3-1 (EXPECTED_SUPERSEDED); tsc bersih; lint 0 error.
+## Bukti saat freeze (luring)
+- check-validator-v3 226/226: diferensial 42.519 varian (Eval-1..7 + RG) 0 tak terklasifikasi; orakel tanpa-dukungan 0,
+  misatribusi 0; invarian I1–I5; injeksi angka terlarang Eval-5/6/7 × 6 satuan: 0 lolos dari 696 (termasuk V21 kapal saudara).
+- Regresi (REGRESSION ONLY): Eval-5 78/80 (Z23), Eval-6 70/80, Eval-7 Blind-A 80/80; 0 FATAL, 0 nilai tepercaya salah.
+- N20 CLOSED; N14 = jumlah dipertahankan, operasi null lewat §5.2 (spesifikasi final). check-validator-remediasi 61/70 identik v3-1
+  (EXPECTED_SUPERSEDED). Suite TAH/intake/eval lulus; tsc bersih; lint 0 error; ledger E2E DB loopback 14/14, sisa 0, privasi lulus.
 
-## 2. Temuan keselamatan PRA-ADA (bukan regresi Addendum-2; identik pada v3-1 e04b4ac)
-Uji injeksi E6 kini mencakup Eval-7: angka terlarang V21 (muatan KAPAL SAUDARA bulan lalu, "sister vessel … last month (loaded
-48.000 MT coal …)") diterima sebagai jumlah TEPERCAYA bila model mengusulkannya (6/6 satuan). Kalimat itu tidak memuat frasa
-historis AM4 (pengubah LAST/PREVIOUS/… + kata benda kunjungan/muatan), dan jumlahnya bersebelahan dengan nama muatan yang sama.
-Menutupnya = memperluas kelas frasa konteks historis AM4 (mis. kapal lain/"sister vessel", penanda waktu lampau) — DI LUAR tiga
-kelas yang diizinkan untuk putaran ini → keputusan owner.
+## Keterbatasan diketahui (arah aman)
+- §5.2: EX/LALU/TERAKHIR/PRIOR/PREVIOUS/LAST PORT tetap penanda lampau untuk OPERASI (mis. Z23) → operasi null.
+- AM4b hanya untuk KOMBINASI kapal lain + lampau; angka lampau tanpa subjek kapal lain ("last month we shipped …") mengikuti AM4.
+- AM5: grade yang dihilangkan model dari nama dapat terbaca sebagai ujung rentang → selalu APPROXIMATE (review).

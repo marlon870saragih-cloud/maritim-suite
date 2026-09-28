@@ -345,6 +345,26 @@ bagian('S', 'S. Addendum-2: seksi daftar multi-muatan, token operasi patah-baris
   cek('S14 AM9 jumlah milik komoditas lain di klausa berikutnya → null', asing?.quantity === null, f(asing))
   const tanpaSatuan = muat('We have a vessel for urea loading, approx 3,000. Details to follow.', c('urea', 3000, 'MT', null))
   cek('S15 AM9 jumlah tanpa satuan tertulis → null (dukungan satuan tetap wajib)', tanpaSatuan?.quantity === null, f(tanpaSatuan))
+  // AM4b — subjek KAPAL LAIN + konteks WAKTU LAMPAU (kosakata netral)
+  const kl = [
+    ['EN', 'Nomination for MV ALFA SATU. Our sister vessel MV BETA DUA last month loaded 30,000 MT urea at your berth. Cargo this call: urea 25,000 MT, loading.', 'urea', 30000, 25000, 'LOAD'],
+    ['ID', 'Kapal saudara KM GAMMA TIGA bulan lalu bongkar 9.000 MT semen di sini. Muatan kali ini: semen 7.500 MT, bongkar.', 'semen', 9000, 7500, 'DISCHARGE'],
+    ['MIX', 'Mohon keagenan MV DELTA EMPAT. Kapal lain milik kami previously muat 12.000 MT pupuk di sini. Cargo: pupuk 10.000 MT, loading.', 'pupuk', 12000, 10000, 'LOAD'],
+  ]
+  for (const [bhs, t, nama, qLain, qKini, op] of kl) {
+    const x = muat(t, c(nama, qLain, 'MT', op))
+    cek(`S16 AM4b ${bhs} jumlah kapal lain + lampau → tak pernah jumlah kunjungan ini (EXCL_PAST_CLAUSE)`, x?.quantity === null && x.jejak?.quantity === 'EXCL_PAST_CLAUSE', f(x))
+    const y = muat(t, c(nama, qKini, 'MT', op))
+    cek(`S17 AM4b ${bhs} kontrol kapal/kunjungan saat ini → jumlah kini tetap dipertahankan`, y?.quantity === qKini && y.unit === 'MT', f(y))
+  }
+  const kini = muat('Cargo: urea 3,000 MT, loading alongside sister vessel MV BETA DUA at the same berth.', c('urea', 3000, 'MT', 'LOAD'))
+  cek('S18 AM4b kapal lain TANPA penanda lampau (konteks operasi kini) → jumlah tidak dibuang', kini?.quantity === 3000, f(kini))
+  const hanyaLampau = muat('Cargo: urea 3,000 MT, load. Last month we shipped 4,000 MT urea via your port.', c('urea', 3000, 'MT', 'LOAD'))
+  cek('S19 AM4b lampau TANPA kapal lain → mengikuti AM4 yang ada (jumlah kini tetap)', hanyaLampau?.quantity === 3000, f(hanyaLampau))
+  const ambigu = muat('Sister vessel MV BETA DUA loaded here last month, urea 3,000 MT this call.', c('urea', 3000, 'MT', 'LOAD'))
+  cek('S20 AM4b kapal lain + lampau di klausa sama tapi segmen lain → null + CARGO_RELATION_AMBIGUOUS (gagal-aman)', ambigu?.quantity === null && ada(ambigu, 'CARGO_RELATION_AMBIGUOUS'), f(ambigu))
+  const pindah = baris('Our sister vessel MV BETA DUA last month loaded 30,000 MT urea here. Cargo this call: urea 25,000 MT and sulphur, loading.', [c('urea', 25000, 'MT', 'LOAD'), c('sulphur', 30000, 'MT', 'LOAD')])
+  cek('S21 AM4b jumlah kapal lain tak pernah dipindah ke muatan lain kunjungan ini', pindah[1]?.quantity === null && pindah[0]?.quantity === 25000, f(pindah))
 }
 
 // ============================================================================ Z zona & koreksi

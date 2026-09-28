@@ -87,7 +87,7 @@ bagian('1. KUNCI SUMBER — yang tak boleh berubah di Step 3B')
     // Lalu PRD-005 V3 FINAL FIX (DISETUJUI OWNER 2026-09-28, ADDENDUM-1 AM4/AM5 final + AM6 — N20 ditutup) (33244d1e… → baru).
     // Lalu PRD-005 V3 FINAL REMEDIATION (DISETUJUI OWNER, ADDENDUM-2 AM7–AM9: seksi daftar multi-muatan, token operasi
     // patah-baris, jendela ikat per klausa) (fc2639e0… → baru).
-    'src/services/intake/intake-policy.ts': 'eb0aa711a54c227ba0957959e8e404d618af27d64c49e512e6128a3ee5b29128',
+    'src/services/intake/intake-policy.ts': '766d0c23253417b54f866a254d0da8f77b42bbe525e86cbeb6b869fa6553044c',
     'src/services/intake/intake-hash.ts': '862d3e086c24f578bdd4a07a70664de6fff96d6831e289dcb1d5ccd69e4525d3',
     'src/services/saas/quota.service.ts': '777e86317b23f3f1ebf3a4c0db9a941fa6159585d0071350f622019a844f29ce',
     'src/services/saas/usage.service.ts': '183fa3bbb9af7278d780d62431df5f91961130a8d84cd2392195b834cff0c23d',

@@ -19,7 +19,7 @@ export const IKATAN_PROMPT_V4 = K5.IKATAN_PROMPT_V4
 export const HARAPAN_RUTE_TEXT = K5.HARAPAN_RUTE_TEXT
 export const VERSI_LEKSIKON_VALIDATOR = 'maritim-lexicon/3'
 export const SHA_SPEK_V3 = 'ec19d3ac183924f479755098b12b2afb61807f9acc5fe905baebf39b0a97fb6c'
-export const SHA_ADENDUM2_V3 = 'db9d261e08f8f6b38a9682e351a35631c63dac38305555a5377218dc3232c79b'
+export const SHA_ADENDUM2_V3 = 'a80940f0b14042a40d2687a53296b5b0e55fd53a400dbd673bb1ee6d01765a1c'
 export const SHA_ADENDUM_V3 = '79f7ac5e3b93fb448c167a6a7c558db3139cb7fb809c84564f437be4c2ed645a'
 /** Penilai scorer-3 (v1 oracle) — TIDAK diubah oleh V3. */
 export const SHA_PENILAI_BEKU = 'a513cf676862f356cf1e242736b17bd94d0af06bc9c08718b415b602ef3bb12d'
@@ -41,11 +41,11 @@ export const SHA_KANDIDAT_V3 = Object.freeze({
   'src/services/tah/agent-run.service.ts': '902f8439f743e3271a3c9795d514bcce8460e5d839ebc8cd9b89265f7d029d4a',
   'src/services/tah/tah-policy.ts': '67a078e8066b7685a87f1b526402c74f58d3f3d6aaed16542516d7986ca7ff70',
   'src/services/tah/ringkasan-intake.ts': 'c0092a49d96237a9fbac22f59320ee4de44b922e8cb7af2bbfd227d7459c0b79',
-  'src/services/intake/intake-policy.ts': 'eb0aa711a54c227ba0957959e8e404d618af27d64c49e512e6128a3ee5b29128',
-  'src/lib/maritim-lexicon-v3.ts': '682dc5de06311185903c6d30de0f31d82b7b27c224342960aa096f2b86a16aca',
+  'src/services/intake/intake-policy.ts': '766d0c23253417b54f866a254d0da8f77b42bbe525e86cbeb6b869fa6553044c',
+  'src/lib/maritim-lexicon-v3.ts': '11a9e9124c5b95ebbf8b07a5e87dbdef03894fb59fbe440afa475cb4455d6c31',
   'src/lib/maritim-lexicon-v2.ts': 'b459c81add6823fda1541f6a170bb977f35b6bb0d77e5994774637cd8ece24a5',
   'docs/PRD-005-VALIDATOR-V3.md': 'ec19d3ac183924f479755098b12b2afb61807f9acc5fe905baebf39b0a97fb6c',
-  'docs/PRD-005-VALIDATOR-V3-ADDENDUM-2.md': 'db9d261e08f8f6b38a9682e351a35631c63dac38305555a5377218dc3232c79b',
+  'docs/PRD-005-VALIDATOR-V3-ADDENDUM-2.md': 'a80940f0b14042a40d2687a53296b5b0e55fd53a400dbd673bb1ee6d01765a1c',
   'docs/PRD-005-VALIDATOR-V3-ADDENDUM-1.md': '79f7ac5e3b93fb448c167a6a7c558db3139cb7fb809c84564f437be4c2ed645a',
 })
 

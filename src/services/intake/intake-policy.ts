@@ -47,6 +47,8 @@ import {
   PENGUBAH_HISTORIS_PASCA,
   KATA_KUNJUNGAN_EN,
   KATA_KUNJUNGAN_ID,
+  FRASA_KAPAL_LAIN,
+  PENANDA_WAKTU_LAMPAU,
 } from '../../lib/maritim-lexicon-v3'
 
 // ----------------------------------------------------------------- konstanta
@@ -1172,6 +1174,17 @@ function tokenHistoris(tok: readonly Tok[]): number[] {
   })
   return hasil
 }
+const FRASA_KAPAL_LAIN_T = FRASA_KAPAL_LAIN.map((f) => f.split(' '))
+const PENANDA_WAKTU_LAMPAU_T = PENANDA_WAKTU_LAMPAU.map((f) => f.split(' '))
+/** Indeks token (kata, bukan komposit) yang cocok dengan salah satu urutan frasa. */
+function tokenFrasa(tok: readonly Tok[], frasa: readonly (readonly string[])[]): number[] {
+  const kata = tok.map((t, i) => ({ t, i })).filter((x) => x.t.k === 'W' && !anggotaKomposit(tok, x.i))
+  const hasil: number[] = []
+  kata.forEach((_, k) => {
+    for (const f of frasa) if (f.every((w, j) => kata[k + j]?.t.u === w)) hasil.push(...f.map((__, j) => kata[k + j].i))
+  })
+  return hasil
+}
 /** AM4 (final): baris item daftar di bawah kepala "…:" yang memuat frasa konteks historis ("Last cargoes:\n- CPO 4100 MT"). */
 function diBawahKepalaHistoris(ls: readonly Logis[], li: number): boolean {
   const item = (l: Logis) => POLA_DAFTAR.test(l.teks) || /^\s{2,}\S/.test(l.teks)
@@ -1375,6 +1388,22 @@ function cekOkurensi(ls: readonly Logis[], li: number, s: number, e: number, nil
       if (iQ >= 0 && hist.some((i) => kl[i] === kl[iQ])) return tolak('EXCL_PAST_AMBIGUOUS')
     }
     if (diBawahKepalaHistoris(ls, li)) return tolak('EXCL_PAST_CLAUSE')
+    // ADDENDUM-2 AM4b: subjek KAPAL LAIN + penanda WAKTU LAMPAU (atau frasa historis AM4) di klausa yang sama → jumlah milik
+    // kapal/kunjungan lain. Keduanya di segmen jumlah → dikecualikan; salah satunya hanya di klausa → relasi ambigu.
+    const lain = tokenFrasa(tok, FRASA_KAPAL_LAIN_T)
+    if (lain.length) {
+      const lampau = [...tokenFrasa(tok, PENANDA_WAKTU_LAMPAU_T), ...hist]
+      const iQ = tok.findIndex((t) => t.s >= s)
+      if (iQ >= 0 && lampau.length) {
+        const segH = segmenToken(tok)
+        const kl = klausaToken(tok)
+        const diKlausa = (xs: number[]) => xs.filter((i) => kl[i] === kl[iQ])
+        const diSeg = (xs: number[]) => xs.some((i) => segH[i] === segH[iQ])
+        const lainK = diKlausa(lain)
+        const lampauK = diKlausa(lampau)
+        if (lainK.length && lampauK.length) return tolak(diSeg(lainK) && diSeg(lampauK) ? 'EXCL_PAST_CLAUSE' : 'EXCL_PAST_AMBIGUOUS')
+      }
+    }
   }
   // §4.6 rentang: Q1 - Q2 U / Q1 TO Q2 U / Q1 S/D Q2 U
   let titik = e

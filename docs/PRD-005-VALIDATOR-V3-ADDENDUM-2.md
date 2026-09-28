@@ -47,6 +47,22 @@ another proposed cargo is mentioned on the line. Approximation markers keep flag
 This only narrows the window checked for foreign words; a foreign commodity inside the quantity's own clause segment still
 blocks binding.
 
+## AM4b — other vessel + historical context (owner-approved final extension of AM4, 2026-09-28)
+
+Gap (pre-existing since AM4 final, found by the Eval-7 forbidden-value injection): "<sister vessel> … last month (loaded
+<Q> <unit> <cargo> …)" — a figure of a DIFFERENT vessel in a PAST context was accepted as a trusted quantity for the current
+call when proposed, because AM4 phrases require modifier + visit/cargo noun.
+
+Rule, for a number occurrence (added to the AM4 exclusion step):
+- OTHER-VESSEL phrase (closed class): SISTER VESSEL(S), SISTER SHIP(S), OTHER VESSEL(S), ANOTHER VESSEL, OTHER SHIP, ANOTHER SHIP,
+  KAPAL SAUDARA, KAPAL LAIN, KAPAL KEMBAR (whole words, not compound members);
+- strong PAST marker (closed class): LAST MONTH/WEEK/YEAR, PREVIOUS MONTH/WEEK/YEAR, PREVIOUSLY, AGO, YESTERDAY, BULAN LALU,
+  MINGGU LALU, TAHUN LALU, SEBELUMNYA, KEMARIN, or any AM4 historical-context phrase;
+- both present in the quantity's CLAUSE: both also in its SEGMENT → excluded (`EXCL_PAST_CLAUSE`); otherwise relation ambiguous
+  (`EXCL_PAST_AMBIGUOUS` → null + `CARGO_RELATION_AMBIGUOUS` when nothing else binds).
+Other vessel without a past marker, or a past marker without another vessel, is NOT affected by AM4b (the existing AM4 rules
+apply). An excluded figure is never re-bound to another cargo row (it is not a candidate at all).
+
 ## Verification (offline, 0 model calls)
 
 - Blind-A classes: V09 (AM9), V13 V16 V23 V25 V28 (AM7), V35 (AM8) — all closed with the perfect answer; GT unchanged.

@@ -145,6 +145,18 @@ export const PENGUBAH_HISTORIS_PRA: readonly string[] = Object.freeze(['LAST', '
 export const KATA_KUNJUNGAN_EN: readonly string[] = Object.freeze(['VOYAGE', 'VOYAGES', 'VOY', 'CARGO', 'CARGOES', 'CALL', 'CALLS', 'TRIP', 'TRIPS', 'SHIPMENT', 'SHIPMENTS'])
 export const KATA_KUNJUNGAN_ID: readonly string[] = Object.freeze(['VOYAGE', 'VOY', 'MUATAN', 'KARGO', 'PELAYARAN', 'KUNJUNGAN', 'TRIP', 'CALL', 'SHIPMENT', 'PENGIRIMAN'])
 export const PENGUBAH_HISTORIS_PASCA: readonly string[] = Object.freeze(['SEBELUMNYA', 'LALU', 'TERAKHIR'])
+/**
+ * ADDENDUM-2 AM4b: frasa SUBJEK KAPAL LAIN (kapal berbeda dari kapal/kunjungan saat ini) dan PENANDA WAKTU LAMPAU yang kuat.
+ * Hanya KOMBINASI keduanya (di klausa jumlah) yang mengecualikan jumlah; masing-masing sendirian tidak (AM4 tetap berlaku).
+ */
+export const FRASA_KAPAL_LAIN: readonly string[] = Object.freeze([
+  'SISTER VESSEL', 'SISTER VESSELS', 'SISTER SHIP', 'SISTER SHIPS', 'OTHER VESSEL', 'OTHER VESSELS', 'ANOTHER VESSEL', 'OTHER SHIP',
+  'ANOTHER SHIP', 'KAPAL SAUDARA', 'KAPAL LAIN', 'KAPAL KEMBAR',
+])
+export const PENANDA_WAKTU_LAMPAU: readonly string[] = Object.freeze([
+  'LAST MONTH', 'LAST WEEK', 'LAST YEAR', 'PREVIOUS MONTH', 'PREVIOUS WEEK', 'PREVIOUS YEAR', 'PREVIOUSLY', 'AGO', 'YESTERDAY',
+  'BULAN LALU', 'MINGGU LALU', 'TAHUN LALU', 'SEBELUMNYA', 'KEMARIN',
+])
 
 // ------------------------------------------------------------------ §5.4 multi-pelabuhan
 export const FRASA_PELABUHAN_MUAT: readonly string[] = Object.freeze(['POL', 'LOAD PORT', 'LOADING PORT', 'PORT OF LOADING', 'PELABUHAN MUAT'])
