@@ -378,8 +378,8 @@ bagian('8. MODEL — TAH_INTAKE_MODEL (D7 + Q4: tak diset = lama; diset tak sah 
   const g = validasiPetaModel()
   cek('peta kemampuan sah', g.length === 0, g.join('; '))
   const s5 = PETA_KEMAMPUAN_MODEL.find((e) => e.slug === 'anthropic/claude-sonnet-5')
-  // PRD-005 promosi sempit (owner D-P1): VERIFIED/SPIKE, HANYA input TEXT + Prompt v4, kemampuan sebatas bukti Eval-4.
-  cek('anthropic/claude-sonnet-5 VERIFIED, dasar SPIKE (bukti Eval-4 heldout-3)', s5?.status === 'VERIFIED' && s5.dasar === 'SPIKE' && /heldout-3/.test(s5.catatan) && /EVAL4_PASS/.test(s5.catatan))
+  // PRD-005 (owner, pasca Eval-7 Blind-A): promosi D-P1 DICABUT → PENDING_SPIKE; cakupan TEXT + Prompt v4 tetap tercatat sebagai cakupan spike.
+  cek('anthropic/claude-sonnet-5 PENDING_SPIKE (promosi dicabut), dasar SPIKE', s5?.status === 'PENDING_SPIKE' && s5.dasar === 'SPIKE')
   cek('sonnet-5 cakupan terverifikasi = TEXT SAJA (PDF/IMAGE/CSV/WORKBOOK tidak)', JSON.stringify(s5?.cakupanInput) === '["TEXT"]')
   cek('sonnet-5 terikat Prompt v4 (versi 4, hash 6ed1edba…)', s5?.promptIntake?.versi === '4' && s5.promptIntake.hash === '6ed1edba38780badcff111e70f63e83d95668f15b99644f174bac1984ce65959')
   cek('sonnet-5 kemampuan = bukti saja: tool paksa true, temperature TIDAK dikirim (false), PDF native false', s5?.kemampuan?.supportsForcedToolChoice === true && s5.kemampuan.acceptsTemperature === false && s5.kemampuan.supportsPdfNative === false)
@@ -406,7 +406,11 @@ bagian('8. MODEL — TAH_INTAKE_MODEL (D7 + Q4: tak diset = lama; diset tak sah 
   const hist = resolusiModelAgen({ TAH_INTAKE_MODEL: 'anthropic/claude-sonnet-5' }, 'TAH_INTAKE_MODEL', petaHistoris)
   cek('snapshot historis: sonnet-5 PENDING_SPIKE → MODEL_TIDAK_TERVERIFIKASI/PENDING_SPIKE, TANPA fallback', hist.aktif === false && hist.detail === 'PENDING_SPIKE' && !('model' in hist) && ruteModelIntakeUntukInput({ TAH_INTAKE_MODEL: 'anthropic/claude-sonnet-5' }, 'TEXT', petaHistoris).aktif === false)
   const s5r = r('anthropic/claude-sonnet-5', { OPENROUTER_SPK_MODEL: 'anthropic/claude-sonnet-4.5' })
-  cek('diset sonnet-5 (kini VERIFIED) → EXPLICIT dengan cakupan TEXT & Prompt v4', s5r.aktif && s5r.mode === 'EXPLICIT' && s5r.model === 'anthropic/claude-sonnet-5' && JSON.stringify(s5r.cakupanInput) === '["TEXT"]' && s5r.promptIntake?.versi === '4')
+  cek('diset sonnet-5 (PENDING_SPIKE) → MODEL_TIDAK_TERVERIFIKASI/PENDING_SPIKE, TANPA fallback', s5r.aktif === false && s5r.detail === 'PENDING_SPIKE' && !('model' in s5r))
+  // Snapshot promosi D-P1 (entri VERIFIED bercakupan) — logika rute bercakupan tetap diuji lewat peta sintetis.
+  const petaPromosi = PETA_KEMAMPUAN_MODEL.map((e) => (e.slug === 'anthropic/claude-sonnet-5' ? { ...e, status: 'VERIFIED' } : e))
+  const s5p = resolusiModelAgen({ TAH_INTAKE_MODEL: 'anthropic/claude-sonnet-5' }, 'TAH_INTAKE_MODEL', petaPromosi)
+  cek('peta sintetis VERIFIED bercakupan: sonnet-5 → EXPLICIT dengan cakupan TEXT & Prompt v4', s5p.aktif && s5p.mode === 'EXPLICIT' && s5p.model === 'anthropic/claude-sonnet-5' && JSON.stringify(s5p.cakupanInput) === '["TEXT"]' && s5p.promptIntake?.versi === '4')
   tolakModel('model tak dikenal', 'openai/gpt-4o', 'MODEL_TIDAK_DIKENAL')
   tolakModel('slug huruf besar', 'Anthropic/Claude-Sonnet-4.5', 'SLUG_TIDAK_SAH')
   tolakModel('slug tanpa vendor', 'claude-sonnet-4.5', 'SLUG_TIDAK_SAH')
@@ -420,16 +424,17 @@ bagian('8. MODEL — TAH_INTAKE_MODEL (D7 + Q4: tak diset = lama; diset tak sah 
 
   // ── Rute per jenis input (owner D-P1): TEXT → sonnet-5/v4; CSV/WORKBOOK/PDF/IMAGE → LEGACY eksplisit.
   const S5ENV = { TAH_INTAKE_MODEL: 'anthropic/claude-sonnet-5' }
-  const rT = ruteModelIntakeUntukInput(S5ENV, 'TEXT')
+  cek('registri nyata: sonnet-5 PENDING_SPIKE → gagal tertutup untuk SEMUA jenis input', [...JENIS_INPUT_MODEL, 'SESUATU'].every((j) => ruteModelIntakeUntukInput(S5ENV, j).aktif === false))
+  const rT = ruteModelIntakeUntukInput(S5ENV, 'TEXT', petaPromosi)
   cek('rute TEXT + sonnet-5 → EXPLICIT sonnet-5, Prompt v4, tanpa temperature, tool paksa', rT.aktif && rT.rute === 'EXPLICIT' && rT.model === 'anthropic/claude-sonnet-5' && rT.promptIntake?.versi === '4' && rT.kemampuan.acceptsTemperature === false && rT.kemampuan.supportsForcedToolChoice === true)
   for (const j of ['CSV', 'WORKBOOK', 'PDF', 'IMAGE']) {
-    const x = ruteModelIntakeUntukInput(S5ENV, j)
+    const x = ruteModelIntakeUntukInput(S5ENV, j, petaPromosi)
     cek(`rute ${j} + sonnet-5 → LEGACY_DI_LUAR_CAKUPAN (model bawaan + Prompt v3), BUKAN sonnet-5`, x.aktif && x.rute === 'LEGACY_DI_LUAR_CAKUPAN' && x.model === null && x.kemampuan === null && x.promptIntake === null)
   }
   cek('rute tanpa TAH_INTAKE_MODEL → LEGACY_TANPA_SETELAN untuk SEMUA jenis', JENIS_INPUT_MODEL.every((j) => { const x = ruteModelIntakeUntukInput({}, j); return x.aktif && x.rute === 'LEGACY_TANPA_SETELAN' && x.model === null }))
   cek('rute sonnet-4.5 eksplisit (tanpa cakupan) → EXPLICIT untuk SEMUA jenis, tanpa ikatan prompt (v3)', JENIS_INPUT_MODEL.every((j) => { const x = ruteModelIntakeUntukInput({ TAH_INTAKE_MODEL: 'anthropic/claude-sonnet-4.5' }, j); return x.aktif && x.rute === 'EXPLICIT' && x.promptIntake === null }))
   cek('rute model tak sah → gagal tertutup untuk semua jenis (tanpa fallback)', JENIS_INPUT_MODEL.every((j) => ruteModelIntakeUntukInput({ TAH_INTAKE_MODEL: 'openai/gpt-4o' }, j).aktif === false))
-  cek('rute jenis tak dikenal + sonnet-5 → LEGACY (tak pernah sonnet-5 di luar cakupan)', ruteModelIntakeUntukInput(S5ENV, 'SESUATU').rute === 'LEGACY_DI_LUAR_CAKUPAN')
+  cek('rute jenis tak dikenal + sonnet-5 → LEGACY (tak pernah sonnet-5 di luar cakupan)', ruteModelIntakeUntukInput(S5ENV, 'SESUATU', petaPromosi).rute === 'LEGACY_DI_LUAR_CAKUPAN')
   // Rute produksi TIDAK bercabang pada nama model (aturan 1 & 5 model-capabilities): model/prompt hanya dari data peta.
   const NAMA_MODEL = /claude|sonnet|opus|haiku|gpt-|gemini|anthropic\//i
   const vce = baca('src/lib/ai/vessel-call-extract.ts')
@@ -446,7 +451,7 @@ bagian('8. MODEL — TAH_INTAKE_MODEL (D7 + Q4: tak diset = lama; diset tak sah 
   const tidakSah = (x) => validasiPetaModel([{ slug: 'a/b', status: 'VERIFIED', kemampuan: V, dasar: 'SPIKE', catatan: '', ...x }]).length > 0
   cek('validasi peta: cakupanInput kosong / ganda / tak dikenal ditolak', tidakSah({ cakupanInput: [] }) && tidakSah({ cakupanInput: ['TEXT', 'TEXT'] }) && tidakSah({ cakupanInput: ['VIDEO'] }))
   cek('validasi peta: promptIntake tanpa cakupan / hash tak sah / versi kosong ditolak', tidakSah({ promptIntake: { versi: '4', hash: H } }) && tidakSah({ cakupanInput: ['TEXT'], promptIntake: { versi: '4', hash: 'xyz' } }) && tidakSah({ cakupanInput: ['TEXT'], promptIntake: { versi: '', hash: H } }))
-  cek('validasi peta: cakupanInput pada entri non-VERIFIED ditolak', validasiPetaModel([{ slug: 'a/b', status: 'PENDING_SPIKE', kemampuan: null, dasar: 'NONE', cakupanInput: ['TEXT'], catatan: '' }]).length > 0)
+  cek('validasi peta: cakupanInput pada entri BLOCKED ditolak; pada PENDING_SPIKE = cakupan spike (diterima)', validasiPetaModel([{ slug: 'a/b', status: 'BLOCKED', kemampuan: null, dasar: 'NONE', cakupanInput: ['TEXT'], catatan: '' }]).length > 0 && validasiPetaModel([{ slug: 'a/b', status: 'PENDING_SPIKE', kemampuan: null, dasar: 'NONE', cakupanInput: ['TEXT'], catatan: '' }]).length === 0)
   cek('validasi peta: entri sah dengan cakupan + prompt diterima', !tidakSah({ cakupanInput: ['TEXT'], promptIntake: { versi: '4', hash: H } }))
 
   const leg = bentukParameter(null, { temperature: 0, paksaTool: 'isi_intake_kunjungan', pdfNative: true })

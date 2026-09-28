@@ -74,7 +74,9 @@ export const PETA_KEMAMPUAN_MODEL: readonly EntriModel[] = [
   },
   {
     slug: 'anthropic/claude-sonnet-5',
-    status: 'VERIFIED',
+    // PRD-005 (keputusan owner, pasca Eval-7 Blind-A): promosi D-P1 DICABUT — revalidasi belum selesai. Kembali
+    // PENDING_SPIKE sampai fresh Blind-B lulus; cakupanInput/promptIntake tetap tercatat sebagai cakupan spike.
+    status: 'PENDING_SPIKE',
     // Hanya nilai yang dibuktikan Eval-4: tool paksa (42/42). acceptsTemperature false = temperature
     // TIDAK DIKIRIM (konfigurasi yang diuji) — BUKAN bukti bahwa model menolak temperature.
     // supportsPdfNative false = PDF TIDAK diverifikasi.
@@ -199,7 +201,7 @@ export function validasiPetaModel(peta: readonly EntriModel[] = PETA_KEMAMPUAN_M
       if (c.length === 0) galat.push(`${e.slug}: cakupanInput kosong`)
       if (new Set(c).size !== c.length) galat.push(`${e.slug}: cakupanInput ganda`)
       if (c.some((j) => !(JENIS_INPUT_MODEL as readonly string[]).includes(j))) galat.push(`${e.slug}: cakupanInput tak dikenal`)
-      if (e.status !== 'VERIFIED') galat.push(`${e.slug}: cakupanInput hanya untuk VERIFIED`)
+      if (e.status !== 'VERIFIED' && e.status !== 'PENDING_SPIKE') galat.push(`${e.slug}: cakupanInput hanya untuk VERIFIED/PENDING_SPIKE`)
     }
     if (e.promptIntake !== undefined) {
       const p = e.promptIntake

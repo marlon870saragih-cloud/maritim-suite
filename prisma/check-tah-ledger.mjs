@@ -388,6 +388,14 @@ const MC = muat('src/lib/ai/model-capabilities.ts')
   }
   const punya = (o, k) => Object.prototype.hasOwnProperty.call(o, k)
   setel(S5)
+  // PRD-005 pasca Eval-7 Blind-A (owner): sonnet-5 kembali PENDING_SPIKE → produksi gagal tertutup TANPA panggilan.
+  const tTolak = await lewatLedger('TEXT', teksMasukan, S5)
+  cek('5h registri PENDING_SPIKE: TEXT + TAH_INTAKE_MODEL=sonnet-5 → gagal tertutup AI_UNAVAILABLE, 0 panggilan, 0 catatan', tTolak.galat?.kode === 'AI_UNAVAILABLE' && tTolak.hasil === null && tTolak.badan.length === 0 && tTolak.catat.length === 0)
+  // Bentuk rute terikat-cakupan (TEXT → Prompt v4) diuji dengan SPIKE eksplisit DALAM PROSES UJI SAJA (entri → VERIFIED,
+  // dipulihkan di bawah) — sama dengan mode spike runner evaluasi; berkas registri tetap PENDING_SPIKE.
+  const entriS5 = MC.cariEntriModel(S5)
+  const statusAsli = entriS5.status
+  entriS5.status = 'VERIFIED'
   const t5 = await lewatLedger('TEXT', teksMasukan, S5)
   const bt = t5.badan[0]
   cek('5h TEXT + TAH_INTAKE_MODEL=sonnet-5 → 1 panggilan, model diminta sonnet-5, Prompt v4 (system & tool)', t5.hasil?.classification === 'NOT_RELEVANT' && t5.badan.length === 1 && bt.model === S5 && bt.messages[0].content === V4.system && JSON.stringify(bt.tools) === JSON.stringify([V4.tool]))
@@ -436,6 +444,7 @@ const MC = muat('src/lib/ai/model-capabilities.ts')
     const eI = await PR.jalankanDenganKonteks({ model: S5, kemampuan: MC.cariEntriModel(S5).kemampuan, promptIntake: ikatan }, () => X.ekstrakDenganBatasWaktu(X.ekstrakIntakeProduksi, teksMasukan, 5000)).catch((err) => err)
     cek(`5h ikatan prompt ${label} → AI_UNAVAILABLE TANPA panggilan jaringan`, eI?.kode === 'AI_UNAVAILABLE' && permintaan.length === 0)
   }
+  entriS5.status = statusAsli
   setel('openai/gpt-4o')
   stub = () => suksesDari(S5)
   permintaan.length = 0
@@ -504,7 +513,8 @@ bagian('7. GERBANG MODEL (Q4) — requireIntake')
   const ver = coba('anthropic/claude-sonnet-4.5')
   cek('diset ke VERIFIED → tersedia, EXPLICIT', ver.ok && ver.m.mode === 'EXPLICIT' && ver.m.model === 'anthropic/claude-sonnet-4.5')
   const s5 = coba('anthropic/claude-sonnet-5')
-  cek('diset sonnet-5 (VERIFIED sejak PRD-005 D-P1) → tersedia, EXPLICIT dengan cakupan TEXT & Prompt v4', s5.ok && s5.akses && s5.m.mode === 'EXPLICIT' && s5.m.model === 'anthropic/claude-sonnet-5' && JSON.stringify(s5.m.cakupanInput) === '["TEXT"]' && s5.m.promptIntake?.versi === '4')
+  // PRD-005 pasca Eval-7 Blind-A (owner): promosi D-P1 dicabut → PENDING_SPIKE → gagal tertutup seperti model tak terverifikasi.
+  cek('diset sonnet-5 (PENDING_SPIKE, promosi dicabut) → 404 MODEL_TIDAK_TERVERIFIKASI/PENDING_SPIKE, menu tersembunyi, TANPA fallback', !s5.ok && s5.status === 404 && s5.code === 'MODEL_TIDAK_TERVERIFIKASI' && s5.akses === false && s5.m.aktif === false && s5.m.detail === 'PENDING_SPIKE' && !('model' in s5.m))
   for (const [label, v] of [['tak dikenal', 'openai/gpt-4o'], ['slug tak sah', 'Bukan Slug!'], ['slug dengan akhiran', 'anthropic/claude-sonnet-5:beta']]) {
     const x = coba(v)
     cek(`diset ${label} → 404 MODEL_TIDAK_TERVERIFIKASI, menu tersembunyi, TANPA fallback ke OPENROUTER_SPK_MODEL`, !x.ok && x.status === 404 && x.code === 'MODEL_TIDAK_TERVERIFIKASI' && x.akses === false && x.m.aktif === false && !('model' in x.m))
