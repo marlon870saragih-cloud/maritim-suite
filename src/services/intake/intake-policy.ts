@@ -1064,7 +1064,8 @@ function petaZona(fisik: readonly string[]): Zona[] {
 }
 
 // ------------------------------------------------------------ §5.1 struktur
-type Logis = { teks: string; zona: Zona; tok: Tok[]; kosong: boolean }
+/** `sambung` = offset (di `teks`) awal baris fisik kedua bila dua baris fisik disambung (§5.1), selain itu -1. */
+type Logis = { teks: string; zona: Zona; tok: Tok[]; kosong: boolean; sambung: number }
 const POLA_DAFTAR = /^\s*(?:[•\-*·]|[a-z]\.|\d+\.|\(\w{1,3}\))\s+/i
 const POLA_LABEL_BARIS = /^\s*([A-Za-z][A-Za-z0-9 .\/()&-]{0,30}?)\s*:/
 function barisLogis(fisik: readonly string[], zona: readonly Zona[]): Logis[] {
@@ -1076,7 +1077,7 @@ function barisLogis(fisik: readonly string[], zona: readonly Zona[]): Logis[] {
       b !== undefined && a.trim() !== '' && b.trim() !== '' && zona[i] === zona[i + 1] && !/[.:;!?]\s*$/.test(a) &&
       !POLA_DAFTAR.test(b) && !/^\s*>/.test(b) && !POLA_LABEL_BARIS.test(b) && (/^\s*[a-z]/.test(b) || /\d\s*$/.test(a) || /-\s*$/.test(a))
     const teks = sambung ? `${a.replace(/\s+$/, '')} ${b.replace(/^\s+/, '')}` : a
-    hasil.push({ teks, zona: zona[i], tok: tokenisasi(teks), kosong: teks.trim() === '' })
+    hasil.push({ teks, zona: zona[i], tok: tokenisasi(teks), kosong: teks.trim() === '', sambung: sambung ? a.replace(/\s+$/, '').length + 1 : -1 })
     if (sambung) i++
   }
   return hasil
@@ -1219,18 +1220,33 @@ function itemOperasi(l: Logis): ItemOperasi[] {
     }
     return lampauKlausa.get(c) as boolean
   }
+  // ADDENDUM-2 AM8: token operasi terpotong baris ("<fragmen>-" di akhir baris fisik + kata pertama baris berikutnya) digabung
+  // HANYA bila gabungannya bentuk famili operasi tertutup (§5.2); hasil gabungan tak pernah KUAT (selalu review).
+  const gabung = new Map<number, string>()
+  const fragmen = new Set<number>()
+  if (l.sambung >= 0)
+    l.tok.forEach((x, i) => {
+      const h = l.tok[i + 1]
+      const y = l.tok[i + 2]
+      if (!(x.k === 'W' && h?.t === '-' && nempel(x, h) && y?.k === 'W' && y.s === l.sambung)) return
+      // fragmen patah-baris: gabungan = bentuk operasi → satu token; selain itu fragmen BUKAN bukti mandiri ("muat-/an")
+      if (bentukOperasiSemua.has(x.u + y.u)) gabung.set(i, x.u + y.u)
+      else fragmen.add(i).add(i + 2)
+    })
+  const sisaGabung = new Set([...Array.from(gabung.keys()).map((i) => i + 2), ...Array.from(fragmen)])
   const hasil: ItemOperasi[] = []
   l.tok.forEach((x, i) => {
-    if (x.k !== 'W' || buang.has(i) || BUKAN_BUKTI_OPERASI.includes(x.u) || anggotaKomposit(l.tok, i)) return
+    if (x.k !== 'W' || buang.has(i) || sisaGabung.has(i) || BUKAN_BUKTI_OPERASI.includes(x.u) || anggotaKomposit(l.tok, i)) return
+    const u = gabung.get(i) ?? x.u
     for (const f of ['LOAD', 'DISCHARGE'] as const) {
       const b = FAMILI_OPERASI[f]
       let kuat: boolean
       let lp = false
-      if (b.kuat.includes(x.u)) kuat = true
-      else if (b.lemah.includes(x.u)) {
+      if (b.kuat.includes(u)) kuat = !gabung.has(i)
+      else if (b.lemah.includes(u)) {
         const sebelum = l.tok.slice(0, i).filter((y) => y.k === 'W').slice(-2).map((y) => y.u)
-        kuat = sebelum.some((w) => PENANDA_MASA_DEPAN.includes(w))
-      } else if (b.lampau.includes(x.u)) {
+        kuat = !gabung.has(i) && sebelum.some((w) => PENANDA_MASA_DEPAN.includes(w))
+      } else if (b.lampau.includes(u)) {
         kuat = false
         lp = true
       } else continue
@@ -1679,7 +1695,10 @@ function validasiMuatanV3(rows: readonly UsulanMuatan[], b: BuktiMuatan | null, 
     const seg = segmenToken(l.tok)
     const iO = l.tok.findIndex((t) => t.s >= o.s)
     const sg = iO >= 0 ? seg[iO] : -1
-    const idx = l.tok.map((_, i) => i).filter((i) => seg[i] === sg)
+    // ADDENDUM-2 AM9: jendela ikat = segmen ∩ klausa (§5.1) — tak pernah menyeberang akhir kalimat
+    const kl = klausaToken(l.tok)
+    const klO = iO >= 0 ? kl[iO] : -1
+    const idx = l.tok.map((_, i) => i).filter((i) => seg[i] === sg && kl[i] === klO)
     const awal = idx.length ? l.tok[idx[0]].s : o.s
     const akhir = idx.length ? l.tok[idx[idx.length - 1]].e : o.e
     const milik = n.sebut.get(o.l) ?? []
@@ -1877,6 +1896,34 @@ function validasiMuatanV3(rows: readonly UsulanMuatan[], b: BuktiMuatan | null, 
           if (o2.length && l2.length) hasil = { nilai: O, tier: 2, flag: ['CARGO_OPERATION_AMBIGUOUS', 'CARGO_OPERATION_CONTEXTUAL'], aturan: 'O_T2_AMBIGUOUS' }
           else if (l2.length) hasil = { nilai: null, tier: 2, flag: ['CARGO_OPERATION_CONTRADICTS_SOURCE'], aturan: 'O_CONTRADICTS' }
           else if (o2.length) hasil = { nilai: O, tier: 2, flag: ['CARGO_OPERATION_CONTEXTUAL'], aturan: 'O_T2' }
+        }
+        // ADDENDUM-2 AM7 — seksi daftar multi-muatan: ≥ 2 muatan bernama, SEMUA sebutannya (zona terpilih) dalam SATU paragraf
+        // (baris logis tak kosong berurutan, zona sama); paragraf itu memuat tepat satu famili operasi kini = O, tanpa bukti
+        // lampau, tanpa penanda koreksi, syarat multi-pelabuhan T3. Nilai + CONTEXTUAL (review), tak pernah tepercaya.
+        if (!hasil && !barisTunggal) {
+          const sebutZona = terverifikasi.map((m) => Array.from(m.sebut.keys()).filter((i) => ls[i].zona === zona))
+          if (sebutZona.every((x) => x.length > 0)) {
+            const semuaBaris = sebutZona.flat()
+            let a = Math.min(...semuaBaris)
+            while (a > 0 && !ls[a - 1].kosong && ls[a - 1].zona === zona) a--
+            let z = a
+            while (z + 1 < ls.length && !ls[z + 1].kosong && ls[z + 1].zona === zona) z++
+            if (semuaBaris.every((i) => i >= a && i <= z)) {
+              const itPar: Array<{ it: ItemOperasi; li: number }> = []
+              for (let k = a; k <= z; k++) for (const it of b.items[k]) itPar.push({ it, li: k })
+              const famili = new Set(itPar.map((x) => x.it.f))
+              let pelabuhanOk = !b.multiPelabuhan
+              if (!pelabuhanOk) {
+                const tPort = ktx.portName ? tokenLeksikon(ktx.portName) : []
+                pelabuhanOk = itPar.some(({ li }) => {
+                  const w = ls[li].tok.map((t) => t.u)
+                  return (tPort.length > 0 && adaUrutanToken(tPort, w)) || (!!ktx.portUnlocode && w.includes(ktx.portUnlocode))
+                })
+              }
+              if (!itPar.some((x) => x.it.lampau) && famili.size === 1 && famili.has(O) && !b.adaKoreksi && pelabuhanOk)
+                hasil = { nilai: O, tier: 2, flag: ['CARGO_OPERATION_CONTEXTUAL'], aturan: 'O_T2_SECTION' }
+            }
+          }
         }
         // T3 — tingkat dokumen (D2): semua syarat wajib
         if (!hasil) {

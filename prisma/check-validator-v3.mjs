@@ -22,6 +22,7 @@ import * as F3 from './fixtures/spike-intake/eval3-cases.mjs'
 import * as F4 from './fixtures/spike-intake/eval4-heldout-cases.mjs'
 import * as D5 from './fixtures/spike-intake/eval5-blind-cases.mjs'
 import * as D6 from './fixtures/spike-intake/eval6-blind-cases.mjs'
+import * as D7 from './fixtures/spike-intake/eval7-blind-cases.mjs'
 import * as KV3 from './spike-kandidat-v3.mjs'
 
 const AKAR = fileURLToPath(new URL('..', import.meta.url))
@@ -75,12 +76,15 @@ bagian('G', 'G. Tata kelola: spesifikasi beku, leksikon v3, v1/v2 historis')
 {
   cek('G1 spesifikasi V3 beku (sha tercatat di kandidat)', sha('docs/PRD-005-VALIDATOR-V3.md') === KV3.SHA_SPEK_V3)
   cek('G2 adendum keselamatan-1 beku (sha tercatat di kandidat)', sha('docs/PRD-005-VALIDATOR-V3-ADDENDUM-1.md') === KV3.SHA_ADENDUM_V3)
+  cek('G2b adendum-2 FINAL (AM7–AM9) beku (sha tercatat di kandidat)', sha('docs/PRD-005-VALIDATOR-V3-ADDENDUM-2.md') === KV3.SHA_ADENDUM2_V3)
   cek('G3 leksikon v3 berversi maritim-lexicon/3, provenans SPEC:V3', L3.VERSI_LEKSIKON === 'maritim-lexicon/3' && L3.PROVENANS === 'SPEC:V3')
   cek('G4 leksikon v3 tanpa impor, tanpa lookbehind, tanpa provenans kasus evaluasi (E5:/E6:)', !/^\s*import\s/m.test(baca('src/lib/maritim-lexicon-v3.ts')) && !/\(\?<[!=a-zA-Z]/.test(baca('src/lib/maritim-lexicon-v3.ts')) && !/E[56]:/.test(baca('src/lib/maritim-lexicon-v3.ts')))
   cek('G5 v1 & v2 byte-identik (artefak historis)', sha('src/lib/maritim-lexicon.ts') === '864e4e3bf4cb47ef6e1d112ad42b5c9efd9d402c459e2d8be465f0bbab41fb83' && sha('src/lib/maritim-lexicon-v2.ts') === 'b459c81add6823fda1541f6a170bb977f35b6bb0d77e5994774637cd8ece24a5')
   cek('G6 validator mengimpor HANYA v3; penilai scorer-3 & pemeriksa GT tetap v1 (tak diubah)', /from '\.\.\/\.\.\/lib\/maritim-lexicon-v3'/.test(baca('src/services/intake/intake-policy.ts')) && !/maritim-lexicon-v2/.test(baca('src/services/intake/intake-policy.ts').replace(/^\/\/.*$/gm, '')) && /from '\.\.\/src\/lib\/maritim-lexicon\.ts'/.test(baca('prisma/spike-eval4-scorer.mjs')))
   cek('G7 TIDAK ada daftar inklusi satuan terbuka: satu-satunya daftar satuan diterima = alias v2 beku (MT/CBM/WMT/KL), tanpa TON', JSON.stringify(Object.keys(L3.ALIAS_SATUAN_WARISAN)) === '["MT","CBM","WMT","KL"]' && !Object.values(L3.ALIAS_SATUAN_WARISAN).flat().some((x) => /^TONS?$/.test(x)))
-  cek('G8 prompt v4 & perekat rute TIDAK diubah (sha kandidat Eval-5)', ['src/lib/ai/vessel-call-extract.ts', 'src/lib/ai/model-capabilities.ts', 'src/lib/ai/openrouter.ts'].every((r) => sha(r) === KV3.SHA_KANDIDAT_V3[r]))
+  // Prompt v4 & transport TIDAK diubah sejak kandidat Eval-5 (sha literal); registri model-capabilities.ts berubah HANYA oleh
+  // keputusan owner (Sonnet 5 → PENDING_SPIKE, 4cd338d) dan tercatat di manifes kandidat.
+  cek('G8 prompt v4 & transport TIDAK diubah (sha kandidat Eval-5); registri tercatat di manifes kandidat', sha('src/lib/ai/vessel-call-extract.ts') === '441349587e36407d8d0bf14bd4a9178edc4ad2d0b5b29bf5c2da45797337fd0a' && sha('src/lib/ai/openrouter.ts') === 'fbef6e842ea8fcd71d802f69d4e3bd6f559f4820c9cac96f48ffdc6dffea1f41' && sha('src/lib/ai/model-capabilities.ts') === KV3.SHA_KANDIDAT_V3['src/lib/ai/model-capabilities.ts'])
   cek('G9 penilai beku (scorer-3) TIDAK diubah', sha('prisma/spike-eval4-scorer.mjs') === KV3.SHA_PENILAI_BEKU)
 }
 
@@ -304,6 +308,45 @@ bagian('B', 'B. Blok muatan & baris terlipat')
   cek('B8 AM6 keduanya diusulkan: gula 900 terikat lewat sebutannya; kawat baja 120 tetap ambigu', dua[0]?.quantity === 900 && dua[1]?.quantity === null && ada(dua[1], 'CARGO_RELATION_AMBIGUOUS'), f(dua))
 }
 
+// ============================================================================ S ADDENDUM-2 (AM7/AM8/AM9) — kelas aturan, kosakata netral
+bagian('S', 'S. Addendum-2: seksi daftar multi-muatan, token operasi patah-baris, jendela ikat per klausa')
+{
+  // AM7 — operasi bersama untuk daftar multi-muatan dalam SATU paragraf
+  const sek = baris('Kami nominasikan agen untuk MV CONTOH RAYA, muat di Pelabuhan Uji.\nCargo plan: gula 900 MT + tepung 400 MT.', [c('gula', 900, 'MT', 'LOAD'), c('tepung', 400, 'MT', 'LOAD')])
+  cek('S1 AM7 operasi di kalimat pengantar paragraf yang sama → LOAD untuk kedua muatan, CONTEXTUAL (review), tak tepercaya', sek.every((r) => r.operation === 'LOAD' && ada(r, 'CARGO_OPERATION_CONTEXTUAL') && !tepercaya(r) && r.jejak?.operation === 'O_T2_SECTION'), f(sek))
+  const pj = ['Mohon bantuan keagenan untuk kapal MV CONTOH RAYA yang akan tiba di Pelabuhan Uji untuk bongkar muatan campuran berikut:', '- Semen curah 1.200 MT dalam palka satu dan dua', '- Kawat baja 80 coil dikemas dalam peti kayu', '- Keramik lantai 3.000 box untuk toko bangunan', '- Pipa baja (jumlah menyusul, menunggu daftar kemasan)']
+  const pjr = baris(pj.join('\n'), [c('Semen curah', 1200, 'MT', 'DISCHARGE'), c('Kawat baja', 80, 'coil', 'DISCHARGE'), c('Keramik lantai', 3000, 'box', 'DISCHARGE'), c('Pipa baja', null, null, 'DISCHARGE')])
+  cek('S2 AM7 daftar panjang di bawah kalimat pengantar → setiap butir DISCHARGE (termasuk yang di luar jendela kalimat T2), review', pjr.every((r) => r.operation === 'DISCHARGE' && !tepercaya(r)), f(pjr))
+  const kon = baris('Kami nominasikan agen untuk MV CONTOH RAYA, muat dan bongkar di Pelabuhan Uji.\nCargo plan: gula 900 MT + tepung 400 MT.', [c('gula', 900, 'MT', 'LOAD'), c('tepung', 400, 'MT', 'LOAD')])
+  cek('S3 AM7 dua famili operasi dalam paragraf → TIDAK diwariskan (operasi null)', kon.every((r) => r.operation === null), f(kon))
+  const lain = baris('Kami nominasikan agen untuk MV CONTOH RAYA, muat di Pelabuhan Uji.\n\nCargo plan: gula 900 MT + tepung 400 MT.', [c('gula', 900, 'MT', 'LOAD'), c('tepung', 400, 'MT', 'LOAD')])
+  cek('S4 AM7 operasi di paragraf LAIN (dipisah baris kosong) → tidak diwariskan lintas seksi', lain.every((r) => r.operation === null), f(lain))
+  const lp = baris('Kapal sebelumnya sudah dimuat di Pelabuhan Uji untuk voyage ini.\nCargo plan: gula 900 MT + tepung 400 MT.', [c('gula', 900, 'MT', 'LOAD'), c('tepung', 400, 'MT', 'LOAD')])
+  cek('S5 AM7 paragraf hanya berisi bukti operasi lampau → tidak diwariskan (null)', lp.every((r) => r.operation === null), f(lp))
+  const tersebar = baris('Kami nominasikan agen untuk MV CONTOH RAYA, muat di Pelabuhan Uji.\nCargo plan: gula 900 MT + tepung 400 MT.\n\nCatatan: gula dikemas karung.', [c('gula', 900, 'MT', 'LOAD'), c('tepung', 400, 'MT', 'LOAD')])
+  cek('S6 AM7 muatan juga disebut di paragraf lain → relasi seksi ambigu → tidak diwariskan', tersebar.every((r) => r.operation === null), f(tersebar))
+  const lawan = baris('Kami nominasikan agen untuk MV CONTOH RAYA, muat di Pelabuhan Uji.\nCargo plan: gula 900 MT + tepung 400 MT.', [c('gula', 900, 'MT', 'DISCHARGE'), c('tepung', 400, 'MT', 'DISCHARGE')])
+  cek('S7 AM7 usulan model berlawanan dengan operasi seksi → null', lawan.every((r) => r.operation === null), f(lawan))
+  // AM8 — token operasi terpotong baris
+  const patah = muat('Muatan: semen 500 MT, bong-\nkar di dermaga umum', c('semen', 500, 'MT', 'DISCHARGE'))
+  cek('S8 AM8 "bong-/kar" → DISCHARGE, gabungan patah-baris selalu review (tak tepercaya)', patah?.operation === 'DISCHARGE' && !tepercaya(patah), f(patah))
+  const patahEn = muat('Cargo: urea 500 MT for dis-\ncharging at the public berth', c('urea', 500, 'MT', 'DISCHARGE'))
+  cek('S9 AM8 "dis-/charging" (EN) → DISCHARGE, review', patahEn?.operation === 'DISCHARGE' && !tepercaya(patahEn), f(patahEn))
+  const bukanOp = muat('Cargo: urea 500 MT, muat-\nan kapal lengkap', c('urea', 500, 'MT', 'LOAD'))
+  cek('S10 AM8 fragmen yang gabungannya bukan bentuk operasi ("muat-/an") → bukan bukti LOAD', bukanOp?.operation === null, f(bukanOp))
+  // AM9 — jendela ikat per klausa (penanda perkiraan sesudah koma, kalimat berikutnya berisi kata lain)
+  for (const [nm, t, nama, q, u] of [['approx', 'We have a vessel for urea loading, approx 3,000 MT. Details of the vessel to follow.', 'urea', 3000, 'MT'], ['sekitar', 'Kapal untuk muat pupuk, sekitar 2.000 MT. Nama kapal menyusul besok.', 'pupuk', 2000, 'MT'], ['±', 'Kapal untuk bongkar semen, ± 1.500 ton. Jadwal sandar menyusul.', 'semen', 1500, 'ton'], ['kurang lebih', 'Rencana muat jagung, kurang lebih 4.000 MT. Agen mohon konfirmasi.', 'jagung', 4000, 'MT']]) {
+    const r = muat(t, c(nama, q, u, null))
+    cek(`S12 AM9 "${nm}" sesudah koma di akhir kalimat → ${q} ${u} + APPROXIMATE_QUANTITY, tak tepercaya`, r?.quantity === q && r.unit === u && ada(r, 'APPROXIMATE_QUANTITY') && !tepercaya(r), f(r))
+  }
+  const dua = baris('We have a vessel for urea and sulphur loading, approx 3,000 MT. Details to follow.', [c('urea', 3000, 'MT', 'LOAD'), c('sulphur', 3000, 'MT', 'LOAD')])
+  cek('S13 AM9 dua muatan bersaing untuk satu jumlah → keduanya null (tak pernah diikat)', dua.every((r) => r.quantity === null), f(dua))
+  const asing = muat('Cargo: urea. 3,000 MT sulphur for the next call.', c('urea', 3000, 'MT', null))
+  cek('S14 AM9 jumlah milik komoditas lain di klausa berikutnya → null', asing?.quantity === null, f(asing))
+  const tanpaSatuan = muat('We have a vessel for urea loading, approx 3,000. Details to follow.', c('urea', 3000, 'MT', null))
+  cek('S15 AM9 jumlah tanpa satuan tertulis → null (dukungan satuan tetap wajib)', tanpaSatuan?.quantity === null, f(tanpaSatuan))
+}
+
 // ============================================================================ Z zona & koreksi
 bagian('Z', 'Z. Zona (SIG/QUOTED), penekanan kutipan, koreksi')
 {
@@ -394,8 +437,8 @@ try {
 if (!lama) cek('X0 validator dasar v2 dapat dimuat dari riwayat git', false, 'git show gagal')
 else {
   const REVIEW = new Set(P.PERLU_KONFIRMASI_CARGO)
-  const KELAS_A = new Set(['O_T1', 'O_T1_WEAK', 'O_T1_AMBIGUOUS', 'O_T2', 'O_T2_AMBIGUOUS', 'O_T3', 'Q_PAIR', 'Q_LEGACY_ADJ', 'Q_CORRECTION_TARGET', 'U_LITERAL', 'U_LEGACY'])
-  const KELAS_B = { EXCL_ZONE: 'B-zona', EXCL_PAST_CLAUSE: 'B-lampau', Q_RELATION: 'B-misatribusi', Q_CORRECTION: 'B-koreksi', O_PAST_ONLY: 'B-lampau', O_CONTRADICTS: 'B-kontradiksi-V3(lampau/bukan-op)', O_NONE: 'B-bukan-op/zona', U_MISMATCH: 'B-ikut-jumlah', U_NO_QUANTITY: 'B-ikut-jumlah', U_SHAPE_OR_DENIED: 'B-pengecualian' }
+  const KELAS_A = new Set(['O_T1', 'O_T1_WEAK', 'O_T1_AMBIGUOUS', 'O_T2', 'O_T2_AMBIGUOUS', 'O_T2_SECTION', 'O_T3', 'Q_PAIR', 'Q_LEGACY_ADJ', 'Q_CORRECTION_TARGET', 'U_LITERAL', 'U_LEGACY'])
+  const KELAS_B = { EXCL_ZONE: 'B-zona', EXCL_PAST_CLAUSE: 'B-lampau', Q_RELATION: 'B-misatribusi', Q_NOT_FOUND: 'B-tak-terikat(V3 §4.7)', Q_CORRECTION: 'B-koreksi', O_PAST_ONLY: 'B-lampau', O_CONTRADICTS: 'B-kontradiksi-V3(lampau/bukan-op)', O_NONE: 'B-bukan-op/zona', U_MISMATCH: 'B-ikut-jumlah', U_NO_QUANTITY: 'B-ikut-jumlah', U_SHAPE_OR_DENIED: 'B-pengecualian' }
   const tambahKelas = (k, id) => {
     hasilX.kelas[k] ??= { n: 0, kasus: new Set() }
     hasilX.kelas[k].n++
@@ -403,7 +446,9 @@ else {
   }
   // Orakel independen (I4/I7) untuk jumlah yang BARU dipertahankan: ada okurensi angka itu yang TIDAK didahului label
   // pengecualian mandiri, tak berada di klausa uang, tak diikuti '/', '%', 'per', dan bukan fragmen telepon/referensi.
-  const LBL = new Set(L3.LABEL_BUKAN_JUMLAH.flatMap((x) => x.split(' ')))
+  // Label satu kata dicocokkan per kata; label multi-kata ("CALL SIGN") hanya sebagai URUTAN utuh (bukan kata lepas "call").
+  const LBL = new Set(L3.LABEL_BUKAN_JUMLAH.filter((x) => !x.includes(' ')))
+  const LBL_M = new RegExp(`\\b(?:${L3.LABEL_BUKAN_JUMLAH.filter((x) => x.includes(' ')).map((x) => x.split(' ').join('\\s+')).join('|')})[\\s:=#.()]*$`, 'i')
   const oracleJumlah = (teks, q) => {
     const T = P.normalisasiTeksSumber(teks)
     for (const m of T.matchAll(/\d[\d.,]*/g)) {
@@ -412,7 +457,7 @@ else {
       const ses = T.slice(m.index + m[0].length, m.index + m[0].length + 20)
       const kataSeb = (seb.match(/([A-Za-z]+)[\s:=#.()]*$/) ?? [])[1]?.toUpperCase()
       const kompositSeb = /[A-Za-z0-9]-[A-Za-z]+[\s:]*$/.test(seb)
-      if (kataSeb && LBL.has(kataSeb) && !kompositSeb) continue
+      if (((kataSeb && LBL.has(kataSeb)) || LBL_M.test(seb)) && !kompositSeb) continue
       if (/(?:\bUSD|\bIDR|\bRp|\$|\bSGD|\bEUR|freight|price|harga|biaya|tarif|rate)[^;()|\n]*$/i.test(seb.split(/[;()|\n]|,\s/).pop() ?? '')) continue
       if (/^\s*[A-Za-z³]*\s*(?:\/|%|per\b|each\b)/i.test(ses)) continue
       if (/[A-Za-z0-9][-/#.]$/.test(seb) || /[+]\d/.test(seb.slice(-6))) continue
@@ -530,8 +575,10 @@ else {
   }
   const n1 = jalankan(korpusDasar, 'E1-5+RG')
   const n6 = jalankan(korpus6, 'E6')
-  hasilX.total = n1 + n6
-  console.log(`     varian: ${n1} (Eval-1..5 + RG) + ${n6} (Eval-6) = ${hasilX.total}; keluaran berubah: ${hasilX.berubah}`)
+  // Eval-7 Blind-A (REGRESSION ONLY sejak Addendum-2): diferensial & invarian ikut diperiksa
+  const n7 = jalankan(D7.bangunKasusEval7(H), 'E7')
+  hasilX.total = n1 + n6 + n7
+  console.log(`     varian: ${n1} (Eval-1..5 + RG) + ${n6} (Eval-6) + ${n7} (Eval-7) = ${hasilX.total}; keluaran berubah: ${hasilX.berubah}`)
   for (const [k, v] of Object.entries(hasilX.kelas).sort()) console.log(`       ${k.padEnd(62)} ${String(v.n).padStart(5)}  [${[...v.kasus].slice(0, 12).join(',')}${v.kasus.size > 12 ? ',…' : ''}]`)
   cek('X1 korpus 19.003 varian Eval-1..5+RG tetap (generator identik)', n1 === 19003, String(n1))
   cek('X2 setiap perbedaan V2→V3 terklasifikasi (A/B/C); 0 tak terklasifikasi', hasilX.takTerklasifikasi.length === 0, hasilX.takTerklasifikasi.slice(0, 8).join(' | '))
@@ -592,14 +639,18 @@ const laporE = {}
   const m6 = metrik(D6.bangunKasusEval6(H))
   laporE.eval5 = m5
   laporE.eval6 = m6
+  const m7 = metrik(D7.bangunKasusEval7(H))
+  laporE.eval7 = m7
   tampil('Eval-5', m5)
   tampil('Eval-6', m6)
+  tampil('Eval-7', m7)
   cek('E4 Eval-5 (regresi): 0 FATAL POST, 0 nilai TEPERCAYA salah/karangan', m5.fatal === 0 && m5.tepercayaSalah === 0, f(m5))
   cek('E5 Eval-6 (regresi): 0 FATAL POST, 0 nilai TEPERCAYA salah/karangan', m6.fatal === 0 && m6.tepercayaSalah === 0, f(m6))
+  cek('E5b Eval-7 Blind-A (regresi): 0 FATAL POST, 0 nilai TEPERCAYA salah/karangan', m7.fatal === 0 && m7.tepercayaSalah === 0, f(m7))
   // injeksi angka terlarang GT Eval-5 & Eval-6 sebagai jumlah × {MT, WMT, KL, CBM, ton, units}
   let coba = 0
   const lolos = []
-  for (const k of [...D5.bangunKasusEval5(H), ...D6.bangunKasusEval6(H)]) {
+  for (const k of [...D5.bangunKasusEval5(H), ...D6.bangunKasusEval6(H), ...D7.bangunKasusEval7(H)]) {
     const nama = R3.jawabanSempurnaEval3(k).cargoes?.[0]?.name
     if (!nama) continue
     for (const t of k.gt.terlarang ?? []) {
@@ -611,7 +662,7 @@ const laporE = {}
       }
     }
   }
-  cek(`E6 injeksi angka terlarang GT (uang/partikular/pengenal/waktu) Eval-5+6 × 6 satuan: 0 lolos dari ${coba}`, lolos.length === 0 && coba > 0, lolos.join(' '))
+  cek(`E6 injeksi angka terlarang GT (uang/partikular/pengenal/waktu/voyage-lain) Eval-5+6+7 × 6 satuan: 0 lolos dari ${coba}`, lolos.length === 0 && coba > 0, lolos.join(' '))
 }
 
 cek('0 panggilan jaringan', fetchNyata === 0)
