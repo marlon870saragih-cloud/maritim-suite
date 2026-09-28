@@ -82,7 +82,9 @@ bagian('1. KUNCI SUMBER — yang tak boleh berubah di Step 3B')
     // Lalu PRD-005 Eval-4 akar masalah Q19 (DISETUJUI OWNER): normalisasiNamaPort juga membuang awalan "PEL" (singkatan "Pel.") (7997f6f0… → 4f5b1273…).
     // Lalu PRD-005 CONTROLLED VALIDATOR REMEDIATION pasca-Eval-5 (DISETUJUI OWNER, R1–R5): leksikon v2 (WMT & KL grup sendiri,
     // frasa "to be loaded/discharged"), sambungan lintas baris Z40, pengecualian telepon/kontak/rekening/tambatan (4f5b1273… → baru).
-    'src/services/intake/intake-policy.ts': '36da168ec9564a15255c340aafd9c41810321ab5c275b2a25227c854babfbb94',
+    // Lalu PRD-005 GENERALIZED VALIDATOR V3 (DISETUJUI OWNER, SPEC:V3 docs/PRD-005-VALIDATOR-V3.md + ADDENDUM-1): verifikasi
+    // pasangan jumlah/satuan usulan, famili morfologi operasi tertutup + tier T1/T2/T3, zona SIG/QUOTED, koreksi, leksikon v3 (36da168e… → baru).
+    'src/services/intake/intake-policy.ts': '33244d1e873f212e80264a5c1ae2d95302004ac947a140905e25424e239a8e66',
     'src/services/intake/intake-hash.ts': '862d3e086c24f578bdd4a07a70664de6fff96d6831e289dcb1d5ccd69e4525d3',
     'src/services/saas/quota.service.ts': '777e86317b23f3f1ebf3a4c0db9a941fa6159585d0071350f622019a844f29ce',
     'src/services/saas/usage.service.ts': '183fa3bbb9af7278d780d62431df5f91961130a8d84cd2392195b834cff0c23d',
@@ -94,7 +96,8 @@ bagian('1. KUNCI SUMBER — yang tak boleh berubah di Step 3B')
     // Lalu PRD-005 Eval-4 prep (remediasi H20, DISETUJUI OWNER): UI muatan menampilkan flag, tombol Konfirmasi,
     // dan hitungan muatan dibuang; label syarat CARGO_CONFIRMATION_REQUIRED (1177a29c… → baru). Rute API tidak berubah.
     // Lalu PRD-005 Eval-4 final (DISETUJUI OWNER): jumlah perkiraan terlihat, tombol Tautkan disembunyikan untuk klasifikasi non-keagenan, pesan CLASSIFICATION_NOT_LINKABLE. Rute API tidak berubah.
-    ruteDanUiIntake: '6ddc468ddfe20fecad820f7dfc24ecfe57580061f7b837a017b529ad9b31ed43',
+    // Lalu PRD-005 GENERALIZED VALIDATOR V3 (DISETUJUI OWNER): UI muatan menampilkan label flag V3 (review/jejak/informatif). Rute API tidak berubah.
+    ruteDanUiIntake: '930b347ec364004ee21ff3d3b4d9e55b44a932fc2b35fff6ae9d5b282dcc4048',
   }
   const fungsi = (src, nama) => {
     const i = src.indexOf(`export async function ${nama}(`)

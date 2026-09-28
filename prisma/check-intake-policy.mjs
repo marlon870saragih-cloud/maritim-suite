@@ -1185,7 +1185,9 @@ console.log('\n[8] Grounding muatan & gerbang approval (Eval-4 prep)')
   cek('R5 "discharge coal" + model LOAD → operasi null + CONTRADICTS', (() => { const c = r5('Please discharge coal at Gresik', 'LOAD'); return c.operation === null && c.flags.includes('CARGO_OPERATION_CONTRADICTS_SOURCE') })())
   cek('R5 "discharge coal" + model DISCHARGE → diterima, tepercaya', (() => { const c = r5('Please discharge coal at Gresik', 'DISCHARGE'); return c.operation === 'DISCHARGE' && P.cargoTepercaya(c) })())
   cek('R5 tanpa kata operasi → null + NOT_IN_SOURCE; "muatan" bukan bukti LOAD', (() => { const c = r5('Muatan: coal, tujuan Gresik', 'LOAD'); return c.operation === null && c.flags.includes('CARGO_OPERATION_NOT_IN_SOURCE') })())
-  cek('R5 "bongkar muat coal" (kedua operasi) → dipertahankan, AMBIGUOUS, wajib konfirmasi', (() => { const c = r5('Jasa bongkar muat coal di Gresik', 'LOAD'); return c.operation === 'LOAD' && c.flags.includes('CARGO_OPERATION_AMBIGUOUS') && !P.cargoTepercaya(c) })())
+  // Validator V3 (SPEC:V3 §5.2): "bongkar muat" = frasa BUKAN-operasi (jasa stevedoring, bukan operasi kunjungan ini) —
+  // menggantikan ekspektasi v2 (AMBIGUOUS). Tanpa bukti lain → null + NOT_IN_SOURCE (gagal-tertutup).
+  cek('R5 "bongkar muat coal" = frasa bukan-operasi (V3 §5.2) → operasi null + NOT_IN_SOURCE', (() => { const c = r5('Jasa bongkar muat coal di Gresik', 'LOAD'); return c.operation === null && c.flags.includes('CARGO_OPERATION_NOT_IN_SOURCE') })())
   // R6 — tanpa nama
   cek('R6 baris tanpa nama tetap dilewati (perilaku lama)', muat([{ quantity: 5000, operation: 'LOAD' }, { name: '  ' }]).cargoes.length === 0)
   // R7 — mutasi H18 / H19
@@ -1247,9 +1249,9 @@ console.log('\n[8] Grounding muatan & gerbang approval (Eval-4 prep)')
     /perubahan\.push\(\{ field: 'cargoes\.confirmed', lama: null, baru: dikonfirmasi \}\)/.test(fungsi('updateIntake')) && /source: sama\.source, \.\.\.\(sama\.flags \? \{ flags: sama\.flags \} : \{\}\)/.test(fungsi('updateIntake')))
   const pol = baca('src/services/intake/intake-policy.ts')
   const imporRuntime = [...pol.matchAll(/^import (?!type )[\s\S]*?from '([^']+)'/gm)].map((m) => m[1])
-  // Remediasi pasca-Eval-5 (R5): validator memakai leksikon v2; v1 tetap modul data historis (penilai/pemeriksa GT).
-  cek('kemurnian: SATU-SATUNYA impor runtime intake-policy.ts = lib/maritim-lexicon-v2 (modul data tanpa impor, tanpa lookbehind); v1 tetap tanpa impor',
-    JSON.stringify(imporRuntime) === '["../../lib/maritim-lexicon-v2"]' && !/^\s*import\s/m.test(baca('src/lib/maritim-lexicon-v2.ts')) && !/\(\?<[!=a-zA-Z]/.test(baca('src/lib/maritim-lexicon-v2.ts')) && !/^\s*import\s/m.test(baca('src/lib/maritim-lexicon.ts')) && !/\(\?<[!=a-zA-Z]/.test(baca('src/services/intake/intake-policy.ts')))
+  // Validator V3 (SPEC:V3 §9): validator memakai leksikon v3; v1 & v2 tetap modul data historis tanpa impor.
+  cek('kemurnian: SATU-SATUNYA impor runtime intake-policy.ts = lib/maritim-lexicon-v3 (modul data tanpa impor, tanpa lookbehind); v1 & v2 tetap tanpa impor',
+    JSON.stringify(imporRuntime) === '["../../lib/maritim-lexicon-v3"]' && ['src/lib/maritim-lexicon-v3.ts', 'src/lib/maritim-lexicon-v2.ts', 'src/lib/maritim-lexicon.ts'].every((f) => !/^\s*import\s/m.test(baca(f)) && !/\(\?<[!=a-zA-Z]/.test(baca(f))) && !/\(\?<[!=a-zA-Z]/.test(baca('src/services/intake/intake-policy.ts')))
   cek('R11 submitIntake tak memicu finance/automation', !/autofill|disbursement|createTask|mulaiPemantauan/i.test(fungsi('submitIntake')))
 }
 
