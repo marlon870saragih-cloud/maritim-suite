@@ -136,13 +136,15 @@ export const PENANDA_LAMPAU: readonly string[] = Object.freeze([
 ])
 
 /**
- * ADDENDUM-1 AM4: penanda VOYAGE/MUATAN LAIN (subset PENANDA_LAMPAU). Angka di klausa bertanda ini bukan jumlah muatan
- * kunjungan ini. Kala lampau biasa (WAS/TELAH/SUDAH …) TIDAK termasuk: "7,500 MT coal was loaded" = muatan kini di kapal.
+ * ADDENDUM-1 AM4 (final): frasa KONTEKS HISTORIS = pengubah + kata benda kunjungan/muatan. Penanda tunggal (EX, LALU,
+ * TERAKHIR, PRIOR, PREVIOUS, …) TIDAK pernah cukup sendirian; "previous port" / "last port" bukan konteks muatan lain.
+ *   Inggris:   PENGUBAH_HISTORIS_PRA [angka]? KATA_KUNJUNGAN_EN     ("last voyage", "previous cargo", "last 3 cargoes")
+ *   Indonesia: KATA_KUNJUNGAN_ID PENGUBAH_HISTORIS_PASCA            ("muatan sebelumnya", "voyage lalu", "trip terakhir")
  */
-export const PENANDA_MUATAN_LAIN: readonly string[] = Object.freeze([
-  'LAST VOYAGE', 'LAST CARGO', 'LAST CALL', 'LAST TRIP', 'LAST PORT', 'PREVIOUS', 'PREVIOUSLY', 'FORMER', 'FORMERLY', 'PRIOR',
-  'EX', 'SEBELUMNYA', 'EKS', 'LALU', 'TERAKHIR',
-])
+export const PENGUBAH_HISTORIS_PRA: readonly string[] = Object.freeze(['LAST', 'PREVIOUS', 'PREV', 'PRIOR', 'FORMER'])
+export const KATA_KUNJUNGAN_EN: readonly string[] = Object.freeze(['VOYAGE', 'VOYAGES', 'VOY', 'CARGO', 'CARGOES', 'CALL', 'CALLS', 'TRIP', 'TRIPS', 'SHIPMENT', 'SHIPMENTS'])
+export const KATA_KUNJUNGAN_ID: readonly string[] = Object.freeze(['VOYAGE', 'VOY', 'MUATAN', 'KARGO', 'PELAYARAN', 'KUNJUNGAN', 'TRIP', 'CALL', 'SHIPMENT', 'PENGIRIMAN'])
+export const PENGUBAH_HISTORIS_PASCA: readonly string[] = Object.freeze(['SEBELUMNYA', 'LALU', 'TERAKHIR'])
 
 // ------------------------------------------------------------------ §5.4 multi-pelabuhan
 export const FRASA_PELABUHAN_MUAT: readonly string[] = Object.freeze(['POL', 'LOAD PORT', 'LOADING PORT', 'PORT OF LOADING', 'PELABUHAN MUAT'])

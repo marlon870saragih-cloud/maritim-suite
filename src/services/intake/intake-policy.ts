@@ -33,7 +33,6 @@ import {
   PENANDA_KOREKSI,
   PENANDA_LAMPAU,
   PENANDA_MASA_DEPAN,
-  PENANDA_MUATAN_LAIN,
   PENANDA_PERKIRAAN_DEKAT,
   PENANDA_PERKIRAAN_KATA,
   PENANDA_PERKIRAAN_SIMBOL,
@@ -44,6 +43,10 @@ import {
   SATUAN_TERLARANG,
   KATA_STRUKTURAL,
   tokenLeksikon,
+  PENGUBAH_HISTORIS_PRA,
+  PENGUBAH_HISTORIS_PASCA,
+  KATA_KUNJUNGAN_EN,
+  KATA_KUNJUNGAN_ID,
 } from '../../lib/maritim-lexicon-v3'
 
 // ----------------------------------------------------------------- konstanta
@@ -1149,6 +1152,35 @@ function klausaToken(tok: readonly Tok[]): number[] {
   return id
 }
 
+/**
+ * ADDENDUM-1 AM4 (final): indeks token frasa KONTEKS HISTORIS (pengubah + kata benda kunjungan/muatan). Penanda tunggal
+ * (EX, LALU, TERAKHIR, PRIOR, …) tak pernah cukup; anggota komposit bukan frasa mandiri.
+ */
+function tokenHistoris(tok: readonly Tok[]): number[] {
+  const kata = tok.map((t, i) => ({ t, i })).filter((x) => x.t.k !== 'S' && !anggotaKomposit(tok, x.i))
+  const hasil: number[] = []
+  kata.forEach((x, k) => {
+    if (x.t.k !== 'W') return
+    if (PENGUBAH_HISTORIS_PRA.includes(x.t.u)) {
+      const lompat = kata[k + 1]?.t.k === 'N' ? 2 : 1
+      const kb = kata[k + lompat]
+      if (kb && kb.t.k === 'W' && KATA_KUNJUNGAN_EN.includes(kb.t.u)) hasil.push(x.i, kb.i)
+    }
+    const ps = kata[k + 1]
+    if (KATA_KUNJUNGAN_ID.includes(x.t.u) && ps && ps.t.k === 'W' && PENGUBAH_HISTORIS_PASCA.includes(ps.t.u)) hasil.push(x.i, ps.i)
+  })
+  return hasil
+}
+/** AM4 (final): baris item daftar di bawah kepala "…:" yang memuat frasa konteks historis ("Last cargoes:\n- CPO 4100 MT"). */
+function diBawahKepalaHistoris(ls: readonly Logis[], li: number): boolean {
+  const item = (l: Logis) => POLA_DAFTAR.test(l.teks) || /^\s{2,}\S/.test(l.teks)
+  if (!item(ls[li])) return false
+  let j = li - 1
+  while (j >= 0 && !ls[j].kosong && ls[j].zona === ls[li].zona && item(ls[j])) j--
+  if (j < 0 || ls[j].kosong || ls[j].zona !== ls[li].zona || !/:\s*$/.test(ls[j].teks)) return false
+  return tokenHistoris(ls[j].tok).length > 0
+}
+
 // ------------------------------------------------------------ penyebutan nama muatan
 type Rentang = [number, number]
 function polaNama(tNama: readonly string[]): RegExp | null {
@@ -1173,7 +1205,6 @@ function sebutan(teks: string, tNama: readonly string[], ocr: boolean): Rentang[
 type ItemOperasi = { f: 'LOAD' | 'DISCHARGE'; kuat: boolean; lampau: boolean; i: number }
 const FRASA_BUKAN_OP = FRASA_BUKAN_OPERASI.map((f) => f.split(' '))
 const PENANDA_LAMPAU_T = PENANDA_LAMPAU.map((f) => f.split(' '))
-const PENANDA_MUATAN_LAIN_T = PENANDA_MUATAN_LAIN.map((f) => f.split(' '))
 function itemOperasi(l: Logis): ItemOperasi[] {
   const u = l.tok.map((x) => x.u)
   const buang = new Set<number>()
@@ -1258,7 +1289,7 @@ function awalanSatuan(sisa: string, u: string): string | null {
   if (i < sisa.length && /[A-Za-z0-9À-ɏ³²]/.test(sisa[i])) return null
   return sisa.slice(0, i)
 }
-function cekOkurensi(ls: readonly Logis[], li: number, s: number, e: number, nilai: number, ocr: boolean, U: string | null, namaRentang: readonly Rentang[]): HasilOkurensi {
+function cekOkurensi(ls: readonly Logis[], li: number, s: number, e: number, nilai: number, ocr: boolean, U: string | null, namaRentang: readonly Rentang[], namaSemua: readonly Rentang[] = namaRentang): HasilOkurensi {
   const l = ls[li]
   const x = l.teks
   const tok = l.tok
@@ -1268,6 +1299,9 @@ function cekOkurensi(ls: readonly Logis[], li: number, s: number, e: number, nil
     const r = new RegExp(p.source, p.flags)
     for (let m = r.exec(x); m; m = r.exec(x)) if (s >= m.index && e <= m.index + m[0].length) return tolak('EXCL_DATE')
   }
+  // ADDENDUM-1 AM5 (final): angka di DALAM sebutan nama muatan usulan (grade/label produk: "<produk> 90") bukan jumlah
+  const dalamNamaUsulan = (a: number, z: number) => namaSemua.some(([p, q]) => a >= p && z <= q)
+  if (dalamNamaUsulan(s, e)) return tolak('EXCL_IN_NAME')
   const iSeb = tok.map((t, i) => (t.e <= s ? i : -1)).filter((i) => i >= 0).pop() ?? -1
   const iSes = tok.findIndex((t) => t.s >= e)
   const seb = iSeb >= 0 ? tok[iSeb] : undefined
@@ -1282,7 +1316,8 @@ function cekOkurensi(ls: readonly Logis[], li: number, s: number, e: number, nil
       let kiriRef = kiri.k === 'W'
       for (let r = iSeb - 1; r > 0 && nempel(tok[r - 1], tok[r]); r--) if (tok[r - 1].k === 'W') kiriRef = true
       const q1 = kiri.k === 'N' ? nilaiAngkaSumber(kiri.t) : null
-      if (['-', '–'].includes(seb.t) && kiri.k === 'N' && !kiriRef && q1 !== null && q1 < nilai && nilai <= 2 * q1) rentangKedua = true
+      // AM5 (final): rentang = Q1 < Q2 dan Q1 bukan bagian nama muatan usulan (tanpa batas rasio)
+      if (['-', '–'].includes(seb.t) && kiri.k === 'N' && !kiriRef && q1 !== null && q1 < nilai && !dalamNamaUsulan(kiri.s, kiri.e)) rentangKedua = true
       else return tolak('EXCL_REF')
     }
   }
@@ -1312,13 +1347,18 @@ function cekOkurensi(ls: readonly Logis[], li: number, s: number, e: number, nil
   if (seb && ((seb.k === 'S' && seb.t === '@') || (seb.k === 'W' && PENANDA_TARIF.includes(seb.u)))) return tolak('EXCL_RATE')
   if (ses && ses.k === 'S' && ses.t === '%') return tolak('EXCL_PCT')
   if ((ses && (ses.u === 'X' || ses.t === '×') && ses.s - e <= 1) || (seb && (seb.u === 'X' || seb.t === '×') && s - seb.e <= 1)) return tolak('EXCL_DIM')
-  // ADDENDUM-1 AM4: angka di klausa berpenanda lampau ("last voyage … 4.100 MT") tak pernah jumlah muatan kini
+  // ADDENDUM-1 AM4 (final): frasa konteks historis di SEGMEN yang sama → jumlah voyage/muatan lain (dikecualikan);
+  // hanya di KLAUSA yang sama → relasi ambigu (null + CARGO_RELATION_AMBIGUOUS); kepala daftar historis → dikecualikan.
   {
-    const kl = klausaToken(tok)
-    const iQ = tok.findIndex((t) => t.s >= s)
-    const cQ = iQ >= 0 ? kl[iQ] : kl[iSeb] ?? 0
-    const w = tok.filter((t, i) => kl[i] === cQ && t.k === 'W').map((t) => t.u)
-    if (PENANDA_MUATAN_LAIN_T.some((p) => adaUrutanToken(p, w))) return tolak('EXCL_PAST_CLAUSE')
+    const hist = tokenHistoris(tok)
+    if (hist.length) {
+      const iQ = tok.findIndex((t) => t.s >= s)
+      const segH = segmenToken(tok)
+      const kl = klausaToken(tok)
+      if (iQ >= 0 && hist.some((i) => segH[i] === segH[iQ])) return tolak('EXCL_PAST_CLAUSE')
+      if (iQ >= 0 && hist.some((i) => kl[i] === kl[iQ])) return tolak('EXCL_PAST_AMBIGUOUS')
+    }
+    if (diBawahKepalaHistoris(ls, li)) return tolak('EXCL_PAST_CLAUSE')
   }
   // §4.6 rentang: Q1 - Q2 U / Q1 TO Q2 U / Q1 S/D Q2 U
   let titik = e
@@ -1330,13 +1370,27 @@ function cekOkurensi(ls: readonly Logis[], li: number, s: number, e: number, nil
     if (t0 && t0.k === 'S' && ['-', '–', '—', '~'].includes(t0.t)) lompat = 1
     else if (t0 && t0.k === 'W' && ['TO', 'SAMPAI', 'HINGGA'].includes(t0.u)) lompat = 1
     else if (t0 && t0.u === 'S' && tok[k + 1]?.t === '/' && tok[k + 2]?.u === 'D') lompat = 3
-    // ADDENDUM-1 AM5: rentang hanya bila Q1 < Q2 ≤ 2·Q1 ("Gasoline 90 - 18.000 KL" bukan rentang)
+    // ADDENDUM-1 AM5 (final): rentang bila Q1 < Q2 (lebar berapa pun); Q1 bagian nama usulan sudah ditolak di atas
     const q2 = lompat && tok[k + lompat]?.k === 'N' ? nilaiAngkaSumber(tok[k + lompat].t) : null
-    if (q2 !== null && nilai < q2 && q2 <= 2 * nilai) {
+    if (q2 !== null && nilai < q2 && !dalamNamaUsulan(tok[k + lompat].s, tok[k + lompat].e)) {
       k += lompat
       titik = tok[k].e
       perkiraan = true
     }
+  }
+  // AM5 (final): ujung KEDUA rentang berspasi ("Q1 - Q2 U", "Q1 TO Q2 U") juga perkiraan (§4.6 "either end"), kecuali
+  // Q1 bagian nama usulan, Q1 referensi, atau bentuk penggantian "from/dari Q1 to Q2" (§6.3)
+  if (!perkiraan && seb && !(seb.e === s)) {
+    let m = iSeb
+    if (seb.k === 'S' && ['-', '–', '—', '~'].includes(seb.t)) m = iSeb - 1
+    else if (seb.k === 'W' && ['TO', 'SAMPAI', 'HINGGA'].includes(seb.u)) m = iSeb - 1
+    else if (seb.u === 'D' && tok[iSeb - 1]?.t === '/' && tok[iSeb - 2]?.u === 'S') m = iSeb - 3
+    const n1 = m < iSeb ? tok[m] : undefined
+    const q1 = n1 && n1.k === 'N' ? nilaiAngkaSumber(n1.t) : null
+    const sebQ1 = tok[m - 1]
+    const ganti = sebQ1?.k === 'W' && ['FROM', 'DARI'].includes(sebQ1.u)
+    const refQ1 = !!sebQ1 && nempel(sebQ1, n1) && (sebQ1.k === 'W' || ['-', '/', '.', '#'].includes(sebQ1.t))
+    if (n1 && q1 !== null && q1 < nilai && !dalamNamaUsulan(n1.s, n1.e) && !ganti && !refQ1) perkiraan = true
   }
   const celah = /^[ \t]*(?:\|[ \t]*)?/.exec(x.slice(titik))?.[0] ?? ''
   const pSatuan = titik + celah.length
@@ -1431,7 +1485,7 @@ function cekOkurensi(ls: readonly Logis[], li: number, s: number, e: number, nil
   return { ok: { nilai, l: li, s, e, perkiraan, ocr, cocok, ejaan, terverifikasi, satuanS: satuanLabel ? satuanLabel[0] : pSatuan, satuanE: satuanLabel ? satuanLabel[1] : pSatuan + panjangSatuan }, tolak: null }
 }
 /** Semua okurensi angka bernilai `nilai` (atau semua angka bila null) pada baris logis `li`. */
-function okurensiBaris(ls: readonly Logis[], li: number, nilai: number | null, U: string | null, namaRentang: readonly Rentang[]): { ok: Okurensi[]; tolak: string[] } {
+function okurensiBaris(ls: readonly Logis[], li: number, nilai: number | null, U: string | null, namaRentang: readonly Rentang[], namaSemua: readonly Rentang[] = namaRentang): { ok: Okurensi[]; tolak: string[] } {
   const l = ls[li]
   const ok: Okurensi[] = []
   const tolak: string[] = []
@@ -1441,7 +1495,7 @@ function okurensiBaris(ls: readonly Logis[], li: number, nilai: number | null, U
     const v = nilaiAngkaSumber(t.t)
     if (v === null || (nilai !== null && Math.abs(v - nilai) >= 1e-9)) continue
     lihat.add(t.s)
-    const h = cekOkurensi(ls, li, t.s, t.e, v, false, U, namaRentang)
+    const h = cekOkurensi(ls, li, t.s, t.e, v, false, U, namaRentang, namaSemua)
     if (h.ok) ok.push(h.ok)
     else if (h.tolak) tolak.push(h.tolak)
   }
@@ -1453,7 +1507,7 @@ function okurensiBaris(ls: readonly Logis[], li: number, nilai: number | null, U
     const v = nilaiAngkaSumber(mentah.replace(/[OoIl]/g, (c) => LIPATAN_OCR_ANGKA[c]))
     if (v === null || (nilai !== null && Math.abs(v - nilai) >= 1e-9)) continue
     const s = m.index + m[1].length
-    const h = cekOkurensi(ls, li, s, s + mentah.length, v, true, U, namaRentang)
+    const h = cekOkurensi(ls, li, s, s + mentah.length, v, true, U, namaRentang, namaSemua)
     if (h.ok) ok.push(h.ok)
     else if (h.tolak) tolak.push(h.tolak)
   }
@@ -1589,12 +1643,36 @@ function validasiMuatanV3(rows: readonly UsulanMuatan[], b: BuktiMuatan | null, 
     return Array.from(hasil)
   }
   const labelMuatanBaris = (li: number): boolean => berlabelDi(ls[li], LABEL_BARIS_MUATAN)
-  /** AM3 (b): banyaknya okurensi jumlah terverifikasi (tanpa satuan model) pada satu baris logis. */
+  /** Rentang sebutan SEMUA nama muatan usulan terverifikasi pada baris logis (AM5 final: angka di dalam nama). */
+  const sebutanSemua = (li: number): Rentang[] => terverifikasi.flatMap((m) => m.sebut.get(li) ?? [])
+  /**
+   * ADDENDUM-1 AM6: banyaknya KANDIDAT jumlah pada satu baris logis — okurensi yang lolos mesin pengecualian dan
+   * terverifikasi oleh alias v2 beku / label jumlah, ATAU oleh kata berbentuk satuan sah yang tertulis tepat sesudahnya
+   * (satuan apa pun, bukan hanya satuan usulan model). Dipakai AM3 (b)(d) dan AM6 (c): ≠ 1 → tidak mengikat.
+   */
   const cacheJumlah = new Map<number, number>()
   const jumlahTerverifikasiBaris = (li: number): number => {
-    if (!cacheJumlah.has(li)) cacheJumlah.set(li, okurensiBaris(ls, li, null, null, []).ok.length)
+    if (!cacheJumlah.has(li)) {
+      const l = ls[li]
+      const semua = sebutanSemua(li)
+      let n = 0
+      l.tok.forEach((t, i) => {
+        if (t.k !== 'N') return
+        const v = nilaiAngkaSumber(t.t)
+        if (v === null) return
+        if (cekOkurensi(ls, li, t.s, t.e, v, false, null, semua, semua).ok) return void n++
+        const ses = l.tok[i + 1]
+        if (ses && ses.k === 'W' && bentukSatuanSah(ses.t) && cekOkurensi(ls, li, t.s, t.e, v, false, ses.t, semua, semua).ok) n++
+      })
+      // okurensi OCR terverifikasi (paritas penghitung AM3 lama)
+      n += okurensiBaris(ls, li, null, null, semua, semua).ok.filter((o) => o.ocr).length
+      cacheJumlah.set(li, n)
+    }
     return cacheJumlah.get(li) as number
   }
+  /** AM6: jumlah kandidat di seluruh blok muatan yang memuat baris `li` (aturan ikat (c)). */
+  const jumlahKandidatBlok = (li: number): number =>
+    b.blok.filter((bl) => bl.includes(li)).reduce((acc, bl) => acc + bl.reduce((x, i) => x + jumlahTerverifikasiBaris(i), 0), 0)
   /** §4.7 okurensi di jendela ikat baris ini? */
   const terikat = (n: Nama, o: Okurensi, blok: readonly number[]): boolean => {
     const l = ls[o.l]
@@ -1619,7 +1697,8 @@ function validasiMuatanV3(rows: readonly UsulanMuatan[], b: BuktiMuatan | null, 
     })
     if (!bebasNama) return false
     if (milik.length && !lain.length && jumlahTerverifikasiBaris(o.l) === 1) return true
-    if (blok.includes(o.l)) return true
+    // ADDENDUM-1 AM6: (c) blok muatan hanya bila blok itu memuat TEPAT SATU kandidat jumlah (N20: kepala blok dengan dua jumlah)
+    if (blok.includes(o.l) && jumlahKandidatBlok(o.l) === 1) return true
     if (barisTunggal && labelMuatanBaris(o.l) && !lain.length && jumlahTerverifikasiBaris(o.l) === 1) return true
     return false
   }
@@ -1654,7 +1733,7 @@ function validasiMuatanV3(rows: readonly UsulanMuatan[], b: BuktiMuatan | null, 
         const tolak: string[] = []
         for (const li of Array.from(jendela).sort((a, c) => a - c)) {
           if (ls[li].zona !== zona) continue
-          const h = okurensiBaris(ls, li, nilai, U, n.sebut.get(li) ?? [])
+          const h = okurensiBaris(ls, li, nilai, U, n.sebut.get(li) ?? [], sebutanSemua(li))
           tolak.push(...h.tolak)
           for (const o of h.ok) (terikat(n, o, blok) ? ok : lain).push(o)
         }
@@ -1698,7 +1777,8 @@ function validasiMuatanV3(rows: readonly UsulanMuatan[], b: BuktiMuatan | null, 
         if (dipakai.ocr) tambah('OCR_CORRECTED')
       } else if (quantity !== null) {
         quantity = null
-        if (h.lain.length) {
+        // AM4 (final): relasi historis ambigu (frasa historis di klausa yang sama) → null + CARGO_RELATION_AMBIGUOUS
+        if (h.lain.length || h.tolak.includes('EXCL_PAST_AMBIGUOUS')) {
           tambah('CARGO_RELATION_AMBIGUOUS')
           jejak.quantity = 'Q_RELATION'
         } else {

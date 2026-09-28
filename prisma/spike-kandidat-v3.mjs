@@ -19,7 +19,7 @@ export const IKATAN_PROMPT_V4 = K5.IKATAN_PROMPT_V4
 export const HARAPAN_RUTE_TEXT = K5.HARAPAN_RUTE_TEXT
 export const VERSI_LEKSIKON_VALIDATOR = 'maritim-lexicon/3'
 export const SHA_SPEK_V3 = 'ec19d3ac183924f479755098b12b2afb61807f9acc5fe905baebf39b0a97fb6c'
-export const SHA_ADENDUM_V3 = '7ff00db021a7fa1730b62091de4a65bcd60a46a8e78b571f4170a2e869a536bc'
+export const SHA_ADENDUM_V3 = '79f7ac5e3b93fb448c167a6a7c558db3139cb7fb809c84564f437be4c2ed645a'
 /** Penilai scorer-3 (v1 oracle) — TIDAK diubah oleh V3. */
 export const SHA_PENILAI_BEKU = 'a513cf676862f356cf1e242736b17bd94d0af06bc9c08718b415b602ef3bb12d'
 
@@ -40,11 +40,11 @@ export const SHA_KANDIDAT_V3 = Object.freeze({
   'src/services/tah/agent-run.service.ts': '902f8439f743e3271a3c9795d514bcce8460e5d839ebc8cd9b89265f7d029d4a',
   'src/services/tah/tah-policy.ts': '67a078e8066b7685a87f1b526402c74f58d3f3d6aaed16542516d7986ca7ff70',
   'src/services/tah/ringkasan-intake.ts': 'c0092a49d96237a9fbac22f59320ee4de44b922e8cb7af2bbfd227d7459c0b79',
-  'src/services/intake/intake-policy.ts': '33244d1e873f212e80264a5c1ae2d95302004ac947a140905e25424e239a8e66',
-  'src/lib/maritim-lexicon-v3.ts': '7911ef449eadbe104529ec38f3d9d96d9220f4e7321d89737dcd17c6b3bcf247',
+  'src/services/intake/intake-policy.ts': 'fc2639e0f0c623d4d7bed3164a48d75449074117eac3a0f29a007a928fb4c1ec',
+  'src/lib/maritim-lexicon-v3.ts': '682dc5de06311185903c6d30de0f31d82b7b27c224342960aa096f2b86a16aca',
   'src/lib/maritim-lexicon-v2.ts': 'b459c81add6823fda1541f6a170bb977f35b6bb0d77e5994774637cd8ece24a5',
   'docs/PRD-005-VALIDATOR-V3.md': 'ec19d3ac183924f479755098b12b2afb61807f9acc5fe905baebf39b0a97fb6c',
-  'docs/PRD-005-VALIDATOR-V3-ADDENDUM-1.md': '7ff00db021a7fa1730b62091de4a65bcd60a46a8e78b571f4170a2e869a536bc',
+  'docs/PRD-005-VALIDATOR-V3-ADDENDUM-1.md': '79f7ac5e3b93fb448c167a6a7c558db3139cb7fb809c84564f437be4c2ed645a',
 })
 
 export const sidikKandidat = () => K5.sidikKandidat(SHA_KANDIDAT_V3)

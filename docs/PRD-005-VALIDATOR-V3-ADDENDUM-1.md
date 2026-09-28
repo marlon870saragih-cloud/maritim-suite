@@ -38,19 +38,51 @@ line carries exactly ONE verified quantity occurrence (found by existing test N2
 …, besi beton" bound 380 through the single-cargo label-line rule while the line also carried 1450 MT). Otherwise → null + `CARGO_RELATION_AMBIGUOUS`. Rule (a) (segment
 overlapping a mention of the row's own name) is unchanged.
 
-## AM4 — quantities in a past-marked clause are excluded (extends §4.4)
+## AM4 — quantities in another voyage/cargo context are excluded (FINAL, owner decision 2026-09-28; replaces the rejected draft)
 
-Blocker: base §4.4 applied the past rule (§5.2 tense) to operations only. Found by the injection test on Eval-6 W16
-("last voyage kapal ini discharge 4.100 MT CPO di Sekupang"): a model proposing 4100 for the current CPO row was retained
-— a previous-voyage quantity attributed to the current call. Amended: a number occurrence whose clause (§5.1) contains an
-OTHER-VOYAGE/PREVIOUS-CARGO marker is excluded (`EXCL_PAST_CLAUSE`): LAST VOYAGE, LAST CARGO, LAST CALL, LAST TRIP, LAST
-PORT, PREVIOUS, PREVIOUSLY, FORMER, FORMERLY, PRIOR, EX, SEBELUMNYA, EKS, LALU, TERAKHIR (subset of §5.2). Plain past
-tense (WAS, TELAH, SUDAH, …) is NOT included: "7,500 MT coal was loaded" describes the cargo now on board. Known recall
-cost: noisy markers (EX meaning "from", LALU meaning "then") also exclude legitimate quantities — conservative direction.
+Blocker: base §4.4 applied the past rule (§5.2 tense) to operations only, so a previous-voyage quantity written next to the
+current cargo name could be retained for the current call. The first AM4 draft (clause containing any of LAST VOYAGE … EX,
+LALU, TERAKHIR, PRIOR, PREVIOUS, LAST PORT) was REJECTED by the owner: single tokens deleted legitimate quantities
+("ex <port>", "lalu muat", "prior to departure", "(previous port)", existing test N14).
 
-## AM5 — numeric range requires plausible bounds (tightens §4.6)
+Final rule — a HISTORICAL-CONTEXT PHRASE is a modifier + visit/cargo noun, never a single token:
+- English: `LAST | PREVIOUS | PREV | PRIOR | FORMER` [one number]? `VOYAGE(S) | VOY | CARGO(ES) | CALL(S) | TRIP(S) | SHIPMENT(S)`;
+- Indonesian: `VOYAGE | VOY | MUATAN | KARGO | PELAYARAN | KUNJUNGAN | TRIP | CALL | SHIPMENT | PENGIRIMAN` +
+  `SEBELUMNYA | LALU | TERAKHIR`;
+- compound members (§3.2) are not phrases. `LAST PORT` / `PREVIOUS PORT` are not historical cargo context.
+For a number occurrence:
+1. phrase in the SAME SEGMENT (§5.1) → excluded (`EXCL_PAST_CLAUSE`);
+2. phrase only in the same CLAUSE (§5.1), different segment → relation ambiguous: not verified (`EXCL_PAST_AMBIGUOUS`);
+   if no other bound occurrence remains the row gets quantity null + `CARGO_RELATION_AMBIGUOUS` (fail safe, review);
+3. list item under a heading line ending with `:` that carries the phrase ("Previous cargoes:\n- …") → excluded.
+Out of scope (unchanged): the operation tense rule of base §5.2 (its marker list still includes EX, LALU, TERAKHIR, PRIOR,
+LAST PORT, PREVIOUS for OPERATIONS; result is null + `CARGO_OPERATION_PAST_REFERENCE`, never a wrong value).
 
-Blocker: base §4.6 accepted `Q1 - Q2 U` with a spaced hyphen. Found by the differential on Eval-6 W07 ("Gasoline 90 -
-18.000 KL"): the product grade 90 was retained as an approximate quantity (unsupported). Amended: a range is recognized
-only if Q1 < Q2 ≤ 2·Q1; otherwise the separator is not a range and Q1 is not verified by the unit after Q2.
-Known limitation (inherited unchanged date mask): "5.000-6.000 MT" — the second end is date-shaped and is dropped.
+## AM5 — numbers inside a proposed cargo name are never quantities; ranges have no ratio bound (FINAL; replaces the rejected draft)
+
+Blocker: base §4.6 read a product grade followed by a spaced hyphen as a range end ("<product> 90 - 18.000 KL" → 90
+retained as approximate quantity). The first AM5 draft (range only if Q1 < Q2 ≤ 2·Q1) was REJECTED by the owner: a ratio
+constant is not a structural rule, it drops wide ranges and still accepts close grades ("<product> 48 - 60 KL").
+
+Final rule:
+1. A number occurrence lying inside a mention (§4.1) of ANY name-verified proposed cargo name is part of that name
+   (product grade / label), never a quantity (`EXCL_IN_NAME`), and never a range end.
+2. A range (§4.6) is recognized when Q1 < Q2 (any width), Q1/Q2 not inside a proposed name, Q1 not a reference fragment.
+3. §4.6 "either end is approximate" is applied to the SECOND end of a spaced range too ("Q1 - Q2 U", "Q1 TO Q2 U",
+   "Q1 S/D Q2 U") → `APPROXIMATE_QUANTITY`; except the replacement form `FROM|DARI Q1 TO Q2` (§6.3).
+Known limitation: if the model omits the grade from the name ("<product>" instead of "<product> 90") the grade can still be
+read as a range end; such a value is always `APPROXIMATE_QUANTITY` (never trusted). The date-shaped second end
+("5.000-6.000") remains dropped (inherited date mask).
+
+## AM6 — binding rule (c) requires exactly one quantity candidate in the cargo block (owner-approved 2026-09-28)
+
+Blocker (existing test N20): "Cargo: bongkar 1450 MT semen dan 380\nMT, cnee PT Uji, besi beton" with only "besi beton"
+proposed → 380 bound through §4.7 rule (c) (block) as a TRUSTED quantity, although the header line carries two quantities
+and an unproposed commodity.
+
+Rule: a QUANTITY CANDIDATE on a logical line is a number occurrence that survives the §4.4 exclusion engine (incl. AM4/AM5)
+and is verified by a frozen v2 legacy alias, a quantity label, or ANY shape-valid (§4.2/§4.3) unit word written directly
+after it (not only the model's unit), plus verified OCR occurrences. Rule (c) binds only when the block containing the
+occurrence carries exactly ONE quantity candidate over all its lines; AM3 rules (b) and (d) use the same candidate count
+(exactly one on the logical line). Otherwise → not bound → quantity null + `CARGO_RELATION_AMBIGUOUS`. A block/line with
+exactly one candidate keeps binding. Rule (a) is unchanged.

@@ -84,7 +84,8 @@ bagian('1. KUNCI SUMBER — yang tak boleh berubah di Step 3B')
     // frasa "to be loaded/discharged"), sambungan lintas baris Z40, pengecualian telepon/kontak/rekening/tambatan (4f5b1273… → baru).
     // Lalu PRD-005 GENERALIZED VALIDATOR V3 (DISETUJUI OWNER, SPEC:V3 docs/PRD-005-VALIDATOR-V3.md + ADDENDUM-1): verifikasi
     // pasangan jumlah/satuan usulan, famili morfologi operasi tertutup + tier T1/T2/T3, zona SIG/QUOTED, koreksi, leksikon v3 (36da168e… → baru).
-    'src/services/intake/intake-policy.ts': '33244d1e873f212e80264a5c1ae2d95302004ac947a140905e25424e239a8e66',
+    // Lalu PRD-005 V3 FINAL FIX (DISETUJUI OWNER 2026-09-28, ADDENDUM-1 AM4/AM5 final + AM6 — N20 ditutup) (33244d1e… → baru).
+    'src/services/intake/intake-policy.ts': 'fc2639e0f0c623d4d7bed3164a48d75449074117eac3a0f29a007a928fb4c1ec',
     'src/services/intake/intake-hash.ts': '862d3e086c24f578bdd4a07a70664de6fff96d6831e289dcb1d5ccd69e4525d3',
     'src/services/saas/quota.service.ts': '777e86317b23f3f1ebf3a4c0db9a941fa6159585d0071350f622019a844f29ce',
     'src/services/saas/usage.service.ts': '183fa3bbb9af7278d780d62431df5f91961130a8d84cd2392195b834cff0c23d',

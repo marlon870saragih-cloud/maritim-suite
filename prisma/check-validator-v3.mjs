@@ -181,10 +181,18 @@ bagian('A', 'A. Penanda perkiraan (menutup celah "±"): nilai literal + APPROXIM
   }
   const tgl = muat('Cargo: gypsum 5.000-6.000 MT, load', c('gypsum', 6000, 'MT', 'LOAD'))
   cek('A3 batasan terdokumentasi: "5.000-6.000" ujung ke-2 berbentuk tanggal → null (konservatif, masker tanggal lama)', tgl?.quantity === null, f(tgl))
-  const grade = muat('Muatan (bongkar):\n1. Gasoline 90 - 18.000 KL', c('Gasoline 90', 90, 'KL', 'DISCHARGE'))
-  cek('A4 AM5: "Gasoline 90 - 18.000 KL" bukan rentang → 90 tak pernah jumlah', grade?.quantity === null, f(grade))
-  const g2 = muat('Muatan (bongkar):\n1. Gasoline 90 - 18.000 KL', c('Gasoline 90', 18000, 'KL', 'DISCHARGE'))
-  cek('A5 … sedangkan 18.000 KL tetap terverifikasi, tanpa flag perkiraan', g2?.quantity === 18000 && !ada(g2, 'APPROXIMATE_QUANTITY'), f(g2))
+  // ADDENDUM-1 AM5 (final) — kelas aturan: angka di DALAM sebutan nama muatan usulan (grade/label produk) bukan jumlah dan
+  // bukan ujung rentang; tanpa batas rasio. Kosakata netral (bukan teks kasus evaluasi).
+  for (const [nm, t, nama, jml] of [['grade jauh', 'Muatan (bongkar):\n1. Solvent 76 - 9.500 KL', 'Solvent 76', 9500], ['grade dekat', 'Muatan (bongkar):\n1. Diesel 48 - 60 KL', 'Diesel 48', 60], ['label huruf+angka', 'Cargo: resin R 12 - 400 MT, discharge', 'resin R 12', 400]]) {
+    const gr = muat(t, c(nama, Number(nama.split(' ').pop()), t.includes('KL') ? 'KL' : 'MT', 'DISCHARGE'))
+    cek(`A4 AM5 ${nm}: angka di dalam nama usulan "${nama}" tak pernah jumlah (EXCL_IN_NAME)`, gr?.quantity === null && gr.jejak?.quantity === 'EXCL_IN_NAME', f(gr))
+    const qq = muat(t, c(nama, jml, t.includes('KL') ? 'KL' : 'MT', 'DISCHARGE'))
+    cek(`A5 AM5 ${nm}: jumlah sesudahnya tetap terverifikasi, BUKAN rentang (tanpa flag perkiraan)`, qq?.quantity === jml && !ada(qq, 'APPROXIMATE_QUANTITY'), f(qq))
+  }
+  for (const [nm, t, q] of [['lebar Q1', 'Cargo: gypsum 3000 - 9000 MT, load', 3000], ['lebar Q2', 'Cargo: gypsum 3000 - 9000 MT, load', 9000], ['lebar TO', 'Cargo: gypsum 3000 to 9000 MT, load', 3000], ['s/d Q2', 'Muatan: gipsum 5.000 s/d 9.000 MT, muat', 9000]]) {
+    const r = muat(t, c(t.includes('gipsum') ? 'gipsum' : 'gypsum', q, 'MT', 'LOAD'))
+    cek(`A6 AM5 rentang ${nm} dikenali tanpa batas rasio → ${q} + APPROXIMATE_QUANTITY, tak tepercaya`, r?.quantity === q && ada(r, 'APPROXIMATE_QUANTITY') && !tepercaya(r), f(r))
+  }
   const pasti = muat('Cargo: gypsum 5,000 MT, load', c('gypsum', 5000, 'MT', 'LOAD'))
   cek('A2 angka pasti → tanpa flag perkiraan, tepercaya', pasti?.quantity === 5000 && !ada(pasti, 'APPROXIMATE_QUANTITY') && tepercaya(pasti), f(pasti))
 }
@@ -227,8 +235,19 @@ bagian('P', 'P. Bukti lampau/sebelumnya tak pernah menjadi operasi kini (D3/D7)'
   }
   const kiniLawan = muat('Cargo: coal 3000 MT was loaded at Satui; will discharge at Tual', c('coal', 3000, 'MT', 'LOAD'))
   cek('P2 lampau LOAD + kini DISCHARGE, model LOAD → null + CONTRADICTS', kiniLawan?.operation === null && ada(kiniLawan, 'CARGO_OPERATION_CONTRADICTS_SOURCE'), f(kiniLawan))
-  const lalu = muat('Cargo: CPO 3000 MT, load.\nNote: last voyage discharged 4100 MT CPO at Dumai.', c('CPO', 4100, 'MT', 'LOAD'))
-  cek('P4 AM4: jumlah di klausa lampau (voyage lalu) tak pernah jumlah muatan kini', lalu?.quantity === null, f(lalu))
+  // ADDENDUM-1 AM4 (final) — kelas aturan, kosakata netral: frasa konteks historis (pengubah + kata benda kunjungan/muatan)
+  for (const [nm, t, nama, q] of [['previous cargo (segmen sama)', 'Cargo: urea 2200 MT, load.\nRemark: previous cargo urea 2600 MT discharged at Gresik.', 'urea', 2600], ['last 2 trips', 'Cargo: urea 2200 MT, load.\nLast 2 trips: urea 2600 MT each.', 'urea', 2600], ['muatan sebelumnya', 'Muatan: pupuk 2200 MT, muat.\nMuatan sebelumnya pupuk 2600 MT.', 'pupuk', 2600], ['kepala daftar historis', 'Cargo: urea 2200 MT, load.\nPrevious cargoes:\n- urea 2600 MT\n- sulphur 900 MT', 'urea', 2600]]) {
+    const r = muat(t, c(nama, q, 'MT', 'LOAD'))
+    cek(`P4 AM4 ${nm}: jumlah voyage/muatan lain tak pernah jumlah muatan kini (EXCL_PAST_CLAUSE)`, r?.quantity === null && r.jejak?.quantity === 'EXCL_PAST_CLAUSE', f(r))
+  }
+  const kini = muat('Cargo: urea 2200 MT, load.\nRemark: previous cargo urea 2600 MT discharged at Gresik.', c('urea', 2200, 'MT', 'LOAD'))
+  cek('P5 AM4 jumlah kini di klausa lain tetap dipertahankan', kini?.quantity === 2200, f(kini))
+  const amb = muat('Cargo: urea 2200 MT, last cargo was sulphur.', c('urea', 2200, 'MT', 'LOAD'))
+  cek('P6 AM4 frasa historis di KLAUSA sama (segmen lain) → relasi ambigu: null + CARGO_RELATION_AMBIGUOUS', amb?.quantity === null && ada(amb, 'CARGO_RELATION_AMBIGUOUS'), f(amb))
+  for (const [nm, t, nama] of [['EX (dari)', 'Cargo: 5000 MT urea ex Gresik, load', 'urea'], ['LALU (kemudian)', 'Kapal sandar dulu, lalu muat pupuk 5000 MT.', 'pupuk'], ['TERAKHIR (pembaruan)', 'Update terakhir muatan pupuk 5000 MT, muat', 'pupuk'], ['PRIOR TO', 'Cargo: 5000 MT urea to be loaded prior to departure', 'urea'], ['previous port', 'Cargo: 5000 MT urea loaded at Gresik (previous port), to be discharged at Bima', 'urea'], ['last port', 'Last port Gresik, cargo urea 5000 MT to discharge', 'urea'], ['komposit last-cargo', 'Cargo: urea 5000 MT, last-cargo certificate attached, load', 'urea']]) {
+    const r = muat(t, c(nama, 5000, 'MT', 'LOAD'))
+    cek(`P7 AM4 penanda tunggal "${nm}" TIDAK menghapus jumlah sah`, r?.quantity === 5000 && r.unit === 'MT', f(r))
+  }
   const kiniSama = muat('Cargo: coal 3000 MT was loaded at Satui; will discharge at Tual', c('coal', 3000, 'MT', 'DISCHARGE'))
   cek('P3 lampau LOAD + kini DISCHARGE, model DISCHARGE → DISCHARGE (bukti kini)', kiniSama?.operation === 'DISCHARGE', f(kiniSama))
 }
@@ -272,6 +291,17 @@ bagian('B', 'B. Blok muatan & baris terlipat')
   cek('B4 baris kosong di antara → tidak disambung', kosong?.quantity === null, f(kosong))
   const titik = muat('Cargo: coal 5000.\nMT Sentosa arrives', c('coal', 5000, 'MT', null))
   cek('B5 baris diakhiri tanda baca → tidak disambung', titik?.quantity === null, f(titik))
+  // ADDENDUM-1 AM6 — aturan (c) blok: > 1 kandidat jumlah di blok → tak mengikat (null + CARGO_RELATION_AMBIGUOUS). Netral.
+  for (const [nm, t, u] of [['kepala blok, dua jumlah, baris terlipat', 'Cargo: bongkar 900 MT gula dan 120\nMT, cnee PT Contoh, kawat baja', 'MT'], ['kepala blok, satu baris', 'Cargo: bongkar 900 MT gula dan 120 MT, cnee PT Contoh, kawat baja', 'MT'], ['satuan campuran', 'Cargo: bongkar 900 zak gula dan 120\nMT, cnee PT Contoh, kawat baja', 'MT'], ['satuan non-alias', 'Cargo: bongkar 900 zak gula dan 120\nzak, cnee PT Contoh, kawat baja', 'zak'], ['butir blok dua jumlah', 'Cargo:\n- 900 MT gula dan 120 MT, kawat baja', 'MT']]) {
+    const r = muat(t, c('kawat baja', 120, u, 'DISCHARGE'))
+    cek(`B6 AM6 ${nm} → null + CARGO_RELATION_AMBIGUOUS, tak pernah tepercaya`, r?.quantity === null && ada(r, 'CARGO_RELATION_AMBIGUOUS'), f(r))
+  }
+  for (const [nm, t, cg] of [['kepala blok satu jumlah', 'Cargo: bongkar 120 MT\n- kawat baja', c('kawat baja', 120, 'MT', 'DISCHARGE')], ['butir terpisah satu jumlah', 'Muatan:\n- kawat baja\n- 120 MT', c('kawat baja', 120, 'MT', null)]]) {
+    const r = muat(t, cg)
+    cek(`B7 AM6 ${nm} → tetap terikat`, r?.quantity === 120 && r.unit === 'MT', f(r))
+  }
+  const dua = baris('Cargo: bongkar 900 MT gula dan 120\nMT, cnee PT Contoh, kawat baja', [c('gula', 900, 'MT', 'DISCHARGE'), c('kawat baja', 120, 'MT', 'DISCHARGE')])
+  cek('B8 AM6 keduanya diusulkan: gula 900 terikat lewat sebutannya; kawat baja 120 tetap ambigu', dua[0]?.quantity === 900 && dua[1]?.quantity === null && ada(dua[1], 'CARGO_RELATION_AMBIGUOUS'), f(dua))
 }
 
 // ============================================================================ Z zona & koreksi
