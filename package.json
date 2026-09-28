@@ -61,7 +61,9 @@
     "test:eval2-runner": "node prisma/check-eval2-runner.mjs",
     "test:eval4-prep": "node prisma/check-eval4-prep.mjs",
     "test:eval4-runner": "node prisma/check-eval4-runner.mjs",
-    "test:gt-source-consistency": "node prisma/check-gt-source-consistency.mjs"
+    "test:gt-source-consistency": "node prisma/check-gt-source-consistency.mjs",
+    "test:eval5-runner": "node prisma/check-eval5-runner.mjs",
+    "eval5:bekukan": "node prisma/spike-eval5-bekukan.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
