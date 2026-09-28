@@ -1247,8 +1247,9 @@ console.log('\n[8] Grounding muatan & gerbang approval (Eval-4 prep)')
     /perubahan\.push\(\{ field: 'cargoes\.confirmed', lama: null, baru: dikonfirmasi \}\)/.test(fungsi('updateIntake')) && /source: sama\.source, \.\.\.\(sama\.flags \? \{ flags: sama\.flags \} : \{\}\)/.test(fungsi('updateIntake')))
   const pol = baca('src/services/intake/intake-policy.ts')
   const imporRuntime = [...pol.matchAll(/^import (?!type )[\s\S]*?from '([^']+)'/gm)].map((m) => m[1])
-  cek('kemurnian: SATU-SATUNYA impor runtime intake-policy.ts = lib/maritim-lexicon (modul data tanpa impor, tanpa lookbehind)',
-    JSON.stringify(imporRuntime) === '["../../lib/maritim-lexicon"]' && !/^\s*import\s/m.test(baca('src/lib/maritim-lexicon.ts')) && !/\(\?<[!=a-zA-Z]/.test(baca('src/lib/maritim-lexicon.ts')))
+  // Remediasi pasca-Eval-5 (R5): validator memakai leksikon v2; v1 tetap modul data historis (penilai/pemeriksa GT).
+  cek('kemurnian: SATU-SATUNYA impor runtime intake-policy.ts = lib/maritim-lexicon-v2 (modul data tanpa impor, tanpa lookbehind); v1 tetap tanpa impor',
+    JSON.stringify(imporRuntime) === '["../../lib/maritim-lexicon-v2"]' && !/^\s*import\s/m.test(baca('src/lib/maritim-lexicon-v2.ts')) && !/\(\?<[!=a-zA-Z]/.test(baca('src/lib/maritim-lexicon-v2.ts')) && !/^\s*import\s/m.test(baca('src/lib/maritim-lexicon.ts')) && !/\(\?<[!=a-zA-Z]/.test(baca('src/services/intake/intake-policy.ts')))
   cek('R11 submitIntake tak memicu finance/automation', !/autofill|disbursement|createTask|mulaiPemantauan/i.test(fungsi('submitIntake')))
 }
 

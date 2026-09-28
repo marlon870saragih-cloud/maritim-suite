@@ -7,8 +7,9 @@
 // sebagai masukan TIDAK TEPERCAYA: bentuknya diperiksa ulang di validasiEkstraksi().
 //
 // TANPA impor runtime (pola monitoring-policy.ts / gate.ts) — SATU pengecualian (Eval-4, audit alias
-// maritim): lib/maritim-lexicon.ts, modul DATA murni tanpa impor apa pun, supaya istilah maritim punya
-// satu sumber berversi yang juga dibaca penilai & pemeriksa GT. prisma/check-intake-policy.mjs memuat
+// maritim): leksikon maritim, modul DATA murni tanpa impor apa pun. Sejak remediasi pasca-Eval-5 validator
+// memakai lib/maritim-lexicon-v2.ts; v1 (lib/maritim-lexicon.ts, tak diubah) tetap milik penilai & pemeriksa GT
+// historis (makna Eval-4/Eval-5 beku tidak bergeser). prisma/check-intake-policy.mjs memuat
 // berkas ini lewat jiti (objek yang sama; impor .ts eksplisit ditolak tsc TS5097). Normalisasi identitas
 // kapal TIDAK disalin: fungsi dari lib/vessels.ts disuntikkan lewat `NormalisasiKapal`,
 // sehingga service dan uji memakai fungsi yang PERSIS sama.
@@ -22,11 +23,13 @@ import {
   LIPATAN_OCR_ANGKA,
   MATA_UANG,
   MIN_DIGIT_ASLI_OCR,
+  FRASA_OPERASI_LEKSIKON,
   OPERASI_LEKSIKON,
   PENANDA_PERKIRAAN,
   SATUAN_LEKSIKON,
   tokenLeksikon,
-} from '../../lib/maritim-lexicon'
+  type GrupSatuan,
+} from '../../lib/maritim-lexicon-v2'
 
 // ----------------------------------------------------------------- konstanta
 
@@ -849,7 +852,7 @@ function angkaTakNegatif(v: unknown): number | null {
 // ----------------------------------------------------------------- grounding muatan (Eval-4)
 //
 // H20 (audit Eval-3) + audit alias maritim: baris muatan usulan AI WAJIB berbukti di sumber (masukan
-// berteks). Istilah HANYA dari leksikon terkendali (lib/maritim-lexicon.ts, berversi); pencocokan kata
+// berteks). Istilah HANYA dari leksikon terkendali (lib/maritim-lexicon-v2.ts, berversi); pencocokan kata
 // utuh, tanpa kemiripan/fuzzy. Nilai tak berbukti dikosongkan (flag = jejak); keraguan → konfirmasi.
 //
 //   nama     — urutan kata utuh di sumber; jalur OCR sempit (lipatOcr) → OCR_CORRECTED.
@@ -861,11 +864,19 @@ function angkaTakNegatif(v: unknown): number | null {
 //              Penanda perkiraan (approx / +/- / sekitar) → APPROXIMATE_QUANTITY (wajib konfirmasi).
 //              OCR angka (OWNER D8): O/o→0, I/l→1 hanya di token angka ber-≥2 digit asli dengan satuan
 //              tepat sesudahnya → OCR_CORRECTED (wajib konfirmasi).
-//   satuan   — hanya satuan yang TEPAT sesudah angka jumlah yang dipakai; grup MT / CBM leksikon.
-//              TON/TONS bukan MT, M/T bukan satuan. Tanpa jumlah → dikosongkan.
+//   satuan   — hanya satuan yang TEPAT sesudah angka jumlah yang dipakai; grup MT / CBM / WMT / KL leksikon v2
+//              (WMT & KL grup SENDIRI — tak pernah dinormalkan ke MT/CBM). TON/TONS bukan MT, M/T bukan satuan.
+//              Tanpa jumlah → dikosongkan.
 //   operasi  — HANYA dari baris muatan (baris ber-nama komoditas / berlabel muatan / ber-kandidat jumlah
 //              yang dipakai), sesudah frasa bukan-operasi dibuang ("load port", "completion of discharge").
+//              Kata tunggal leksikon + frasa terikat "to be loaded" / "to be discharged" (bukan LOADED/DISCHARGED).
 //              Hanya lawannya → CONTRADICTS; keduanya → AMBIGUOUS (dipertahankan, wajib konfirmasi).
+//   telepon  — angka di dalam rangkaian nomor telepon ("+62-555-4500", "0812-3456-7890", "(021) 555 4500")
+//              BUKAN kandidat jumlah; label kontak/rekening (Telp/HP/WA/Acc/Rek/NPWP…) sama dengan pengenal.
+//   lintas   — keputusan owner (Z40): SATU baris muatan yang terlipat direkonstruksi bila baris fisik N diakhiri
+//   baris      angka jumlah, baris N+1 (tanpa baris kosong) diawali satuan leksikon, dan NAMA muatan baris usulan
+//              itu menyusul tepat sesudah satuan. Hanya angka di sambungan itu yang menjadi kandidat; semua
+//              pengecualian tetap berlaku. Tanpa fuzzy, tanpa pencarian multi-baris.
 
 /** Kata umum yang BUKAN komoditas — baris bernama ini dibuang (bukan fakta muatan). */
 export const NAMA_MUATAN_UMUM: readonly string[] = ['CARGO', 'CARGOES', 'THE CARGO', 'MUATAN', 'BARANG', 'GOODS', 'COMMODITY', 'KOMODITAS']
@@ -932,14 +943,30 @@ const LIPAT_ANGKA = new RegExp(`[${Object.keys(LIPATAN_OCR_ANGKA).join('')}]`, '
 const GRUP_SATUAN = (Object.keys(SATUAN_LEKSIKON) as Array<keyof typeof SATUAN_LEKSIKON>).flatMap((g) =>
   SATUAN_LEKSIKON[g].alias.map((a) => ({ grup: g, token: a.split(' ') })),
 ).sort((x, y) => y.token.length - x.token.length)
-const grupSatuan = (unit: string): 'MT' | 'CBM' | null => {
+const grupSatuan = (unit: string): GrupSatuan | null => {
   const t = tokenLeksikon(unit).join(' ')
   return GRUP_SATUAN.find((s) => s.token.join(' ') === t)?.grup ?? null
 }
 
-type KandidatJumlah = { nilai: number; grup: 'MT' | 'CBM' | null; perkiraan: boolean; ocr: boolean }
+type KandidatJumlah = { nilai: number; grup: GrupSatuan | null; perkiraan: boolean; ocr: boolean; awal: number }
 type BarisBukti = { token: string[]; lipat: string[]; labelMuatan: boolean; kandidat: KandidatJumlah[]; operasi: Set<'LOAD' | 'DISCHARGE'> }
-type BuktiMuatan = { token: string[]; lipat: string[]; baris: BarisBukti[] }
+/** Sambungan lintas baris (keputusan owner Z40): baris logis N+N+1 + token SESUDAH satuan di baris N+1. */
+type SambunganBukti = BarisBukti & { tokenSesudahSatuan: string[] }
+type BuktiMuatan = { token: string[]; lipat: string[]; baris: BarisBukti[]; sambungan: SambunganBukti[] }
+
+/**
+ * Angka di posisi [awal, akhir) bagian dari rangkaian nomor telepon? Rangkaian = karakter [0-9 ()+-] yang
+ * bersambung dengan angka itu; telepon bila diawali "+" / "0" / "(0" dan memuat ≥ 8 digit. Rentang jumlah
+ * ("5000-6000 MT") tidak cocok (tak diawali + / 0).
+ */
+function fragmenTelepon(x: string, awal: number, akhir: number): boolean {
+  let a = awal
+  while (a > 0 && /[0-9()+\- ]/.test(x[a - 1])) a--
+  let b = akhir
+  while (b < x.length && /[0-9()+\- ]/.test(x[b])) b++
+  const rantai = x.slice(a, b).trim()
+  return /^(?:\+|\(?0)/.test(rantai) && (rantai.match(/[0-9]/g) ?? []).length >= 8
+}
 
 /** Kandidat jumlah pada satu baris sumber (lihat komentar bagian). */
 function kandidatJumlahBaris(barisAsli: string): KandidatJumlah[] {
@@ -958,8 +985,10 @@ function kandidatJumlahBaris(barisAsli: string): KandidatJumlah[] {
     const sebelum = x.slice(0, awal)
     const sesudah = x.slice(awal + mentah.length)
     const tSebelum = tokenLeksikon(sebelum)
-    // pengenal / partikular kapal TEPAT sebelum angka
+    // pengenal / partikular kapal / kontak / rekening TEPAT sebelum angka
     if (berakhirDengan(LABEL_BUKAN_JUMLAH, tSebelum)) continue
+    // fragmen nomor telepon (R4 — prasyarat pengikatan lintas baris)
+    if (fragmenTelepon(x, awal, awal + mentah.length)) continue
     // uang: mata uang / kata tarif di klausa yang sama sebelum angka, simbol $, atau sesudah angka
     const klausa = tokenLeksikon(sebelum.split(/[;()|\t\n]|,\s/).pop() ?? '')
     if (/\$\s*$/.test(sebelum) || urutanDi(MATA_UANG, klausa) || urutanDi(KATA_UANG, klausa)) continue
@@ -971,7 +1000,7 @@ function kandidatJumlahBaris(barisAsli: string): KandidatJumlah[] {
     const tSisa = tokenLeksikon(sisa)
     const awalSisa = sisa.toUpperCase().replace(/³/g, '3')
     const sat = GRUP_SATUAN.find((s) => s.token.every((w, i) => tSisa[i] === w) && awalSisa.startsWith(s.token[0]))
-    let grup: 'MT' | 'CBM' | null = null
+    let grup: GrupSatuan | null = null
     if (sat) {
       // tarif: "5,000 MT/day", "5,000 MT per day" → bukan jumlah muatan
       const setelahSatuan = sisa.slice(sat.token.join(' ').length)
@@ -981,7 +1010,46 @@ function kandidatJumlahBaris(barisAsli: string): KandidatJumlah[] {
       continue // tanpa satuan leksikon & tanpa label jumlah → bukan kandidat
     }
     if (ocr && !grup) continue // OCR angka WAJIB bersatuan tepat sesudahnya (OWNER D8)
-    hasil.push({ nilai, grup, perkiraan: POLA_PERKIRAAN.test(sebelum), ocr })
+    hasil.push({ nilai, grup, perkiraan: POLA_PERKIRAAN.test(sebelum), ocr, awal })
+  }
+  return hasil
+}
+
+/** Operasi pada token baris logis: frasa bukan-operasi dibuang, lalu kata tunggal leksikon + frasa terikat (v2). */
+function operasiToken(token: readonly string[]): Set<'LOAD' | 'DISCHARGE'> {
+  const t = [...token]
+  for (const f of FRASA_BUKAN_OPERASI.map((x) => x.split(' '))) for (let i = indeksUrutan(f, t); i >= 0; i = indeksUrutan(f, t)) t.splice(i, f.length, '~')
+  const operasi = new Set<'LOAD' | 'DISCHARGE'>()
+  for (const op of ['LOAD', 'DISCHARGE'] as const) {
+    if (OPERASI_LEKSIKON[op].alias.some((w) => t.includes(w))) operasi.add(op)
+    if (FRASA_OPERASI_LEKSIKON[op].alias.some((f) => adaUrutanToken(f.split(' '), t))) operasi.add(op)
+  }
+  return operasi
+}
+
+/**
+ * Sambungan lintas baris (keputusan owner Z40) — SEMUA syarat wajib: baris N diakhiri token angka, baris N+1
+ * (langsung, tidak kosong) diawali satuan leksikon, dan angka sambungan itu lolos semua pengecualian kandidat
+ * (dihitung pada baris logis gabungan). Kandidat sambungan HANYA angka di titik sambung. Syarat "nama muatan
+ * tepat sesudah satuan" diperiksa per baris usulan di barisMuatan (tokenSesudahSatuan).
+ */
+function sambunganBarisMuatan(fisik: readonly string[]): SambunganBukti[] {
+  const hasil: SambunganBukti[] = []
+  for (let i = 0; i + 1 < fisik.length; i++) {
+    const n = fisik[i].replace(/\s+$/, '')
+    const n1 = fisik[i + 1].replace(/^\s+/, '')
+    if (!n.trim() || !n1.trim()) continue
+    const mAngka = /(^|[^A-Za-z0-9.,])(\d+(?:[.,]\d+)*)$/.exec(n)
+    if (!mAngka) continue
+    const tN1 = tokenLeksikon(n1)
+    const sat = GRUP_SATUAN.find((u) => u.token.every((w, j) => tN1[j] === w) && n1.toUpperCase().replace(/³/g, '3').startsWith(u.token[0]))
+    if (!sat) continue
+    const gabung = `${n} ${n1}`
+    const titik = n.length - mAngka[2].length
+    const kandidat = kandidatJumlahBaris(gabung).filter((c) => c.awal === titik && c.grup === sat.grup)
+    if (!kandidat.length) continue
+    const token = tokenLeksikon(gabung)
+    hasil.push({ token, lipat: token.map(lipatOcr), labelMuatan: false, kandidat, operasi: operasiToken(token), tokenSesudahSatuan: tN1.slice(sat.token.length) })
   }
   return hasil
 }
@@ -990,18 +1058,13 @@ function kandidatJumlahBaris(barisAsli: string): KandidatJumlah[] {
 function buktiMuatanDari(sumber: string): BuktiMuatan {
   // Baris berlabel field muatan: Cargo / Muatan / Operation / Kegiatan, atau label jumlah (Quantity / Qty / …).
   const labelMuatan = [...LABEL_BARIS_MUATAN, ...LABEL_JUMLAH].map((l) => lipatOcr(l))
-  const frasaBukan = FRASA_BUKAN_OPERASI.map((f) => f.split(' '))
-  const baris = sumber.split(/\r?\n/).map((l): BarisBukti => {
+  const fisik = sumber.split(/\r?\n/)
+  const baris = fisik.map((l): BarisBukti => {
     const token = tokenLeksikon(l)
     const lipat = token.map(lipatOcr)
-    // operasi di baris ini sesudah frasa bukan-operasi dibuang
-    const t = [...token]
-    for (const f of frasaBukan) for (let i = indeksUrutan(f, t); i >= 0; i = indeksUrutan(f, t)) t.splice(i, f.length, '~')
-    const operasi = new Set<'LOAD' | 'DISCHARGE'>()
-    for (const op of ['LOAD', 'DISCHARGE'] as const) if (OPERASI_LEKSIKON[op].alias.some((w) => t.includes(w))) operasi.add(op)
-    return { token, lipat, labelMuatan: lipat.length > 0 && labelMuatan.includes(lipat[0]), kandidat: kandidatJumlahBaris(l), operasi }
+    return { token, lipat, labelMuatan: lipat.length > 0 && labelMuatan.includes(lipat[0]), kandidat: kandidatJumlahBaris(l), operasi: operasiToken(token) }
   })
-  return { token: baris.flatMap((b) => b.token), lipat: baris.flatMap((b) => b.lipat), baris }
+  return { token: baris.flatMap((b) => b.token), lipat: baris.flatMap((b) => b.lipat), baris, sambungan: sambunganBarisMuatan(fisik) }
 }
 
 /**
@@ -1029,7 +1092,10 @@ function barisMuatan(
       tambah('OCR_CORRECTED')
     }
     // baris muatan untuk baris ini: memuat nama komoditas (harfiah/lipatan) atau berlabel muatan
-    const barisNama = b.baris.filter((x) => x.labelMuatan || adaUrutanToken(tNama, x.token) || adaUrutanToken(lNama, x.lipat))
+    const barisFisik = b.baris.filter((x) => x.labelMuatan || adaUrutanToken(tNama, x.token) || adaUrutanToken(lNama, x.lipat))
+    // sambungan lintas baris HANYA bila nama muatan baris ini menyusul TEPAT sesudah satuan (harfiah, tanpa OCR)
+    const sambung = b.sambungan.filter((x) => tNama.length > 0 && tNama.every((w, i) => x.tokenSesudahSatuan[i] === w))
+    const barisNama: BarisBukti[] = [...barisFisik, ...sambung]
     // jumlah: kandidat bernilai sama di baris muatan; pilih yang pasti & bukan OCR bila ada
     let dipakai: KandidatJumlah | null = null
     let barisJumlah: BarisBukti | null = null
