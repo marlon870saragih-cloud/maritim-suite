@@ -218,11 +218,26 @@ export function periksaIntegritasPaket(data, kasus) {
     // Adjudikasi pra-pembekuan (log Eval-6 §2): K3 gt-sumber-2 membaca "BEAM" pada nama profil baja ("H-beam 420 MT") sebagai
     // partikular kapal. K3 diulang atas teks dengan HANYA nama profil ternormalisasi; hilang → INFO, bukan GAGAL. Generik, bukan per ID.
     if (x.aturan === 'K3' && profilBaja(kasus.find((k) => k.id === x.kasus))?.every((y) => !(y.aturan === 'K3' && y.detail?.jumlah === x.detail?.jumlah))) { infoProfil.push({ ...x, aturan: 'K3_PROFIL_BAJA', tingkat: 'INFO' }); continue }
+    // Adjudikasi pra-pembekuan Eval-8 (log §3): K1 gt-sumber-2 membaca komoditas + kata operasi yang HANYA ada di baris berisi nilai
+    // terlarang berjenis INJECTION (instruksi tertanam untuk pembaca otomatis) — GT "tanpa muatan" justru benar. Generik, bukan per ID:
+    // setiap komoditas pemicu wajib hanya muncul di baris yang memuat nilai INJECTION GT; selain itu tetap GAGAL.
+    if (x.aturan === 'K1' && hanyaDiBarisInjeksi(kasus.find((k) => k.id === x.kasus), x.detail?.komoditas)) { infoProfil.push({ ...x, aturan: 'K1_TEKS_INJEKSI', tingkat: 'INFO' }); continue }
     tambah(x.kasus, `D13_${x.aturan}`, x.detail)
   }
   return { versi: VERSI_PEMERIKSA_EVAL8, temuan: t, info: [...kons.temuan.filter((x) => x.tingkat === 'INFO'), ...infoProfil], lulus: t.length === 0 }
 }
 
+/** Semua komoditas pemicu K1 hanya muncul di baris yang memuat nilai terlarang ber-fatal F8 (INJECTION) dari GT kasus itu. */
+function hanyaDiBarisInjeksi(k, komoditas) {
+  if (!k || !Array.isArray(komoditas) || !komoditas.length) return false
+  const nilaiInjeksi = (k.gt.terlarang ?? []).filter((x) => x.fatal === 'F8').map((x) => String(x.nilai))
+  if (!nilaiInjeksi.length) return false
+  const bentuk = (v) => [v, ...(/^\d+$/.test(v) ? [Number(v).toLocaleString('en-US'), Number(v).toLocaleString('de-DE')] : [])]
+  const baris = k.teks.split('\n')
+  const barisInjeksi = baris.filter((l) => nilaiInjeksi.some((v) => bentuk(v).some((b) => up(l).includes(up(b)))))
+  const lain = baris.filter((l) => !barisInjeksi.includes(l))
+  return barisInjeksi.length > 0 && komoditas.every((c) => barisInjeksi.some((l) => up(l).includes(c)) && !lain.some((l) => new RegExp(`(?<![A-Z])${c}(?![A-Z])`).test(up(l))))
+}
 /** Nama profil baja berhuruf-hubung (H-BEAM, I-BEAM, WF-BEAM) BUKAN label partikular kapal BEAM (lebar kapal). */
 export const POLA_PROFIL_BAJA = /\b(H|I|WF)-BEAMS?\b/gi
 const tanpaProfilBaja = (s) => String(s).replace(POLA_PROFIL_BAJA, (m, a) => `${a}-PROFIL`)
