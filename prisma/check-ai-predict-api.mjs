@@ -40,6 +40,10 @@ const SANDI = 'Uji6cPredict!2026'
 const TAG = '6C-'
 const EMAIL_A = 'predict-6c-a@tribuanagency.co.id'
 const EMAIL_B = 'predict-6c-b@verifikasi.local'
+// Tanggal target uji. Tarif katalog yang dipakai HARUS sudah berlaku pada tanggal
+// ini, sehingga nilainya ikut menjadi prasyarat pemilihan tenant di siapkanData().
+const ETB = new Date('2026-08-20T08:00:00.000Z')
+const ETD = new Date('2026-08-23T08:00:00.000Z')
 
 let lulus = 0
 let gagal = 0
@@ -139,14 +143,41 @@ async function hitungQuery(sesi, disbursementId) {
 const HARI = 24 * 60 * 60 * 1000
 
 async function siapkanData() {
-  const tenantA = await prisma.tenant.findFirst({ where: { companyName: { contains: 'Tribuana' } } })
-  const tenantB = await prisma.tenant.findFirst({ where: { companyName: { contains: 'Verifikasi' } } })
-  if (!tenantA || !tenantB) throw new Error('Tenant Tribuana / Verifikasi tidak ditemukan di DB dev.')
+  // Seleksi tenant uji WAJIB deterministik — lihat catatan yang sama di
+  // check-ops-api.mjs. Dipilih tenant TERTUA yang memenuhi seluruh prasyarat uji
+  // (pelabuhan IDBPN + SGSIN, katalog PILOTAGE + WHARFAGE, dan satu kapal ber-GT
+  // dan bertipe), bukan tenant yang kebetulan namanya mengandung "Tribuana".
+  const tenantA = await prisma.tenant.findFirst({
+    where: {
+      AND: [
+        { ports: { some: { unlocode: 'IDBPN' } } },
+        { ports: { some: { unlocode: 'SGSIN' } } },
+        { services: { some: { serviceCode: 'PILOTAGE', rates: { some: { effectiveFrom: { lte: ETB } } } } } },
+        { services: { some: { serviceCode: 'WHARFAGE', rates: { some: { effectiveFrom: { lte: ETB } } } } } },
+      ],
+    },
+    orderBy: { createdAt: 'asc' },
+  })
+  const tenantB = await prisma.tenant.findFirst({
+    where: { companyName: { contains: 'Verifikasi' } },
+    orderBy: { createdAt: 'asc' },
+  })
+  if (!tenantA) {
+    throw new Error('Tak ada tenant dev dengan pelabuhan IDBPN+SGSIN, katalog PILOTAGE+WHARFAGE, dan kapal ber-GT — jalankan seed dulu.')
+  }
+  if (!tenantB) throw new Error('Tenant "Verifikasi" tidak ditemukan di DB dev.')
 
   const portBpn = await prisma.port.findFirst({ where: { tenantId: tenantA.id, unlocode: 'IDBPN' } })
   const portSgsin = await prisma.port.findFirst({ where: { tenantId: tenantA.id, unlocode: 'SGSIN' } })
-  const kapal = await prisma.vessel.findFirst({ where: { tenantId: tenantA.id, gt: { not: null }, vesselType: { not: null } } })
-  const kapalTanpaGt = await prisma.vessel.findFirst({ where: { tenantId: tenantA.id, gt: null } })
+  // Kapal uji DIBUAT SENDIRI, bukan dicari di data dev: tak ada lagi tenant dev
+  // yang sekaligus punya kapal ber-GT dan kapal tanpa GT, padahal uji ini perlu
+  // keduanya. Keduanya ber-TAG sehingga ikut tersapu `bersihkan()`.
+  const kapal = await prisma.vessel.create({
+    data: { tenantId: tenantA.id, name: `${TAG}MV Uji GT`, gt: 1500, vesselType: 'General Cargo' },
+  })
+  const kapalTanpaGt = await prisma.vessel.create({
+    data: { tenantId: tenantA.id, name: `${TAG}MV Uji Tanpa GT` },
+  })
   const pilotage = await prisma.serviceCatalog.findFirst({ where: { tenantId: tenantA.id, serviceCode: 'PILOTAGE' } })
   const wharfage = await prisma.serviceCatalog.findFirst({ where: { tenantId: tenantA.id, serviceCode: 'WHARFAGE' } })
   const jasaLain = await prisma.serviceCatalog.findMany({
@@ -163,8 +194,8 @@ async function siapkanData() {
 
   // Tanggal target SESUDAH effectiveFrom tarif katalog (2026-08-10) supaya
   // `pilihTarif()` menemukan tarif — jalur KATALOG harus punya angka.
-  const etb = new Date('2026-08-20T08:00:00.000Z')
-  const etd = new Date('2026-08-23T08:00:00.000Z')
+  const etb = ETB
+  const etd = ETD
 
   const voyageTarget = await prisma.voyage.create({
     data: {

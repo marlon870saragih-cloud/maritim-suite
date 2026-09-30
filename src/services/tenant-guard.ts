@@ -79,6 +79,24 @@ export const TENANT_MODELS: ReadonlySet<string> = new Set([
   // ia tidak punya kolom tenantId sama sekali (status backup = urusan operator
   // aplikasi, bukan data tenant mana pun) — lihat catatannya di schema.prisma.
   'ExportJob',
+
+  // --- PRD-002 Step 5B — Automation Hub, pemantauan voyage internal ---
+  'MonitoredVoyage',
+  'MonitoringRun',
+  'MonitoringSignal',
+
+  // --- PRD-003 Step 4 — data posisi AIS (bukti mesin) ---
+  'AisObservation',
+  'AisPollRun',
+  'AisProviderState',
+
+  // --- PRD-004 Step 3 — Vessel Call Intake (usulan voyage menunggu tinjauan) ---
+  'VesselCallIntake',
+
+  // --- PRD-005 Step 3A — TAH Core (buku besar agen + gerbang persetujuan) ---
+  'AgentRun',
+  'AgentModelCall',
+  'TahApprovalRequest',
 ])
 
 /** Operasi yang aman disaring lewat `where`. */

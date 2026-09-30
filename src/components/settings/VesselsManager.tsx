@@ -19,6 +19,7 @@ const STR: Record<Lang, Record<string, string>> = {
     thName: 'Nama Kapal', thFlag: 'Bendera', thType: 'Tipe', thAction: 'Aksi',
     editTitle: 'Ubah Kapal', dialogDesc: 'Data ini dipakai untuk mengisi otomatis partikular kapal di port call & dokumen.',
     tipEdit: 'Ubah', tipDelete: 'Hapus', cancel: 'Batal', saveChanges: 'Simpan Perubahan',
+    savedWithNotes: 'Tersimpan, dengan catatan:', dismiss: 'Tutup',
   },
   en: {
     addBtn: 'Add Vessel',
@@ -28,6 +29,7 @@ const STR: Record<Lang, Record<string, string>> = {
     thName: 'Vessel Name', thFlag: 'Flag', thType: 'Type', thAction: 'Action',
     editTitle: 'Edit Vessel', dialogDesc: 'This data auto-fills vessel particulars in port calls & documents.',
     tipEdit: 'Edit', tipDelete: 'Delete', cancel: 'Cancel', saveChanges: 'Save changes',
+    savedWithNotes: 'Saved, with notes:', dismiss: 'Dismiss',
   },
 }
 import {
@@ -40,7 +42,11 @@ import {
 
 const num = (n: number | null) => (n == null ? '—' : n.toLocaleString('en-US'))
 
-export function VesselsManager({ vessels }: { vessels: Vessel[] }) {
+/**
+ * `canEdit` (PRD-002 Step 2 / D1) hanya menyembunyikan tombol ubah untuk peran
+ * baca-saja. Penegakannya tetap di server (POST/PATCH/DELETE /api/vessels → 403).
+ */
+export function VesselsManager({ vessels, canEdit = true }: { vessels: Vessel[]; canEdit?: boolean }) {
   const t = useT(STR)
   const importLabel = useVesselImportLabel()
   const router = useRouter()
@@ -51,6 +57,7 @@ export function VesselsManager({ vessels }: { vessels: Vessel[] }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [notes, setNotes] = useState<string[]>([])
 
   const set = (k: string, v: string) => setForm((p) => ({ ...p, [k]: v }))
 
@@ -84,6 +91,9 @@ export function VesselsManager({ vessels }: { vessels: Vessel[] }) {
         setError((await res.text()) || t.errSave)
         return
       }
+      // PRD-002 Step 2 — catatan non-penolak (mis. check digit IMO) ditampilkan, tidak diabaikan.
+      const body = (await res.json().catch(() => null)) as { warnings?: string[] } | null
+      setNotes(Array.isArray(body?.warnings) ? body!.warnings! : [])
       setOpen(false)
       router.refresh()
     } catch {
@@ -112,22 +122,40 @@ export function VesselsManager({ vessels }: { vessels: Vessel[] }) {
 
   return (
     <>
-      <div className="flex justify-end gap-2">
-        <button
-          type="button"
-          onClick={() => setImportOpen(true)}
-          className="inline-flex items-center gap-2 border border-border-muted text-text-secondary hover:text-white hover:border-accent-purple/50 hover:bg-surface-tertiary rounded px-4 py-2 text-sm font-medium transition-colors"
-        >
-          <FileUp className="w-4 h-4" /> {importLabel}
-        </button>
-        <button
-          type="button"
-          onClick={openAdd}
-          className="inline-flex items-center gap-2 bg-accent-blue hover:bg-primary text-[#231a06] rounded px-4 py-2 text-sm font-medium transition-colors"
-        >
-          <Plus className="w-4 h-4" /> {t.addBtn}
-        </button>
-      </div>
+      {canEdit && (
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setImportOpen(true)}
+            className="inline-flex items-center gap-2 border border-border-muted text-text-secondary hover:text-white hover:border-accent-purple/50 hover:bg-surface-tertiary rounded px-4 py-2 text-sm font-medium transition-colors"
+          >
+            <FileUp className="w-4 h-4" /> {importLabel}
+          </button>
+          <button
+            type="button"
+            onClick={openAdd}
+            className="inline-flex items-center gap-2 bg-accent-blue hover:bg-primary text-[#231a06] rounded px-4 py-2 text-sm font-medium transition-colors"
+          >
+            <Plus className="w-4 h-4" /> {t.addBtn}
+          </button>
+        </div>
+      )}
+
+      {notes.length > 0 && (
+        <div className="text-xs bg-accent-amber/10 border border-accent-amber/30 text-accent-amber rounded px-3 py-2 flex items-start justify-between gap-3">
+          <div>
+            <p className="font-medium">{t.savedWithNotes}</p>
+            <ul className="list-disc pl-4 mt-1 space-y-0.5">
+              {notes.map((n) => (
+                <li key={n}>{n}</li>
+              ))}
+            </ul>
+          </div>
+          <button type="button" onClick={() => setNotes([])} className="shrink-0 underline">
+            {t.dismiss}
+          </button>
+        </div>
+      )}
 
       <section className="bg-card-bg border border-card-border rounded-lg overflow-hidden">
         {vessels.length === 0 ? (
@@ -139,22 +167,24 @@ export function VesselsManager({ vessels }: { vessels: Vessel[] }) {
               <p className="text-text-primary text-sm font-medium">{t.emptyTitle}</p>
               <p className="text-text-secondary text-xs mt-1">{t.emptyDesc}</p>
             </div>
-            <div className="flex items-center gap-2 mt-1">
-              <button
-                type="button"
-                onClick={() => setImportOpen(true)}
-                className="inline-flex items-center gap-2 border border-border-muted text-text-secondary hover:text-white hover:border-accent-purple/50 hover:bg-surface-tertiary rounded px-4 py-2 text-sm font-medium transition-colors"
-              >
-                <FileUp className="w-4 h-4" /> {importLabel}
-              </button>
-              <button
-                type="button"
-                onClick={openAdd}
-                className="inline-flex items-center gap-2 bg-accent-blue hover:bg-primary text-[#231a06] rounded px-4 py-2 text-sm font-medium transition-colors"
-              >
-                <Plus className="w-4 h-4" /> {t.addBtn}
-              </button>
-            </div>
+            {canEdit && (
+              <div className="flex items-center gap-2 mt-1">
+                <button
+                  type="button"
+                  onClick={() => setImportOpen(true)}
+                  className="inline-flex items-center gap-2 border border-border-muted text-text-secondary hover:text-white hover:border-accent-purple/50 hover:bg-surface-tertiary rounded px-4 py-2 text-sm font-medium transition-colors"
+                >
+                  <FileUp className="w-4 h-4" /> {importLabel}
+                </button>
+                <button
+                  type="button"
+                  onClick={openAdd}
+                  className="inline-flex items-center gap-2 bg-accent-blue hover:bg-primary text-[#231a06] rounded px-4 py-2 text-sm font-medium transition-colors"
+                >
+                  <Plus className="w-4 h-4" /> {t.addBtn}
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -163,10 +193,11 @@ export function VesselsManager({ vessels }: { vessels: Vessel[] }) {
                 <tr className="bg-surface-secondary text-text-secondary font-mono uppercase tracking-widest border-b border-card-border text-[10px]">
                   <th className="px-5 py-3 font-medium">{t.thName}</th>
                   <th className="px-5 py-3 font-medium">IMO</th>
+                  <th className="px-5 py-3 font-medium">MMSI</th>
                   <th className="px-5 py-3 font-medium">{t.thFlag}</th>
                   <th className="px-5 py-3 font-medium">{t.thType}</th>
                   <th className="px-5 py-3 font-medium text-right">GT</th>
-                  <th className="px-5 py-3 font-medium text-right">{t.thAction}</th>
+                  {canEdit && <th className="px-5 py-3 font-medium text-right">{t.thAction}</th>}
                 </tr>
               </thead>
               <tbody className="text-sm">
@@ -180,9 +211,11 @@ export function VesselsManager({ vessels }: { vessels: Vessel[] }) {
                   >
                     <td className="px-5 py-4 text-text-primary">{v.name}</td>
                     <td className="px-5 py-4 font-mono text-text-secondary">{v.imoNumber ?? '—'}</td>
+                    <td className="px-5 py-4 font-mono text-text-secondary">{v.mmsi ?? '—'}</td>
                     <td className="px-5 py-4 text-text-secondary">{v.flag ?? '—'}</td>
                     <td className="px-5 py-4 text-text-secondary">{v.vesselType ?? '—'}</td>
                     <td className="px-5 py-4 font-mono text-text-primary text-right">{num(v.gt)}</td>
+                    {canEdit && (
                     <td className="px-5 py-4">
                       <div className="flex items-center justify-end gap-1.5">
                         <button
@@ -208,6 +241,7 @@ export function VesselsManager({ vessels }: { vessels: Vessel[] }) {
                         </button>
                       </div>
                     </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -229,7 +263,7 @@ export function VesselsManager({ vessels }: { vessels: Vessel[] }) {
             </DialogDescription>
           </DialogHeader>
 
-          <VesselFieldsGrid form={form} set={set} />
+          <VesselFieldsGrid form={form} set={set} verifiedAt={editing?.mmsiVerifiedAt ?? null} />
 
           {error && (
             <p className="text-status-danger text-xs bg-status-danger/10 border border-status-danger/30 rounded px-3 py-2">

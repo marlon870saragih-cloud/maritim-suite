@@ -119,6 +119,24 @@ model Tenant {
   usageEvents               UsageEvent[]
   dataRequests              DataRequest[]
   exportJobs                ExportJob[]
+
+  // --- PRD-002 Step 5B (Automation Hub — pemantauan voyage internal) ---
+  monitoredVoyages  MonitoredVoyage[]
+  monitoringRuns    MonitoringRun[]
+  monitoringSignals MonitoringSignal[]
+
+  // --- PRD-003 Step 4 (data posisi AIS — bukti mesin, bukan data operasional) ---
+  aisObservations   AisObservation[]
+  aisPollRuns       AisPollRun[]
+  aisProviderStates AisProviderState[]
+
+  // --- PRD-004 Step 3 (Vessel Call Intake — usulan voyage yang menunggu tinjauan manusia) ---
+  vesselCallIntakes VesselCallIntake[]
+
+  // --- PRD-005 Step 3A (TAH Core — buku besar eksekusi agen + gerbang persetujuan manusia) ---
+  agentRuns           AgentRun[]
+  agentModelCalls     AgentModelCall[]
+  tahApprovalRequests TahApprovalRequest[]
 }
 
 model Payment {
@@ -194,6 +212,19 @@ model Vessel {
   beam       Float?
   maxDraft   Float?
   yearBuilt  Int?
+
+  /// PRD-002 Step 2 (D2) — identitas AIS. Opsional: tongkang & kapal tanpa
+  /// transponder sah tanpa MMSI. Tepat 9 digit bila ada (dinormalisasi di
+  /// lib/vessels.ts). Unik PER TENANT — tiap tenant memiliki baris kapalnya
+  /// sendiri; dua NULL tidak pernah bertabrakan di PostgreSQL (pola K89).
+  mmsi           String?
+  /// Asal nomor MMSI: PUBLIC_TRACKING (belum terverifikasi) | COMPANY_DOCUMENT |
+  /// PRINCIPAL_CONFIRMATION | OTHER_VERIFIED. String, bukan enum (pola K55).
+  mmsiSource     String?
+  /// Diisi server saat MMSI dikonfirmasi dari sumber terverifikasi; selalu null
+  /// untuk PUBLIC_TRACKING. Siapa yang mengonfirmasi tercatat di AuditLog.
+  mmsiVerifiedAt DateTime?
+
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -201,6 +232,13 @@ model Vessel {
   documents MaritimeDocument[]
   voyages   Voyage[]
 
+  // --- PRD-002 Step 2 ---
+  voyageVessels VoyageVessel[]
+
+  // --- PRD-003 Step 4 --- posisi AIS milik kapal ini (hanya dibaca/ditulis services/ais).
+  aisObservations AisObservation[]
+
+  @@unique([tenantId, mmsi])
   @@index([tenantId])
 }
 
@@ -714,7 +752,29 @@ model Voyage {
   crewChanges    CrewChange[]
   events         VoyageEvent[]
 
+  // --- PRD-002 Step 2 — kapal-kapal voyage ini (tug + barge, dst). `vesselId`
+  // di atas TETAP satu-satunya penentu kapal utama; lihat model VoyageVessel.
+  vessels VoyageVessel[]
+
+  // PRD-002 Step 5B — Automation Hub (pemantauan internal). Tak pernah ditulis
+  // balik ke kolom voyage mana pun.
+  monitoring        MonitoredVoyage[]
+  monitoringSignals MonitoringSignal[]
+
+  /// PRD-004 Step 3 — intake asal voyage ini (null = dibuat manual). Unik per
+  /// tenant: satu intake → maksimal satu voyage, dijamin DATABASE meski klaim
+  /// approval terlewati. SENGAJA tanpa FK (hindari siklus FK Voyage ↔ intake).
+  sourceIntakeId String?
+  /// Intake yang menunjuk voyage ini (dibuat darinya, atau ditautkan ke voyage yang sudah ada).
+  intakes        VesselCallIntake[]
+
+  // PRD-005 Step 3A — TAH Core. Hanya rujukan balik (FK SetNull di sisi TAH);
+  // tak ada kolom voyage yang berubah.
+  agentRuns           AgentRun[]
+  tahApprovalRequests TahApprovalRequest[]
+
   @@unique([tenantId, voyageNumber])
+  @@unique([tenantId, sourceIntakeId])
   @@index([tenantId, status])
   @@index([tenantId, eta])
   @@index([tenantId, vesselId])
@@ -734,6 +794,252 @@ model Cargo {
   updatedAt DateTime @updatedAt
 
   @@index([voyageId])
+}
+
+/// PRD-002 Step 2 — kapal-kapal yang terlibat dalam satu voyage (mis. tug + barge).
+///
+/// Model ANAK (pola Cargo, K44): tanpa tenantId, TIDAK didaftarkan di
+/// TENANT_MODELS; akses wajib lewat voyage induk yang sudah terbukti milik
+/// tenant (services/master/voyage-vessel.service.ts).
+///
+/// INVARIAN TUNGGAL: `Voyage.vesselId` adalah SATU-SATUNYA penentu kapal utama.
+/// Tabel ini tidak punya kolom/role "PRIMARY" — sehingga dua sumber kebenaran
+/// untuk kapal utama mustahil terjadi. Kapal utama selalu ikut menjadi salah
+/// satu baris di sini (dijaga createVoyage/updateVoyage); pembaca yang
+/// menemukan nol baris (voyage lama/skrip) memakai `Voyage.vesselId`.
+model VoyageVessel {
+  id        String   @id @default(cuid())
+  voyageId  String
+  voyage    Voyage   @relation(fields: [voyageId], references: [id], onDelete: Cascade)
+  vesselId  String
+  /// CASCADE, BUKAN RESTRICT/NO ACTION: keduanya menggagalkan penghapusan tenant yang punya
+  /// voyage (cascade satu tingkat Tenant→Vessel selesai sebelum Tenant→Voyage→VoyageVessel —
+  /// dibuktikan eksperimen ber-ROLLBACK, lihat migrasi 20260914130000). Penolakan "kapal masih
+  /// dipakai voyage" DITEGAKKAN APLIKASI di DELETE /api/vessels/:id (→ 409); kapal utama juga
+  /// tetap dijaga FK Voyage.vessel (RESTRICT).
+  vessel    Vessel   @relation(fields: [vesselId], references: [id], onDelete: Cascade)
+  /// TUG | BARGE | null (tanpa peran khusus, mis. tanker tunggal). String, bukan enum (pola K55).
+  role      String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([voyageId, vesselId])
+  @@index([vesselId])
+}
+
+// ============================================================================
+// PRD-002 STEP 5B — AUTOMATION HUB: PEMANTAUAN VOYAGE INTERNAL
+// MONITOR → DETECT → EXPLAIN → RECOMMEND → HUMAN REVIEW. Ketiga model di bawah
+// adalah SATU-SATUNYA tabel yang ditulis pemantauan (selain Notification
+// internal). Tabel operasional (Voyage, Vessel, VoyageVessel, VoyageEvent,
+// Task, …) hanya dibaca. Semua bertenant → wajib di TENANT_MODELS. Tidak ada
+// GRANT ke peran maritime_portal → portal tak bisa membacanya.
+// FK ke Tenant/Voyage CASCADE: pelajaran Step 2 — RESTRICT/NO ACTION pada rantai
+// cascade dua tingkat mematahkan penghapusan tenant.
+// ============================================================================
+
+/// Voyage yang dipantau Automation Hub. Satu baris per voyage per tenant.
+model MonitoredVoyage {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  voyageId String
+  voyage   Voyage @relation(fields: [voyageId], references: [id], onDelete: Cascade)
+
+  enabled         Boolean   @default(true)
+  startedAt       DateTime  @default(now())
+  startedByUserId String
+  stoppedAt       DateTime?
+  stopReason      String? // MANUAL | VOYAGE_CLOSED | VOYAGE_CANCELLED | VOYAGE_DELETED
+  /// Jalan pemantauan terakhir yang memproses voyage ini tanpa galat.
+  lastCheckedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, voyageId])
+  @@index([tenantId, enabled])
+}
+
+/// Bukti tahan lama satu jalan pemantauan per tenant. Tanpa rahasia, tanpa log mentah.
+model MonitoringRun {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  agent          String
+  agentVersion   String
+  startedAt      DateTime  @default(now())
+  finishedAt     DateTime?
+  status         String    @default("RUNNING") // RUNNING | OK | PARTIAL | FAILED
+  voyagesChecked Int       @default(0)
+  voyagesFailed  Int       @default(0)
+  signalsCreated Int       @default(0)
+  signalsSkipped Int       @default(0)
+  errorCode      String?
+
+  signals MonitoringSignal[]
+
+  @@index([tenantId, startedAt])
+}
+
+/// Sinyal internal Automation Hub. MERUJUK sumbernya (AuditLog / VoyageEvent),
+/// tak pernah menyalinnya balik — sinyal bukan peristiwa SOF.
+model MonitoringSignal {
+  id       String         @id @default(cuid())
+  tenantId String
+  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  voyageId String
+  voyage   Voyage         @relation(fields: [voyageId], references: [id], onDelete: Cascade)
+  runId    String?
+  run      MonitoringRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+
+  kind      String // ETA_CHANGED | VOYAGE_STATUS_CHANGED | OPERATIONAL_EVENT_RECORDED | ACTUAL_DATE_MISSING | DATA_STALE | MONITORING_ERROR
+  severity  String // INFO | WARNING | ERROR
+  /// Satu perubahan sumber yang logis = satu sinyal. Penjaga terakhir terhadap duplikat.
+  dedupeKey String
+
+  sourceType String // AUDIT_LOG | VOYAGE_EVENT | VOYAGE | SYSTEM
+  sourceRef  String?
+  sourceAt   DateTime?
+  detectedAt DateTime  @default(now())
+
+  /// Sengaja kecil: hanya medan yang berubah (mis. { eta: "2026-10-01" }).
+  before Json?
+  after  Json?
+
+  explanation    String
+  recommendation String
+
+  reviewState      String    @default("OPEN") // OPEN | ACKNOWLEDGED | DISMISSED | EXPIRED
+  reviewedByUserId String?
+  reviewedByName   String?
+  reviewedAt       DateTime?
+  reviewNote       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, dedupeKey])
+  @@index([tenantId, reviewState, detectedAt])
+  @@index([tenantId, voyageId, detectedAt])
+}
+
+// ============================================================================
+// PRD-003 STEP 4 — DATA POSISI AIS (desain: PRD-003 Step 3)
+// Bukti mesin saja. Ketiga model di bawah adalah SATU-SATUNYA tabel yang ditulis
+// services/ais (voyage-monitoring hanya MEMBACAnya dan menulis MonitoringSignal).
+// Voyage/Vessel/VoyageVessel/VoyageEvent tak pernah ditulis dari AIS (K176, K178).
+// Respons mentah vendor TIDAK disimpan. Semua bertenant → TENANT_MODELS. Tanpa
+// GRANT ke maritime_portal. FK ke Tenant CASCADE (pelajaran Step 2).
+// ============================================================================
+
+/// Satu posisi AIS yang DITERIMA untuk salah satu kapal KITA. Append-only; disapu sesudah 90 hari (D3).
+model AisObservation {
+  id       String      @id @default(cuid())
+  tenantId String
+  tenant   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vesselId String
+  /// CASCADE, bukan RESTRICT/NO ACTION: rantai Tenant→Vessel→AisObservation dua tingkat —
+  /// selain CASCADE mematahkan penghapusan tenant (pelajaran PRD-002 Step 2).
+  vessel   Vessel      @relation(fields: [vesselId], references: [id], onDelete: Cascade)
+  runId    String?
+  run      AisPollRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+
+  /// Id adapter (mis. FAKE). String, bukan enum (pola K55).
+  provider    String
+  /// 9 digit; sama dengan Vessel.mmsi saat diambil (selain itu ditolak MMSI_MISMATCH).
+  mmsi        String
+  providerRef String?
+
+  /// Waktu POSISI (K176/2) — wajib.
+  positionAt DateTime
+  /// Waktu kita menerimanya.
+  fetchedAt  DateTime
+
+  /// Derajat WGS84.
+  lat              Float
+  lon              Float
+  /// Knot; null = tidak tersedia.
+  sogKnots         Float?
+  /// Derajat benar 0..<360; null = tidak tersedia.
+  cogDeg           Float?
+  /// 0..359; null = tidak tersedia (511).
+  headingDeg       Int?
+  /// Kode status navigasi AIS mentah 0..15.
+  navStatus        Int?
+  positionAccuracy Boolean?
+  /// TERRESTRIAL | SATELLITE | UNKNOWN — tak pernah ditebak.
+  sourceType       String   @default("UNKNOWN")
+  /// max(0, fetchedAt − positionAt) dalam detik.
+  ageSecAtFetch    Int
+  /// sha256 medan ternormalisasi (bukan payload mentah).
+  payloadHash      String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, vesselId, provider, positionAt])
+  @@index([tenantId, vesselId, positionAt(sort: Desc)])
+  @@index([tenantId, fetchedAt])
+}
+
+/// Satu percobaan pengambilan per tenant. Disapu sesudah 180 hari (D3). Tanpa rahasia/payload.
+model AisPollRun {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  provider     String
+  agentVersion String
+  startedAt    DateTime  @default(now())
+  finishedAt   DateTime?
+  /// RUNNING | OK | PARTIAL | FAILED | SKIPPED_LOCKED | SKIPPED_BACKOFF | DISABLED_QUOTA
+  status       String    @default("RUNNING")
+
+  vesselsEligible          Int @default(0)
+  vesselsSkippedUnverified Int @default(0)
+  vesselsRequested         Int @default(0)
+  vesselsCapped            Int @default(0)
+  /// Permintaan ke penyedia yang BENAR-BENAR dikirim (termasuk ulang) — buku besar kuota bulanan.
+  providerCalls            Int @default(0)
+  observationsAccepted     Int @default(0)
+  duplicates               Int @default(0)
+  rejectedInvalid          Int @default(0)
+  rejectedStale            Int @default(0)
+  rejectedMismatch         Int @default(0)
+  noData                   Int @default(0)
+  errorCode                String?
+
+  observations AisObservation[]
+
+  @@index([tenantId, startedAt])
+}
+
+/// Kesehatan penyedia + kunci sewa (lease), satu baris per tenant per penyedia.
+model AisProviderState {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  provider String
+
+  lastAttemptAt       DateTime?
+  lastSuccessAt       DateTime?
+  consecutiveFailures Int       @default(0)
+  /// Diisi pada kegagalan pertama satu rentetan; dikosongkan saat sukses.
+  outageStartedAt     DateTime?
+  lastErrorCode       String?
+  backoffUntil        DateTime?
+  rateLimitResetAt    DateTime?
+
+  lockedUntil DateTime?
+  /// AisPollRun.id pemegang sewa.
+  lockedBy    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, provider])
 }
 
 // ----------------------------------------------------------------- DISBURSEMENT
@@ -1184,7 +1490,13 @@ model Attachment {
 
   uploadedByUserId String
   createdAt        DateTime  @default(now())
-  deletedAt        DateTime? // K110 — soft delete; berkas fisik TIDAK pernah dihapus
+  deletedAt        DateTime? // K110 — soft delete; berkas fisik dipertahankan sampai retensi
+  /// P36 / K110 — diisi job `attachment-retention` SESUDAH berkas fisiknya benar-benar
+  /// dihapus dari penyimpanan. Barisnya SENGAJA dipertahankan: menghapus lampiran tidak
+  /// menulis AuditLog di mana pun, jadi baris inilah satu-satunya bukti bahwa berkas itu
+  /// pernah ada dan kapan ia dimusnahkan. NULL = berkas fisik masih ada (atau penyapuan
+  /// terakhir gagal dan akan dicoba lagi) → kolom ini sekaligus antrean kerjanya.
+  purgedAt         DateTime?
 
   /// Fase 8 / K170. true HANYA bila seseorang menekan "Bagikan ke portal".
   /// Bawaan false (sama semangat K111). Lampiran `sensitive = true` TIDAK
@@ -1197,6 +1509,8 @@ model Attachment {
   @@index([tenantId, sha256])
   @@index([tenantId, expiresAt])
   @@index([tenantId, sharedToPortal])
+  /// Antrean penyapuan retensi: baris yang sudah di-soft-delete tapi berkasnya belum dimusnahkan.
+  @@index([purgedAt, deletedAt])
 }
 
 /// K128 — catatan pada entitas. Datar (tanpa thread), bukan messenger.
@@ -1868,4 +2182,273 @@ model SecurityEvent {
   createdAt DateTime @default(now())
 
   @@index([kind, identifier, createdAt])
+}
+
+// ============================================================================
+// PRD-004 STEP 3 — AUTOMATION HUB: VESSEL CALL INTAKE
+// AI extracts → System verifies → Human approves → createVoyage() writes → Audit.
+// Bukan record operasional: Voyage HANYA lahir lewat createVoyage() sesudah
+// approval ADMIN/MANAJER_OPERASI. Bertenant → wajib di TENANT_MODELS. Tanpa
+// GRANT ke maritime_portal. Riwayat transisi ada di AuditLog (tanpa tabel run).
+// ============================================================================
+
+/// Permintaan kunjungan kapal (nominasi/appointment) yang diproses Automation Hub.
+model VesselCallIntake {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  /// NEEDS_REVIEW | CREATING | COMPLETED | LINKED_EXISTING | REJECTED | FAILED
+  status         String
+  /// NEW_NOMINATION | NEW_APPOINTMENT | NOT_RELEVANT | INSUFFICIENT_INFORMATION | UNSUPPORTED_REQUEST
+  classification String
+  /// Optimistic concurrency: naik di setiap perubahan; approve/patch wajib menyebut versi yang ditinjau.
+  version        Int    @default(1)
+
+  /// TEXT | PDF | IMAGE | WORKBOOK | CSV
+  inputKind        String
+  /// sha256 isi ternormalisasi (teks) / byte mentah (berkas). Isi mentah TIDAK disimpan (D4).
+  inputHash        String
+  /// = inputHash selama non-terminal, NULL saat terminal → input sama tak diproses dua kali.
+  activeHashKey    String?
+  sourceFileName   String?
+  sourceSizeBytes  Int?
+  /// Lampiran dokumen asli — HANYA bila peninjau memilih menyimpannya (D4).
+  attachmentId     String?
+  extractorVersion String
+
+  /// Field usulan + provenance (divalidasi services/intake/intake-policy.ts).
+  proposal            Json
+  /// Hasil pencocokan master per entitas.
+  matches             Json
+  /// NO_DUPLICATE | POSSIBLE_DUPLICATE | LIKELY_DUPLICATE
+  duplicateLevel      String
+  duplicateCandidates Json
+
+  /// CONTINUE_AS_NEW | LINK_EXISTING
+  duplicateDecision  String?
+  decisionReason     String?
+  portalExposureAck  Boolean   @default(false)
+  postCreateWarnings Json?
+  errorCode          String?
+
+  submittedByUserId String
+  reviewedByUserId  String?
+  reviewedAt        DateTime?
+  claimedAt         DateTime?
+
+  voyageId String?
+  voyage   Voyage? @relation(fields: [voyageId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, activeHashKey])
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, inputHash])
+  @@index([voyageId])
+}
+// ============================================================================
+// PRD-005 Step 3A — TAH Core: buku besar eksekusi agen + gerbang persetujuan.
+//
+// Keputusan owner (Step 1/2): D1=C — tabel run fitur lama (MonitoringRun,
+// AisPollRun, VesselCallIntake) TIDAK diubah dan tidak di-backfill; AgentRun
+// hanya untuk eksekusi model/agen masa depan dan menunjuk subjek lama lewat
+// subjectType/subjectId TANPA FK. D2=B — gerbang persetujuan TAH tabelnya
+// sendiri; model `Approval` (keuangan) tidak disentuh. D3=B — prompt mentah,
+// respons penyedia mentah, dan rahasia TIDAK PERNAH disimpan (sengaja tak ada
+// kolomnya); `result`/`proposal` dibersihkan setelah 180 hari, metadata 24 bulan.
+//
+// Status & jenis = String tervalidasi kode (pola K55), bukan enum. Seluruh
+// kebijakan ada di src/services/tah/tah-policy.ts (murni, diuji
+// prisma/check-tah-policy.mjs).
+// ============================================================================
+
+model AgentRun {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  /// Kunci agen dari registry kode (mis. INTAKE) + versinya.
+  agentKey     String
+  agentVersion String
+  /// mis. EXTRACT.
+  runType      String
+
+  /// HUMAN | SCHEDULE | RETRY (EVENT dicadangkan).
+  triggerType       String
+  /// null untuk jalan terjadwal. String polos (pola AuditLog.userId).
+  triggeredByUserId String?
+  /// Rantai ulang: jalan baru menunjuk jalan yang diulang. Jalan tak pernah dibuka kembali.
+  parentRunId       String?
+  parentRun         AgentRun?  @relation("AgentRunUlang", fields: [parentRunId], references: [id], onDelete: SetNull)
+  retries           AgentRun[] @relation("AgentRunUlang")
+  correlationId     String
+  idempotencyKey    String?
+
+  /// RUNNING | SUCCEEDED | FAILED | CANCELLED | ABANDONED
+  status         String    @default("RUNNING")
+  /// Hanya bila SUCCEEDED, mis. PROPOSAL_CREATED | DUPLICATE_DISCARDED.
+  outcome        String?
+  /// true bila selesai SETELAH penyapu menandainya ABANDONED.
+  lateCompletion Boolean   @default(false)
+  startedAt      DateTime  @default(now())
+  finishedAt     DateTime?
+  durationMs     Int?
+
+  /// Subjek fitur lama — SENGAJA tanpa FK (D1), mis. VesselCallIntake.
+  subjectType String?
+  subjectId   String?
+  voyageId    String?
+  voyage      Voyage? @relation(fields: [voyageId], references: [id], onDelete: SetNull)
+
+  inputKind  String?
+  /// Sidik jari masukan (untuk intake = VesselCallIntake.inputHash). Isi tak disimpan.
+  inputHash  String?
+  /// sha256 JSON kanonik keluaran tool model — hash saja.
+  outputHash String?
+
+  /// ≤ 300 karakter, tanpa data pribadi & tanpa nilai field.
+  resultSummary  String?
+  /// Hasil tervalidasi berukuran terbatas; dikosongkan setelah 180 hari (D3).
+  result         Json?
+  resultPurgedAt DateTime?
+  errorCode      String?
+  /// ≤ 300 karakter, teks milik kita — TIDAK PERNAH teks penyedia.
+  errorDetail    String?
+
+  createdAt DateTime @default(now())
+
+  modelCalls       AgentModelCall[]
+  approvalRequests TahApprovalRequest[]
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, agentKey, createdAt])
+  @@index([tenantId, subjectType, subjectId])
+  @@index([status, startedAt])
+  @@index([resultPurgedAt, finishedAt])
+}
+
+/// Satu panggilan ke penyedia model di dalam satu AgentRun (1 run → N panggilan,
+/// mis. ulang tanpa plugin PDF). Metadata saja — tanpa prompt, tanpa respons mentah.
+model AgentModelCall {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agentRunId String
+  agentRun   AgentRun @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+  seq        Int
+
+  /// OPENROUTER | FAKE
+  provider          String
+  requestedModel    String
+  /// `model` dari respons bila ada.
+  servedModel       String?
+  /// `id` dari respons bila ada.
+  providerRequestId String?
+
+  promptId      String
+  promptVersion String
+  /// sha256 system prompt + skema tool (bukan teksnya).
+  promptHash    String
+  schemaId      String?
+  schemaVersion String?
+  /// Dari daftar izin saja: temperature, toolChoice, pdfEngine, timeoutMs, maxTokens.
+  params        Json
+
+  /// OK | ERROR | TIMEOUT
+  status    String
+  errorCode String?
+  latencyMs Int
+
+  /// Semua boleh null — metadata penyedia tak dijamin ada (§L Step 1).
+  inputTokens       Int?
+  outputTokens      Int?
+  cachedInputTokens Int?
+  reasoningTokens   Int?
+  /// Tetap null sampai spike verifikasi penyedia memastikan maknanya.
+  costAmount        Decimal? @db.Decimal(20, 10)
+  costCurrency      String?
+  /// PROVIDER_REPORTED | ESTIMATED
+  costSource        String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([agentRunId, seq])
+  @@index([tenantId, createdAt])
+}
+
+/// Permintaan persetujuan manusia TAH. Status KEPUTUSAN dan status EKSEKUSI
+/// adalah dua mesin terpisah: APPROVED tidak pernah berarti tindakannya berhasil.
+model TahApprovalRequest {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  /// Jenis dari registry kode; kelas risiko disalin saat dibuat (stabil untuk audit).
+  kind       String
+  actionRisk String
+
+  agentRunId  String?
+  agentRun    AgentRun? @relation(fields: [agentRunId], references: [id], onDelete: SetNull)
+  subjectType String?
+  subjectId   String?
+  voyageId    String?
+  voyage      Voyage?   @relation(fields: [voyageId], references: [id], onDelete: SetNull)
+
+  title         String
+  reason        String
+  impactSummary String
+  /// Daftar { code, severity } — kode, bukan teks bebas.
+  risks         Json
+
+  /// Usulan tervalidasi skema jenisnya; dikosongkan 180 hari setelah final (Q1).
+  proposal          Json?
+  proposalHash      String
+  humanEditedFields String[] @default([])
+  basisFingerprint  String
+
+  /// PENDING | APPROVED | REJECTED | REVISION_REQUESTED | EXPIRED | CANCELLED | SUPERSEDED
+  status           String               @default("PENDING")
+  version          Int                  @default(1)
+  /// Manusia yang memicu jalan agen — dasar aturan setuju-sendiri (D9).
+  originatorUserId String?
+  /// userId atau `system:<agentKey>`.
+  requestedBy      String
+  requiredRoles    String[]
+  expiresAt        DateTime
+  revisionOf       String?
+  revisionOfReq    TahApprovalRequest?  @relation("TahApprovalRevisi", fields: [revisionOf], references: [id], onDelete: SetNull)
+  revisions        TahApprovalRequest[] @relation("TahApprovalRevisi")
+  decidedByUserId  String?
+  decidedAt        DateTime?
+  decisionNote     String?
+
+  /// NOT_APPLICABLE | NOT_STARTED | RUNNING | SUCCEEDED | SUCCEEDED_WITH_WARNINGS | FAILED | CANCELLED
+  executionStatus    String    @default("NOT_APPLICABLE")
+  executionAttempts  Int       @default(0)
+  executionClaimedAt DateTime?
+  executedAt         DateTime?
+  executionErrorCode String?
+  /// Id saja, mis. { voyageId }.
+  resultRef          Json?
+  /// Diisi SEKALI saat keputusan final DAN eksekusi final/tak berlaku. Dasar retensi
+  /// (Q1): usulan dibersihkan 180 hari & baris dihapus 24 bulan SETELAH waktu ini.
+  /// Sengaja bukan `updatedAt` — pembersihan usulan sendiri memperbarui `updatedAt`.
+  finalizedAt        DateTime?
+  payloadPurgedAt    DateTime?
+
+  idempotencyKey String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, executionStatus])
+  @@index([tenantId, subjectType, subjectId])
+  @@index([status, expiresAt])
+  @@index([payloadPurgedAt, finalizedAt])
+  @@index([finalizedAt])
 }

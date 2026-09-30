@@ -40,6 +40,8 @@ export const NAMA_PERISTIWA = [
   'TASK_COMPLETED',
   'REPORT_EXPORTED',
   'VENDOR_INVOICE_SUBMITTED',
+  // PRD-004 Step 3 — ekstraksi AI intake kunjungan kapal berhasil.
+  'INTAKE_EXTRACTED',
 ] as const
 export type NamaPeristiwa = (typeof NAMA_PERISTIWA)[number]
 

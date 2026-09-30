@@ -1,0 +1,1181 @@
+// PRD-005 Eval-4 — RUNNER (Sonnet 5 SAJA, Prompt v4 kandidat, scorer-3, validator produksi) — LURING.
+//
+// Langkah ini membangun runner TANPA panggilan LIVE. Mode live BELUM diotorisasi: frasa usulan
+// FRASA_OTORISASI_EVAL4 tidak berlaku, dan kesiapanLiveEval4() (spike-eval4-identitas-model.mjs) melaporkan
+// penghalang nyata (konfigurasi owner, ambang kualitas, gerbang kualitas di runner, bukti kapabilitas transport
+// Sonnet 5) — jalur jaringan mustahil sampai semuanya terpenuhi dan owner membukanya secara terpisah.
+//
+// MEMAKAI ULANG (tidak diubah):
+//   • pencegat penyedia Eval-1 (host tunggal, allowlist, batas panggilan/biaya/token, usage.cost wajib);
+//   • pagar served KETAT Eval-2 + penyedia stub Eval-2;
+//   • pagar SLOT & PROYEKSI biaya Eval-3 (rakitJalurPenyedia: tepat 1 percobaan/slot, model slot persis,
+//     tanpa larik/rute fallback, proyeksi biaya SEBELUM setiap panggilan), akuntansi Eval-3;
+//   • pagar identitas Eval-4 (opsiEkstraktorEval4 / periksaIdentitasModel / periksaBadanPermintaanEval4);
+//   • ekstraktor produksi buatEkstraktorOpenRouter(PROMPT_INTAKE_V4, {modelWajib, servedWajib});
+//   • validator produksi validasiEkstraksi (POST = validator atas KLON RAW) + scorer-3 (nilaiKasusV2);
+//   • pemeriksa konsistensi GT ↔ sumber (gt-sumber-2) dan pembekuan Eval-1/2/3.
+// BARU di Eval-4:
+//   • blok REGRESI muatan (RG-H20, RG-H18) SELALU dijalankan PERTAMA — H20 selalu teramati (RAW & POST);
+//   • paket HELD-OUT = masukan owner (KONFIG_OWNER_EVAL4). Owner D6: kasus Eval-3 yang sudah diperiksa BUKAN
+//     held-out; kasus Eval-4 wajib baru & belum pernah dilihat model. Paket BELUM ADA → live DITOLAK;
+//   • titik-simpan (checkpoint) di luar repo: jeda aman di batas slot + lanjut (resume) tanpa ulang panggilan.
+//     Slot yang terputus DI TENGAH panggilan (inflight) tidak pernah dilanjutkan otomatis — biaya/panggilan
+//     ambigu → tinjauan owner. Slot gagal = run BERHENTI (tak bisa dilanjutkan; tanpa ulang otomatis).
+//   • TANPA gerbang lulus/gagal kualitas: ambang Eval-4 belum ditetapkan owner → putusan terbaik
+//     MENUNGGU_GERBANG_OWNER (tak pernah PASS). Regresi muatan H20/H18 GAGAL → GAGAL_REGRESI_MUATAN.
+//
+// ── Menjalankan ─────────────────────────────────────────────────────────────────────────
+//   Luring (stub deterministik dari GT; DRY_RUN / NON-LIVE; nol panggilan penyedia):
+//     node prisma/spike-eval4-runner.mjs --mode offline --report /tmp/eval4-dry.json [--checkpoint /tmp/eval4.ckpt.json [--resume]]
+//   Langsung: BELUM DIOTORISASI. Tanpa argumen → hanya cetak integritas & rencana.
+
+import { createRequire } from 'node:module'
+import { createHash } from 'node:crypto'
+import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import * as H from './spike-eval1.mjs'
+import * as R1 from './spike-eval1-runner.mjs'
+import * as S from './spike-eval1-scorer.mjs'
+import * as B2 from './spike-eval2-beku.mjs'
+import * as R2 from './spike-eval2-runner.mjs'
+import * as B3 from './spike-eval3-beku.mjs'
+import * as R3 from './spike-eval3-runner.mjs'
+import * as E2 from './spike-eval2-penilai.mjs'
+import * as S3 from './spike-eval4-scorer.mjs'
+import * as G from './spike-gt-konsistensi.mjs'
+import * as M from './spike-eval4-identitas-model.mjs'
+import * as RG from './fixtures/spike-intake/eval4-regresi-muatan.mjs'
+import * as F1 from './fixtures/spike-intake/eval1-cases.mjs'
+import * as F2 from './fixtures/spike-intake/eval2-cases.mjs'
+import * as F3 from './fixtures/spike-intake/eval3-cases.mjs'
+import * as F0 from './fixtures/spike-intake/phase0-cases.mjs'
+import * as FS from './fixtures/spike-intake/future-scan-e11.mjs'
+import * as FH from './fixtures/spike-intake/eval4-heldout-cases.mjs'
+
+const AKAR = fileURLToPath(new URL('..', import.meta.url))
+const sha256 = (x) => createHash('sha256').update(x).digest('hex')
+
+export const VERSI_RUNNER_EVAL4 = 'prd005-eval4/runner-3'
+/** USULAN — belum diotorisasi. Hanya frasa ini (persis) yang kelak membuka mode live Eval-4. */
+export const FRASA_OTORISASI_EVAL4 = 'PRD-005-EVAL4-LIVE'
+/**
+ * KUNCI OTORISASI LIVE OWNER (repo). Frasa di atas tertulis di repo sehingga TIDAK cukup sendirian sebagai
+ * otorisasi: otorisasi LIVE hanya sah bila kunci ini true (perubahan eksplisit yang disetujui owner) DAN frasa
+ * diberikan saat eksekusi. Selama false, penghalang OTORISASI_LIVE_OWNER_TIDAK_ADA tetap aktif.
+ */
+export const OTORISASI_LIVE_EVAL4_OWNER = false
+/** Otorisasi LIVE owner = kunci repo true DAN frasa persis di env eksekusi. */
+export const otorisasiLiveOwner = (env, kunci = OTORISASI_LIVE_EVAL4_OWNER) => kunci === true && env?.SPIKE_AUTHORIZED === FRASA_OTORISASI_EVAL4
+/** Frasa run terdahulu: TIDAK PERNAH mengotorisasi Eval-4. */
+export const FRASA_LAMA = Object.freeze([...R3.FRASA_LAMA, R3.FRASA_OTORISASI_EVAL3])
+export const MODE = R1.MODE
+export const TRANSPORT = R1.TRANSPORT
+export const LABEL_DRY = R1.LABEL_DRY
+export const LABEL_LIVE = R1.LABEL_LIVE
+export const KUNCI_STUB = 'stub-kunci-eval4-runner-luring-000000'
+/**
+ * checkpoint-2: ikatan memuat TANGGAL EFEKTIF run + sidik teks sumber ter-resolusi. Teks kasus memuat tanggal
+ * turunan hari eksekusi (offset ETA), jadi lanjutan di tanggal lain akan diam-diam mengubah sumber — ditolak.
+ * Checkpoint-1 (run heldout-1 historis) tak pernah bisa dilanjutkan dengan runner ini (FORMAT_CHECKPOINT_BERBEDA).
+ */
+export const FORMAT_CHECKPOINT = 'prd005-eval4/checkpoint-2'
+/** Sidik deterministik teks sumber (sesudah normalisasi) semua kasus rencana, urut id. */
+export const sidikSumberKasus = (kasus) => sha256(JSON.stringify(kasus.map((k) => [k.id, sha256(k.teksNormal)]).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))))
+
+export const BLOK_REGRESI = 'REGRESI_MUATAN_S5_V4'
+export const BLOK_HELDOUT = 'HELDOUT_S5_V4'
+/** Urutan beku blok regresi: H20 PERTAMA (kegagalan keselamatan yang diaudit), lalu H18. */
+export const URUTAN_REGRESI = Object.freeze(['RG-H20', 'RG-H18'])
+export const KASUS_H20 = 'RG-H20'
+
+/**
+ * Artefak beku Eval-4 (sha256 berkas). Mengubah salah satunya = identitas evaluasi baru → run DITOLAK
+ * sampai owner meninjau dan pin ini diperbarui secara eksplisit.
+ */
+export const SHA_BEKU_EVAL4 = Object.freeze({
+  'prisma/fixtures/spike-intake/eval4-regresi-muatan.mjs': '01871bf6cd2c266cb0070497a071a211c8601f92c8a8341e00890dacc6921012',
+  'prisma/spike-eval4-scorer.mjs': 'a513cf676862f356cf1e242736b17bd94d0af06bc9c08718b415b602ef3bb12d',
+  'src/lib/maritim-lexicon.ts': '864e4e3bf4cb47ef6e1d112ad42b5c9efd9d402c459e2d8be465f0bbab41fb83',
+  'prisma/fixtures/spike-intake/eval4-heldout-cases.mjs': 'd6135a2f12843ab4b8fe1db3cf2bd3398799d67b5cb6cded4b9233269c459fab',
+  // heldout-3: validator/normalisasi produksi ikut dibekukan (akar masalah Q19 — normalisasiNamaPort "Pel.").
+  'src/services/intake/intake-policy.ts': '4f5b1273d9a01ceee308f201a40a7594ce6fabc2220cacc0657f139f50f2059c',
+})
+/** Identitas Prompt v4 kandidat (hash sistem + skema tool) yang diikat run Eval-4. */
+export const IKATAN_PROMPT_V4 = Object.freeze({ idPrompt: 'vessel-call-extract', versiPrompt: '4', versiSkema: '4', hashPrompt: '6ed1edba38780badcff111e70f63e83d95668f15b99644f174bac1984ce65959' })
+
+/**
+ * AMBANG KUALITAS Eval-4 (keputusan owner, dikunci): toleransi NOL untuk muatan tak berbukti di POST (termasuk
+ * H20), FATAL di POST (kesalahan fakta/angka kritis), identitas berbeda, dan kegagalan output tool; kelulusan
+ * held-out ≥ 90% (slot lulus = klasifikasi POST benar, 0 FATAL & 0 MAJOR POST) dan konsistensi antar-ulangan
+ * ≥ 90% (tanda tangan kritis scorer-1 atas keluaran POST — owner D3). periksaAmbangKualitas menolak nilai lebih longgar.
+ */
+export const AMBANG_KUALITAS_EVAL4 = Object.freeze({
+  h20MuatanTakBerbuktiPostMaks: 0,
+  muatanTakBerbuktiPostMaks: 0,
+  fatalPostMaks: 0,
+  identitasBerbedaMaks: 0,
+  kegagalanOutputToolMaks: 0,
+  lulusHeldoutMin: 0.9,
+  konsistensiUlanganMin: 0.9,
+})
+
+/**
+ * KONFIGURASI OWNER Eval-4 (dibekukan): 20 kasus held-out baru × 2 ulangan + regresi RG-H20 & RG-H18.
+ * Anggaran (owner D1): batas keras total US$2,10 = kasus TERBURUK 42 panggilan × plafon US$0,05 — BUKAN target
+ * belanja; plafon per panggilan US$0,05; ulang 0; tanpa batas lunak terpisah (lunak = keras). Batas token TURUNAN,
+ * tidak mengikat sebelum biaya: 2,10 / tarif Sonnet 5 teramati di probe transport (US$2/MTok input → 1.050.000;
+ * US$10/MTok output → 210.000). Pagar proyeksi biaya menjamin total tak pernah melewati US$2,10.
+ */
+export const BATAS_KERAS_MAKS_OWNER_USD = 2.1
+export const PLAFON_PER_PANGGILAN_MAKS_OWNER_USD = 0.05
+export const KONFIG_OWNER_EVAL4 = Object.freeze({
+  paket: Object.freeze({ modul: FH, hashGtBeku: '00a6e44d071f96de286066ff0ab7efbb788a82c4f96cf5e1a20af6927acf0018' }),
+  jumlahKasusHeldout: 20,
+  ulangan: 2,
+  batas: Object.freeze({ maksPanggilan: 42, biayaLunakUsd: 2.1, biayaKerasUsd: 2.1, tokenInput: 1_050_000, tokenOutput: 210_000 }),
+  plafonPerPanggilanUsd: 0.05,
+  ambangKualitas: AMBANG_KUALITAS_EVAL4,
+})
+
+/**
+ * PROFIL TRANSPORT Eval-4 (keputusan owner): Sonnet 5, Prompt v4, tool paksa WAJIB, temperature DIHILANGKAN
+ * (referensi API Anthropic: Sonnet 5 menolak temperature non-bawaan). Dipasang sebagai `kemampuan` konteks
+ * panggilan Eval-4 SAJA — bentukParameter() lalu tidak mengirim temperature dan tetap memaksa tool.
+ * BUKAN kemampuan terverifikasi: registri (model-capabilities.ts) tetap PENDING_SPIKE, kemampuan null,
+ * dan jalur produksi tidak berubah. supportsPdfNative=false: Eval-4 hanya TEXT (PDF native belum diverifikasi).
+ */
+export const PROFIL_TRANSPORT_EVAL4 = Object.freeze({ acceptsTemperature: false, supportsForcedToolChoice: true, supportsPdfNative: false })
+/** Bentuk permintaan beku Eval-4 yang dicek pagarBadanEval4 sebelum transport (kandidat untuk probe kapabilitas). */
+export const BENTUK_TRANSPORT_EVAL4 = Object.freeze({ model: 'anthropic/claude-sonnet-5', prompt: 'v4', toolChoice: 'FUNCTION_PAKSA', temperature: 'DIHILANGKAN', fallback: 'TIDAK_ADA', servedWajib: 'anthropic/claude-sonnet-5' })
+/** Nama tool paksa Prompt v4 (dicek terhadap X.PROMPT_INTAKE_V4 saat preflight). */
+export const TOOL_PAKSA_EVAL4 = 'isi_intake_kunjungan'
+
+/** Sidik identitas transport Eval-4: bentuk + profil (kunci terurut). Berubah → bukti transport tak berlaku. */
+export function sidikBentukTransportEval4(bentuk = BENTUK_TRANSPORT_EVAL4, profil = PROFIL_TRANSPORT_EVAL4) {
+  const urut = (o) => Object.fromEntries(Object.keys(o).sort().map((k) => [k, o[k]]))
+  return sha256(JSON.stringify({ bentuk: urut(bentuk), profil: urut(profil) }))
+}
+/** Harapan bukti transport = identitas beku SAAT INI (dihitung ulang, bukan disalin dari bukti). */
+export const harapanTransportEval4 = () => ({ model: M.EXPECTED_MODEL_ID, served: M.EXPECTED_SERVED_MODEL_ID, sidikBentukTransport: sidikBentukTransportEval4(), hashPromptV4: IKATAN_PROMPT_V4.hashPrompt, toolPaksa: TOOL_PAKSA_EVAL4 })
+
+/**
+ * BUKTI KAPABILITAS TRANSPORT Sonnet 5 (probe LIVE tunggal, disetujui owner, 2026-09-27). Hanya menghapus
+ * penghalang KAPABILITAS_TRANSPORT_S5_BELUM_DIBUKTIKAN. BUKAN verifikasi registri: Sonnet 5 tetap PENDING_SPIKE,
+ * kemampuan null, dasar NONE; produksi tidak berubah; bukan evaluasi kualitas.
+ */
+export const BUKTI_TRANSPORT_S5_EVAL4 = Object.freeze({
+  jenis: 'SONNET_5_TRANSPORT_CAPABILITY_PROVEN',
+  tanggal: '2026-09-27',
+  panggilanModel: 1,
+  requestedModel: 'anthropic/claude-sonnet-5',
+  servedModel: 'anthropic/claude-sonnet-5',
+  provider: 'Claude Platform on AWS',
+  providerRequestId: 'gen-1790501177-tPEVHVfeDJZFILO7BC5M',
+  httpStatus: 200,
+  finishReason: 'tool_calls',
+  toolPaksa: 'isi_intake_kunjungan',
+  toolCallTerpaksa: true,
+  argumenTerurai: true,
+  argumenStrukturSah: true,
+  temperatureDikirim: false,
+  fallbackDikirim: false,
+  providerOverrideDikirim: false,
+  hashPromptV4: '6ed1edba38780badcff111e70f63e83d95668f15b99644f174bac1984ce65959',
+  sidikBentukTransport: '24de82fc1dfdf717a7222ad347aacf8e272cc6dac7b343b590b6e1e0f1910fd0',
+  masukan: 'RG-H18 (regresi, bukan held-out)',
+  pemakaian: Object.freeze({ input: 5997, output: 162, total: 6159 }),
+  biayaUsd: 0.013614,
+  batasBiayaProbeUsd: 0.05,
+})
+/** Batas KHUSUS stub luring (biaya stub, bukan uang nyata). Tak pernah dipakai transport jaringan. */
+export const BATAS_LURING_STUB = Object.freeze({ maksPanggilan: 40, biayaLunakUsd: 0.9, biayaKerasUsd: 1, tokenInput: 1_000_000, tokenOutput: 100_000 })
+export const PLAFON_LURING_STUB_USD = 0.02
+
+const BATAS_WAKTU_MS = 60_000
+const STOP_ALASAN = ['BATAS_PANGGILAN', 'BERHENTI_LUNAK_BIAYA', 'BATAS_TOKEN', 'PROYEKSI_BIAYA_KERAS']
+const TOLAK_SLOT = ['MODEL_DIMINTA_BERBEDA', 'PERCOBAAN_ULANG', 'FALLBACK_DIMINTA', 'PANGGILAN_DI_LUAR_SLOT', 'PANGGILAN_SAAT_PROBE', 'BADAN_EVAL4_DITOLAK']
+const ENV_DIKELOLA = ['OPENROUTER_API_KEY', 'TAH_INTAKE_MODEL']
+
+// ------------------------------------------------------------------ pembekuan
+export function verifikasiBekuEval4({ baca = (rel) => readFileSync(join(AKAR, rel)) } = {}) {
+  const galat = []
+  for (const [rel, h] of Object.entries(SHA_BEKU_EVAL4)) {
+    let isi
+    try {
+      isi = baca(rel)
+    } catch {
+      galat.push(`BERKAS_BEKU_TIDAK_TERBACA:${rel}`)
+      continue
+    }
+    if (sha256(isi) !== h) galat.push(`SHA_BERKAS_BEKU_BERBEDA:${rel}`)
+  }
+  if (B3.verifikasiBekuEval3().length) galat.push('EVAL3_BERUBAH')
+  if (H.verifikasiBeku().length) galat.push('EVAL1_BERUBAH')
+  if (B2.verifikasiBekuEval2().length) galat.push('EVAL2_BERUBAH')
+  if (RG.VERSI_REGRESI_MUATAN !== 'prd005-e5-eval4/regresi-muatan-1') galat.push('VERSI_REGRESI_BERBEDA')
+  if (S3.VERSI_PENILAI_V2 !== 'prd005-e5-eval4/scorer-3') galat.push('VERSI_PENILAI_BERBEDA')
+  return galat
+}
+
+export function verifikasiIkatanPromptV4(aktual) {
+  if (!aktual || typeof aktual !== 'object') return ['IDENTITAS_PROMPT_V4_TIDAK_ADA']
+  const g = []
+  if (aktual.id !== IKATAN_PROMPT_V4.idPrompt) g.push('ID_PROMPT_BERBEDA')
+  if (aktual.versi !== IKATAN_PROMPT_V4.versiPrompt) g.push('VERSI_PROMPT_BERBEDA')
+  if (aktual.versiSkema !== IKATAN_PROMPT_V4.versiSkema) g.push('VERSI_SKEMA_BERBEDA')
+  if (aktual.hash !== IKATAN_PROMPT_V4.hashPrompt) g.push('HASH_PROMPT_BERBEDA')
+  return g
+}
+
+// ------------------------------------------------------------------ paket held-out & konfigurasi owner
+const kanon = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, kanon(v[k])])) : Array.isArray(v) ? v.map(kanon) : v)
+/** Hash kanonik paket held-out (versi + kasus: id/kind/kategori/teks/gt). */
+export function hitungHashPaket(paket) {
+  return sha256(JSON.stringify(kanon({ versi: paket.versi, kasus: paket.kasus.map((k) => ({ id: k.id, kind: k.kind, kategori: k.kategori ?? null, teks: k.teks, gt: k.gt })) })))
+}
+const rapat = (t) => String(t).replace(/\s+/g, ' ').trim().toUpperCase()
+
+// ------------------------------------------------------------------ anti-kebocoran (D6)
+/** Ambang kemiripan BEKU: di atas ini kasus held-out dianggap mencurigakan (parafrase/salinan) → ditolak. */
+export const AMBANG_KEMIRIPAN = Object.freeze({ trigramKata: 0.3, ngramKarakter5: 0.4 })
+const tokenKata = (s) => String(s).toUpperCase().replace(/\d+/g, '0').split(/[^A-Z0-9]+/).filter(Boolean)
+function himpunanN(xs, n) {
+  const o = new Set()
+  for (let i = 0; i + n <= xs.length; i++) o.add(typeof xs === 'string' ? xs.slice(i, i + n) : xs.slice(i, i + n).join(' '))
+  return o
+}
+const sidikKemiripan = (t) => ({ w3: himpunanN(tokenKata(t), 3), c5: himpunanN(String(t).toUpperCase().replace(/[^A-Z0-9]+/g, ' '), 5) })
+function jaccard(a, b) {
+  let i = 0
+  for (const x of a) if (b.has(x)) i++
+  const u = a.size + b.size - i
+  return u ? i / u : 0
+}
+/** Kemiripan dua teks: Jaccard trigram kata (angka dinormalkan) & Jaccard 5-gram karakter. */
+export function kemiripanTeks(a, b) {
+  const x = typeof a === 'string' ? sidikKemiripan(a) : a
+  const y = typeof b === 'string' ? sidikKemiripan(b) : b
+  return { trigramKata: jaccard(x.w3, y.w3), ngramKarakter5: jaccard(x.c5, y.c5) }
+}
+
+/** Korpus kasus yang SUDAH TERLIHAT (Eval-1/2/3, regresi, Phase 0, cadangan E11) — dasar penolakan D6. */
+export function kasusTerlihat(hariIni = new Date()) {
+  const semua = [...F1.bangunKasusEval1(hariIni), ...F2.bangunKasusEval2(hariIni), ...F3.bangunKasusEval3(hariIni), ...RG.KASUS_REGRESI_MUATAN]
+  const f0 = Object.values(F0.kasusPhase0(hariIni)).map((k) => ({ id: k.id, teks: typeof k.teks === 'string' ? k.teks : (k.baris ?? []).join('\n') }))
+  const e11 = { id: FS.FUTURE_SCAN_E11.id, teks: FS.FUTURE_SCAN_E11.isiHalaman.join('\n') }
+  const korpus = [...semua.map((k) => ({ id: k.id, teks: G.teksKasus(k) })), ...f0, e11].filter((k) => typeof k.teks === 'string' && k.teks.trim()).map((k) => ({ ...k, sidik: sidikKemiripan(k.teks) }))
+  return { id: new Set([...semua.map((k) => k.id), ...f0.map((k) => k.id), e11.id]), teks: new Set(korpus.map((k) => rapat(k.teks))), korpus }
+}
+
+const namaInti = (n) => String(n).toUpperCase().replace(/^(MV|MT|TB|BG|KM|KMP|SPOB|LCT)\.?\s+/, '').trim()
+/** Laporan kemiripan held-out vs korpus terlihat: kasus terdekat per metrik + tumpang-tindih nama kapal (hitungan saja). */
+export function laporanKemiripanHeldout(kasus, terlihat) {
+  return kasus.map((k) => {
+    const s = sidikKemiripan(k.teks)
+    let w = { nilai: 0, kasus: null }
+    let c = { nilai: 0, kasus: null }
+    for (const p of terlihat.korpus) {
+      const m = kemiripanTeks(s, p.sidik)
+      if (m.trigramKata > w.nilai) w = { nilai: m.trigramKata, kasus: p.id }
+      if (m.ngramKarakter5 > c.nilai) c = { nilai: m.ngramKarakter5, kasus: p.id }
+    }
+    const nama = [...(k.gt?.vessels?.daftar ?? []).map((v) => v.name?.value), ...(k.kapalBukti ?? []).map((v) => v.name), ...(k.kapalDikecualikan ?? []).map((v) => v.name)].filter((x) => typeof x === 'string').map(namaInti).filter((x) => x.length >= 5)
+    const tumpang = [...new Set(nama)].filter((n) => terlihat.korpus.some((p) => p.teks.toUpperCase().includes(n))).length
+    const r = (x) => Number(x.toFixed(3))
+    return { kasus: k.id, trigramKata: { nilai: r(w.nilai), kasus: w.kasus }, ngramKarakter5: { nilai: r(c.nilai), kasus: c.kasus }, namaKapalTumpangTindih: tumpang, mencurigakan: w.nilai >= AMBANG_KEMIRIPAN.trigramKata || c.nilai >= AMBANG_KEMIRIPAN.ngramKarakter5 || tumpang > 0 }
+  })
+}
+
+/** Hash spesifikasi paket held-out dari MODUL (termasuk sumber fungsi `teks`) — dihitung runner, bukan dipercaya dari modul. */
+export function hitungHashSpekHeldout(mod) {
+  return sha256(JSON.stringify({ versi: mod.VERSI_HELDOUT_EVAL4, jumlah: mod.JUMLAH_HELDOUT_EVAL4, kasus: mod.KASUS_HELDOUT_EVAL4 }, (k, x) => (typeof x === 'function' ? x.toString() : x)))
+}
+
+/** Paket konkret untuk satu hari eksekusi: dari MODUL beku (konfigurasi owner) atau paket STATIS (uji). */
+export function resolusiPaket(cfg, hariIni = new Date()) {
+  if (!cfg || typeof cfg !== 'object') return null
+  if (cfg.modul) {
+    let kasus = null
+    try {
+      kasus = cfg.modul.bangunKasusHeldoutEval4(hariIni)
+    } catch {
+      kasus = null
+    }
+    return { sumber: 'MODUL', versi: cfg.modul.VERSI_HELDOUT_EVAL4, kasus, hashGt: hitungHashSpekHeldout(cfg.modul), hashDiharapkan: cfg.hashGtBeku }
+  }
+  return { sumber: 'STATIS', versi: cfg.versi, kasus: cfg.kasus, hashGt: Array.isArray(cfg.kasus) ? hitungHashPaket(cfg) : null, hashDiharapkan: cfg.hashGt }
+}
+
+/** Galat paket held-out (kosong = lolos). Menolak kasus terlihat (id, teks, sentinel lama), kemiripan mencurigakan, hash beda. */
+export function periksaPaketHeldout(cfg, { terlihat, hariIni = new Date() } = {}) {
+  const paket = resolusiPaket(cfg, hariIni)
+  if (!paket || typeof paket !== 'object') return ['PAKET_HELDOUT_TIDAK_ADA']
+  const g = []
+  if (typeof paket.versi !== 'string' || !paket.versi) g.push('PAKET_VERSI_TIDAK_ADA')
+  if (!Array.isArray(paket.kasus) || paket.kasus.length === 0) return [...g, 'PAKET_KASUS_KOSONG']
+  const ids = paket.kasus.map((k) => k?.id)
+  if (new Set(ids).size !== ids.length) g.push('PAKET_ID_GANDA')
+  const lihat = terlihat ?? kasusTerlihat()
+  for (const k of paket.kasus) {
+    for (const m of E2.masalahKasusPenilai(k)) g.push(`${k?.id}:${m}`)
+    if (typeof k?.teks !== 'string' || !k.teks.trim()) g.push(`${k?.id}:TEKS_TIDAK_ADA`)
+    else {
+      if (lihat.teks.has(rapat(k.teks))) g.push(`${k.id}:KASUS_SUDAH_TERLIHAT_TEKS`)
+      if ([F1.POLA_SENTINEL, F2.POLA_SENTINEL_EVAL2, F3.POLA_SENTINEL_EVAL3].some((p) => p.test(k.teks))) g.push(`${k.id}:SENTINEL_EVAL_LAMA`)
+    }
+    if (lihat.id.has(k?.id)) g.push(`${k?.id}:KASUS_SUDAH_TERLIHAT_ID`)
+  }
+  if (g.length) return g
+  if (lihat.korpus) for (const r of laporanKemiripanHeldout(paket.kasus, lihat)) if (r.mencurigakan) g.push(`${r.kasus}:KEMIRIPAN_MENCURIGAKAN`)
+  if (typeof paket.hashGt !== 'string' || paket.hashGt !== paket.hashDiharapkan) g.push('PAKET_HASH_GT_BERBEDA')
+  const kons = G.periksaKonsistensiGtSumber(paket.kasus)
+  if (!kons.lulus) g.push(...kons.gagal.map((t) => `${t.kasus}:GT_TIDAK_KONSISTEN_${t.aturan}`))
+  return g
+}
+
+const positif = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0
+export function periksaBatasEval4(batas) {
+  const g = []
+  for (const k of ['maksPanggilan', 'biayaLunakUsd', 'biayaKerasUsd', 'tokenInput', 'tokenOutput']) if (!positif(batas?.[k])) g.push(`BATAS_TIDAK_SAH:${k}`)
+  if (positif(batas?.maksPanggilan) && !Number.isSafeInteger(batas.maksPanggilan)) g.push('BATAS_TIDAK_SAH:maksPanggilan')
+  if (batas?.biayaLunakUsd > batas?.biayaKerasUsd) g.push('BATAS_LUNAK_MELEBIHI_KERAS')
+  return g
+}
+
+/** Galat ambang kualitas (kosong = sah). Toleransi-nol wajib 0; minimum wajib ≥ 0,90 (tak boleh dilonggarkan). */
+export function periksaAmbangKualitas(a) {
+  if (!a || typeof a !== 'object') return ['AMBANG_KUALITAS_TIDAK_ADA']
+  const g = []
+  for (const k of ['h20MuatanTakBerbuktiPostMaks', 'muatanTakBerbuktiPostMaks', 'fatalPostMaks', 'identitasBerbedaMaks', 'kegagalanOutputToolMaks']) if (a[k] !== 0) g.push(`AMBANG_TOLERANSI_NOL_DILANGGAR:${k}`)
+  for (const k of ['lulusHeldoutMin', 'konsistensiUlanganMin']) if (!(typeof a[k] === 'number' && a[k] >= 0.9 && a[k] <= 1)) g.push(`AMBANG_MINIMUM_TIDAK_SAH:${k}`)
+  return g
+}
+
+/**
+ * Bukti anggaran RENCANA: panggilan maksimum (regresi + held-out × ulangan, tanpa ulang) × plafon per panggilan
+ * wajib ≤ batas keras total, dan ≤ maksPanggilan. Tidak terbukti → kesiapan LIVE false (bukan dipalsukan).
+ */
+export function buktiAnggaranRencana(konfig, { jumlahRegresi = URUTAN_REGRESI.length } = {}) {
+  const n = konfig?.jumlahKasusHeldout ?? (Array.isArray(konfig?.paket?.kasus) ? konfig.paket.kasus.length : 0)
+  const maksPanggilan = jumlahRegresi + n * (konfig?.ulangan ?? 0)
+  const plafon = konfig?.plafonPerPanggilanUsd
+  const maksBiayaUsd = Number((maksPanggilan * plafon).toFixed(6))
+  const batasKerasUsd = konfig?.batas?.biayaKerasUsd
+  const galat = []
+  if (!(Number.isFinite(maksBiayaUsd) && maksBiayaUsd <= batasKerasUsd)) galat.push(`ANGGARAN_MAKS_RENCANA_MELEBIHI_BATAS_KERAS:${maksPanggilan}x${plafon}=${maksBiayaUsd}>${batasKerasUsd}`)
+  if (!(maksPanggilan <= konfig?.batas?.maksPanggilan)) galat.push('ANGGARAN_RENCANA_MELEBIHI_MAKS_PANGGILAN')
+  return { maksPanggilan, plafonPerPanggilanUsd: plafon, maksBiayaUsd, batasKerasUsd, terbukti: galat.length === 0, galat, plafonAmanUsd: Number.isFinite(batasKerasUsd / maksPanggilan) ? Math.floor((batasKerasUsd / maksPanggilan) * 1e6) / 1e6 : null }
+}
+
+export function periksaKonfigOwner(konfig, opsi = {}) {
+  if (konfig === null || konfig === undefined) return ['KONFIG_OWNER_EVAL4_BELUM_DITETAPKAN']
+  const g = [...periksaPaketHeldout(konfig.paket, opsi), ...periksaBatasEval4(konfig.batas), ...periksaAmbangKualitas(konfig.ambangKualitas)]
+  if (konfig.jumlahKasusHeldout !== undefined) {
+    const p = resolusiPaket(konfig.paket, opsi.hariIni ?? new Date())
+    if (!Array.isArray(p?.kasus) || p.kasus.length !== konfig.jumlahKasusHeldout) g.push('PAKET_JUMLAH_KASUS_BERBEDA')
+  }
+  if (!(Number.isSafeInteger(konfig.ulangan) && konfig.ulangan >= 1 && konfig.ulangan <= 3)) g.push('ULANGAN_TIDAK_SAH')
+  // Kunci keputusan owner: batas keras total ≤ US$2,10 dan plafon per panggilan ≤ US$0,05 (tak boleh dinaikkan).
+  if (positif(konfig.batas?.biayaKerasUsd) && konfig.batas.biayaKerasUsd > BATAS_KERAS_MAKS_OWNER_USD) g.push('BATAS_KERAS_MELEBIHI_KEPUTUSAN_OWNER')
+  if (positif(konfig.plafonPerPanggilanUsd) && konfig.plafonPerPanggilanUsd > PLAFON_PER_PANGGILAN_MAKS_OWNER_USD) g.push('PLAFON_MELEBIHI_KEPUTUSAN_OWNER')
+  if (!positif(konfig.plafonPerPanggilanUsd)) g.push('PLAFON_PER_PANGGILAN_TIDAK_SAH')
+  else if (positif(konfig.batas?.biayaKerasUsd) && konfig.plafonPerPanggilanUsd > konfig.batas.biayaKerasUsd) g.push('PLAFON_MELEBIHI_BATAS_KERAS')
+  return g
+}
+
+/** Penghalang LIVE Eval-4 untuk konfigurasi owner yang TERBEKU di repo (tanpa otorisasi; untuk CLI/laporan). */
+export function penghalangLiveEval4({ konfig = KONFIG_OWNER_EVAL4, terlihat, hariIni = new Date() } = {}) {
+  const galatKonfig = konfig === null ? null : periksaKonfigOwner(konfig, { terlihat: terlihat ?? kasusTerlihat(hariIni), hariIni })
+  const galatAnggaran = konfig === null ? null : buktiAnggaranRencana(konfig).galat
+  return M.kesiapanLiveEval4({ otorisasiOwnerLive: false, konfigOwner: konfig, galatKonfig, galatAnggaran, buktiTransport: BUKTI_TRANSPORT_S5_EVAL4, harapanTransport: harapanTransportEval4() }).alasan
+}
+
+// ------------------------------------------------------------------ rencana (deterministik)
+/** Regresi dulu (urutan beku), lalu held-out per ulangan dalam urutan paket. Satu slot = satu panggilan. */
+export function susunRencanaEval4({ regresi, heldout = [], ulangan = 1 }) {
+  const r = []
+  for (const k of regresi) r.push({ seq: r.length + 1, blok: BLOK_REGRESI, kasus: k.id, ulangan: 1, model: M.EXPECTED_MODEL_ID })
+  for (let u = 1; u <= (heldout.length ? ulangan : 0); u++) for (const k of heldout) r.push({ seq: r.length + 1, blok: BLOK_HELDOUT, kasus: k.id, ulangan: u, model: M.EXPECTED_MODEL_ID })
+  return r
+}
+export const sidikRencana = (rencana) => sha256(JSON.stringify(rencana))
+
+/** Rencana panggilan LENGKAP & proyeksi untuk satu konfigurasi (dicetak sebelum eksekusi apa pun). */
+export function rincianRencanaEval4(konfig = KONFIG_OWNER_EVAL4, hariIni = new Date()) {
+  const paket = konfig ? resolusiPaket(konfig.paket, hariIni) : null
+  const rencana = susunRencanaEval4({ regresi: URUTAN_REGRESI.map((id) => ({ id })), heldout: (paket?.kasus ?? []).map((k) => ({ id: k.id })), ulangan: konfig?.ulangan ?? 1 })
+  return { rencana, sidik: sidikRencana(rencana), anggaran: konfig ? buktiAnggaranRencana(konfig) : null }
+}
+
+// ------------------------------------------------------------------ prasyarat
+export function periksaPrasyaratEval4(env, mode, proses = process.env) {
+  const galat = []
+  if (mode !== MODE.OFFLINE && mode !== MODE.LIVE) return ['MODE_TIDAK_SAH']
+  const dua = (n) => [env[n], proses[n]]
+  if (dua('NODE_ENV').includes('production')) galat.push('NODE_ENV=production ditolak')
+  if (dua('VERCEL_ENV').includes('production')) galat.push('VERCEL_ENV=production ditolak')
+  if (dua('OPENROUTER_API_KEY').some(Boolean)) galat.push('OPENROUTER_API_KEY harus KOSONG (kunci produksi tak pernah dipakai)')
+  const kunciUji = env.SPIKE_OPENROUTER_API_KEY
+  if (kunciUji && dua('OPENROUTER_API_KEY').includes(kunciUji)) galat.push('KUNCI_UJI_SAMA_DENGAN_KUNCI_PRODUKSI')
+  if (dua('TAH_INTAKE_MODEL').some((v) => v !== undefined && v.trim() !== '')) galat.push('TAH_INTAKE_MODEL harus kosong')
+  if (dua('OPENROUTER_SPK_MODEL').some((v) => v !== undefined && v.trim() !== '' && v.trim() !== H.MODEL_S45)) galat.push('OPENROUTER_SPK_MODEL harus kosong atau Sonnet 4.5')
+  for (const n of ['DATABASE_URL', 'DIRECT_URL', 'SPIKE_DATABASE_URL']) if (dua(n).some(Boolean)) galat.push(`${n} harus kosong (runner Eval-4 tidak menyentuh DB)`)
+  if (mode === MODE.LIVE) {
+    if (FRASA_LAMA.includes(env.SPIKE_AUTHORIZED)) galat.push('SPIKE_AUTHORIZED berisi frasa run terdahulu — Eval-4 butuh frasanya sendiri')
+    else if (env.SPIKE_AUTHORIZED !== FRASA_OTORISASI_EVAL4) galat.push('SPIKE_AUTHORIZED tidak sama dengan frasa otorisasi Eval-4')
+    if (!kunciUji) galat.push('SPIKE_OPENROUTER_API_KEY (kunci uji khusus) tidak diset')
+  }
+  return galat
+}
+
+// ------------------------------------------------------------------ pagar identitas Eval-4 (terluar)
+/** Galat bentuk transport Eval-4 (kosong = sesuai): tanpa temperature, tepat satu tool, tool_choice function paksa pada tool itu. */
+export function periksaBentukTransportEval4(b) {
+  const g = []
+  if (!b || typeof b !== 'object') return ['BADAN_TIDAK_SAH']
+  if (Object.prototype.hasOwnProperty.call(b, 'temperature')) g.push('TEMPERATURE_DIKIRIM')
+  const nama = Array.isArray(b.tools) && b.tools.length === 1 ? b.tools[0]?.function?.name : null
+  if (!nama) g.push('TOOL_TIDAK_TUNGGAL')
+  if (!(b.tool_choice?.type === 'function' && typeof b.tool_choice.function?.name === 'string' && b.tool_choice.function.name === nama)) g.push('TOOL_PAKSA_TIDAK_ADA')
+  return g
+}
+
+/** Badan permintaan wajib lolos periksaBadanPermintaanEval4 + bentuk transport Eval-4 SEBELUM pagar slot/transport (0 biaya bila ditolak). */
+export function pagarBadanEval4(berikut, keadaan) {
+  return async (url, init) => {
+    let b = {}
+    try {
+      b = JSON.parse(String(init?.body ?? '{}'))
+    } catch {}
+    const g = [...M.periksaBadanPermintaanEval4(b), ...periksaBentukTransportEval4(b)]
+    if (g.length) {
+      keadaan.ditolak.push({ alasan: 'BADAN_EVAL4_DITOLAK', detail: g })
+      keadaan.berhenti = keadaan.berhenti ?? 'BADAN_EVAL4_DITOLAK'
+      throw new Error('EVAL4_BADAN_EVAL4_DITOLAK')
+    }
+    return berikut(url, init)
+  }
+}
+
+// ------------------------------------------------------------------ titik-simpan
+/** Toko checkpoint berkas (tulis atomik: berkas sementara + rename). Jalur wajib di luar repo. */
+export function buatTokoCheckpointBerkas(jalur) {
+  return {
+    jalur,
+    ada: () => existsSync(jalur),
+    baca() {
+      return JSON.parse(readFileSync(jalur, 'utf8'))
+    },
+    tulis(obj) {
+      const tmp = `${jalur}.tmp-${process.pid}`
+      writeFileSync(tmp, JSON.stringify(obj, null, 2))
+      renameSync(tmp, jalur)
+    },
+  }
+}
+
+/** Toko checkpoint memori (uji). `gagalTulisKe` = nomor tulis yang dibuat gagal (simulasi disk penuh). */
+export function buatTokoCheckpointMemori(awal = null, { gagalTulisKe = null } = {}) {
+  let isi = awal === null ? null : structuredClone(awal)
+  let n = 0
+  const riwayat = []
+  return {
+    jalur: 'memori',
+    ada: () => isi !== null,
+    baca: () => structuredClone(isi),
+    tulis(obj) {
+      n++
+      if (gagalTulisKe === n) throw new Error('stub: tulis checkpoint gagal')
+      isi = structuredClone(obj)
+      riwayat.push(structuredClone(obj))
+    },
+    riwayat,
+    isi: () => structuredClone(isi),
+  }
+}
+
+/** Galat resume (kosong = boleh dilanjutkan). Lanjut hanya dari jeda/putus BERSIH di batas slot. */
+export function periksaResume(cp, ikatan) {
+  if (!cp || typeof cp !== 'object') return ['CHECKPOINT_TIDAK_TERBACA']
+  const g = []
+  if (cp.format !== FORMAT_CHECKPOINT) g.push('FORMAT_CHECKPOINT_BERBEDA')
+  if (JSON.stringify(cp.ikatan) !== JSON.stringify(ikatan)) g.push('IKATAN_CHECKPOINT_BERBEDA')
+  if (cp.inflight !== null && cp.inflight !== undefined) g.push(`SLOT_INFLIGHT:${cp.inflight}:PANGGILAN_MUNGKIN_TERKIRIM_TINJAUAN_OWNER`)
+  if (cp.status === 'SELESAI') g.push('RUN_SUDAH_SELESAI')
+  else if (cp.status !== 'DIJEDA' && cp.status !== 'BERJALAN') g.push(`STATUS_TIDAK_BISA_DILANJUTKAN:${cp.status}`)
+  if (!Array.isArray(cp.slot) || cp.slot.some((s) => s?.status !== 'OK')) g.push('ADA_SLOT_GAGAL_ATAU_RUSAK')
+  if ((cp.akuntansi?.ditolak ?? []).length) g.push('ADA_PENOLAKAN_PAGAR')
+  if (!Array.isArray(cp.akuntansi?.panggilan) || cp.akuntansi.panggilan.length !== cp.akuntansi.total) g.push('AKUNTANSI_CHECKPOINT_TIDAK_KONSISTEN')
+  return g
+}
+
+// ------------------------------------------------------------------ ringkasan slot (tersanitasi)
+const flagUrut = (xs) => [...new Set(xs)].sort()
+
+/** Jenis kegagalan slot untuk gerbang: IDENTITAS/PAGAR & OUTPUT_TOOL = kegagalan model/kebijakan (FAIL); INFRASTRUKTUR = INCONCLUSIVE. */
+export function jenisKegagalanSlot(status) {
+  if (!status || status === 'OK') return null
+  if (status === 'TIDAK_DIJALANKAN') return 'TIDAK_DIJALANKAN'
+  if (/INCONCLUSIVE_MODEL_IDENTITY|MODEL_DIMINTA_BERBEDA|FALLBACK_DIMINTA|BADAN_EVAL4_DITOLAK|SERVED_MODEL|MODEL_TIDAK_DIIZINKAN/.test(status)) return 'IDENTITAS'
+  if (/PERCOBAAN_ULANG|PANGGILAN_DI_LUAR_SLOT|PANGGILAN_SAAT_PROBE/.test(status)) return 'PAGAR'
+  if (/AI_BAD_RESPONSE|ARGUMEN_TIDAK_SAH|EKSTRAKTOR_GAGAL|PEREKAM_TIDAK_KONSISTEN/.test(status)) return 'OUTPUT_TOOL'
+  return 'INFRASTRUKTUR'
+}
+
+/**
+ * GERBANG KUALITAS Eval-4. Gerbang toleransi-nol dinilai TERPISAH dan tidak bisa ditutupi rata-rata:
+ * satu pelanggaran saja → FAIL. Ambang kelulusan & konsistensi hanya dinilai pada run LENGKAP.
+ *   FAIL          H20/regresi/muatan tak berbukti/FATAL POST/identitas/output tool dilanggar, atau (run lengkap)
+ *                 kelulusan held-out < ambang atau konsistensi < ambang;
+ *   INCONCLUSIVE  run tidak lengkap/dihentikan (infrastruktur, anggaran), konsistensi tak terukur, INCONCLUSIVE_GT;
+ *   PASS          semua gerbang lulus pada run lengkap. BUKAN promosi: Sonnet 5 tetap PENDING_SPIKE.
+ */
+export function evaluasiGerbangEval4({ ringkas, rencana, ambang, ulangan, integritasGt }) {
+  const dinilai = ringkas.filter((r) => r.status === 'OK' && r.penilai)
+  const tag = (r) => `${r.kasus}#u${r.ulangan}`
+  const fatalPost = dinilai.flatMap((r) => r.penilai.POST.fatal.map((f) => `${tag(r)}:${f}`))
+  const muatanTakBerbukti = dinilai.flatMap((r) => r.penilai.POST.fatal.filter((f) => f.startsWith('F5')).map((f) => `${tag(r)}:${f}`))
+  const kegagalan = ringkas.map((r) => ({ seq: r.seq, kasus: r.kasus, ulangan: r.ulangan, status: r.status, jenis: jenisKegagalanSlot(r.status) })).filter((x) => x.jenis && x.jenis !== 'TIDAK_DIJALANKAN')
+  const identitas = kegagalan.filter((x) => x.jenis === 'IDENTITAS' || x.jenis === 'PAGAR')
+  const outputTool = kegagalan.filter((x) => x.jenis === 'OUTPUT_TOOL')
+  const perSeq = new Map(ringkas.map((r) => [r.seq, r]))
+  const slotRegresi = rencana.filter((r) => r.blok === BLOK_REGRESI).map((r) => perSeq.get(r.seq))
+  const h20 = hasilRegresi(perSeq.get(rencana.find((r) => r.kasus === KASUS_H20)?.seq))
+  const slotHeldout = rencana.filter((r) => r.blok === BLOK_HELDOUT)
+  const lengkap = ringkas.length === rencana.length && ringkas.every((r) => r.status === 'OK')
+  const lulusSlot = (r) => !!r && r.status === 'OK' && !!r.penilai && r.klasifikasi.benarPost && r.penilai.POST.FATAL === 0 && r.penilai.POST.MAJOR === 0
+  const nLulus = slotHeldout.filter((r) => lulusSlot(perSeq.get(r.seq))).length
+  const rasioLulus = slotHeldout.length ? nLulus / slotHeldout.length : null
+  const idsHeldout = [...new Set(slotHeldout.map((r) => r.kasus))]
+  const tidakKonsistenMenurut = (kunci) => idsHeldout.filter((id) => {
+    const s = slotHeldout.filter((r) => r.kasus === id).map((r) => perSeq.get(r.seq))
+    const sidik = s.map((x) => (x?.status === 'OK' ? x[kunci] : null))
+    return !(s.length === ulangan && sidik.every((x) => typeof x === 'string') && new Set(sidik).size === 1)
+  })
+  const rasio = (daftar) => (ulangan >= 2 && idsHeldout.length ? (idsHeldout.length - daftar.length) / idsHeldout.length : null)
+  // Gerbang = POST (owner D3). RAW dilaporkan sebagai informasi (tidak menentukan putusan).
+  const tidakKonsisten = tidakKonsistenMenurut('sidikTandaTanganPost')
+  const tidakKonsistenRaw = tidakKonsistenMenurut('sidikTandaTanganRaw')
+  const rasioKonsisten = rasio(tidakKonsisten)
+  const rasioKonsistenRaw = rasio(tidakKonsistenRaw)
+  const regresiDinilai = slotRegresi.every((r) => r?.status === 'OK' && r.penilai)
+  const gerbang = {
+    G_H20_POST: { keras: true, nilai: h20.hasil === 'LULUS' || h20.hasil === 'GAGAL' ? h20.POST.f5Unsupported + h20.POST.karanganMuatan : null, ambang: ambang.h20MuatanTakBerbuktiPostMaks, lulus: h20.hasil === 'LULUS' ? true : h20.hasil === 'GAGAL' ? false : null },
+    G_REGRESI: { keras: true, nilai: slotRegresi.filter((r) => r?.status === 'OK' && r.penilai && r.penilai.POST.FATAL === 0).length, ambang: slotRegresi.length, lulus: slotRegresi.some((r) => r?.status === 'OK' && r.penilai && r.penilai.POST.FATAL > 0) ? false : regresiDinilai ? true : null },
+    G_MUATAN_TAK_BERBUKTI_POST: { keras: true, nilai: muatanTakBerbukti.length, ambang: ambang.muatanTakBerbuktiPostMaks, lulus: muatanTakBerbukti.length <= ambang.muatanTakBerbuktiPostMaks, detail: muatanTakBerbukti },
+    G_FATAL_POST: { keras: true, nilai: fatalPost.length, ambang: ambang.fatalPostMaks, lulus: fatalPost.length <= ambang.fatalPostMaks, detail: fatalPost },
+    G_IDENTITAS: { keras: true, nilai: identitas.length, ambang: ambang.identitasBerbedaMaks, lulus: identitas.length <= ambang.identitasBerbedaMaks, detail: identitas.map((x) => `${x.kasus}#u${x.ulangan}:${x.status}`) },
+    G_OUTPUT_TOOL: { keras: true, nilai: outputTool.length, ambang: ambang.kegagalanOutputToolMaks, lulus: outputTool.length <= ambang.kegagalanOutputToolMaks, detail: outputTool.map((x) => `${x.kasus}#u${x.ulangan}:${x.status}`) },
+    G_LULUS_HELDOUT: { keras: false, nilai: rasioLulus === null ? null : Number(rasioLulus.toFixed(4)), lulusSlot: nLulus, dari: slotHeldout.length, ambang: ambang.lulusHeldoutMin, lulus: lengkap && rasioLulus !== null ? rasioLulus >= ambang.lulusHeldoutMin : null },
+    G_KONSISTENSI_ULANGAN: { keras: false, lapisan: 'POST', nilai: rasioKonsisten === null ? null : Number(rasioKonsisten.toFixed(4)), tidakKonsisten, ambang: ambang.konsistensiUlanganMin, lulus: lengkap && rasioKonsisten !== null ? rasioKonsisten >= ambang.konsistensiUlanganMin : null, infoRaw: { nilai: rasioKonsistenRaw === null ? null : Number(rasioKonsistenRaw.toFixed(4)), tidakKonsisten: tidakKonsistenRaw } },
+    G_LENGKAP: { keras: false, nilai: ringkas.filter((r) => r.status === 'OK').length, ambang: rencana.length, lulus: lengkap },
+    G_INTEGRITAS_GT: { keras: false, nilai: integritasGt.status, lulus: integritasGt.status === 'OK' ? true : null },
+  }
+  const gagal = Object.entries(gerbang).filter(([, v]) => v.lulus === false).map(([k]) => k)
+  const belum = Object.entries(gerbang).filter(([, v]) => v.lulus === null).map(([k]) => k)
+  const putusan = gagal.some((k) => gerbang[k].keras || k === 'G_LULUS_HELDOUT' || k === 'G_KONSISTENSI_ULANGAN') ? 'FAIL' : gagal.length || belum.length ? 'INCONCLUSIVE' : 'PASS'
+  return { putusan, gerbang, gagal, belumTerukur: belum, catatan: 'PASS bukan promosi: anthropic/claude-sonnet-5 TETAP PENDING_SPIKE; Prompt v4 tetap kandidat.' }
+}
+const ringkasLapisan = (L) =>
+  !L
+    ? null
+    : {
+        FATAL: L.jumlah.FATAL,
+        MAJOR: L.jumlah.MAJOR,
+        MINOR: L.jumlah.MINOR,
+        fatal: L.fatal.map((f) => `${f.kode}${f.jenis ? `/${f.jenis}` : ''}@${f.jalur}`),
+        f5Unsupported: L.fatal.filter((f) => f.kode === 'F5' && f.jenis === S3.JENIS_F5.UNSUPPORTED).length,
+        karanganMuatan: L.muatan?.karangan?.length ?? 0,
+        konflikGt: L.konflikGt?.length ?? 0,
+        halusinasiKritis: L.halusinasiKritis,
+        recall: L.recall,
+      }
+
+/** Ringkasan SATU slot tanpa isi dokumen / nilai string model (hanya enum, hitungan, flag, sidik). */
+export function ringkasSlot({ slot, kasus, raw, post, nilai, P, tandaTanganPost = null }) {
+  const cargoPost = post?.proposal?.cargoes ?? []
+  return {
+    seq: slot.seq,
+    blok: slot.blok,
+    kasus: kasus.id,
+    ulangan: slot.ulangan,
+    model: slot.model,
+    status: slot.status,
+    sebab: slot.sebab ?? null,
+    sumber: E2.sidikSumber(kasus.teks),
+    klasifikasi: {
+      harap: kasus.gt.classification.values,
+      raw: typeof raw?.classification === 'string' ? raw.classification.slice(0, 40) : null,
+      post: post?.classification ?? null,
+      benarPost: !!post && kasus.gt.classification.values.includes(post.classification),
+      bolehTautkanVoyagePost: post ? P.bolehTautkanVoyage(post.classification) : null,
+    },
+    penilai: nilai ? { versi: nilai.versiPenilai, integritasGt: nilai.integritasGt, RAW: ringkasLapisan(nilai.RAW), POST: ringkasLapisan(nilai.POST) } : null,
+    // Konsistensi (owner D3): tanda tangan kritis scorer-1 atas POST (pipeline tervalidasi); RAW hanya informasi.
+    sidikTandaTanganPost: typeof tandaTanganPost === 'string' ? sha256(tandaTanganPost).slice(0, 16) : null,
+    sidikTandaTanganRaw: typeof nilai?.tandaTangan === 'string' ? sha256(nilai.tandaTangan).slice(0, 16) : null,
+    muatan: post
+      ? {
+          raw: Array.isArray(raw?.cargoes) ? raw.cargoes.length : 0,
+          post: cargoPost.length,
+          dibuangValidator: post.proposal.cargoesDropped ?? 0,
+          postTidakTepercaya: cargoPost.filter((c) => !P.cargoTepercaya(c)).length,
+          flagsPost: flagUrut(cargoPost.flatMap((c) => c.flags ?? [])),
+        }
+      : null,
+    panggilan: slot.panggilan.map((p) => ({ seq: p.seq, http: p.http ?? null, httpStatus: p.httpStatus ?? null, kategoriGalat: p.kategoriGalat ?? null, requestedModel: p.requestedModel ?? null, servedModel: p.servedModel ?? null, promptTokens: p.promptTokens ?? null, completionTokens: p.completionTokens ?? null, biayaUsd: p.biayaUsd ?? null, finishReason: p.finishReason ?? null, latencyMs: p.latencyMs ?? null })),
+    perekam: slot.perekam,
+  }
+}
+
+/**
+ * KEBIJAKAN BERHENTI TOLERANSI-NOL (keputusan owner sesudah heldout-2): pelanggaran toleransi-nol apa pun
+ * menghentikan run SEBELUM panggilan model berikutnya — ditegakkan RUNNER, bukan driver.
+ *   • slot OK dengan FATAL di POST (mencakup F5 muatan tak berbukti/karangan termasuk H20, F1–F4 fakta/angka kritis,
+ *     dan FATAL regresi) → TOLERANSI_NOL_FATAL_POST;
+ *   • identitas/fallback, pagar, output tool tak sah/hilang, dan kegagalan slot lain sudah menghentikan run lewat
+ *     `keadaan.berhenti` (status slot ≠ OK) sebelum pemeriksaan ini.
+ * Mengembalikan daftar alasan (kosong = tidak ada pelanggaran). Ambang kualitas TIDAK berubah.
+ */
+export const KEBIJAKAN_BERHENTI_EVAL4 = 'SEMUA_PELANGGARAN_TOLERANSI_NOL_HENTIKAN_SEBELUM_PANGGILAN_BERIKUT'
+export function pelanggaranToleransiNolSlot(r) {
+  if (!r || r.status !== 'OK' || !r.penilai) return []
+  return r.penilai.POST.fatal.map((f) => `TOLERANSI_NOL_FATAL_POST:${r.kasus}#u${r.ulangan}:${f}`)
+}
+
+// ------------------------------------------------------------------ H20 & agregat
+/** Hasil regresi muatan satu slot: LULUS bila POST tanpa F5 (tak ada muatan tak berbukti yang lolos validator). */
+export function hasilRegresi(r) {
+  if (!r) return { hasil: 'TIDAK_DIJALANKAN' }
+  if (r.status !== 'OK' || !r.penilai) return { hasil: 'TIDAK_DINILAI', status: r.status }
+  const f5Post = r.penilai.POST.fatal.filter((f) => f.startsWith('F5'))
+  return {
+    hasil: f5Post.length === 0 ? 'LULUS' : 'GAGAL',
+    RAW: { fatal: r.penilai.RAW.fatal, f5Unsupported: r.penilai.RAW.f5Unsupported, karanganMuatan: r.penilai.RAW.karanganMuatan, cargo: r.muatan.raw },
+    POST: { fatal: r.penilai.POST.fatal, f5Unsupported: r.penilai.POST.f5Unsupported, karanganMuatan: r.penilai.POST.karanganMuatan, cargo: r.muatan.post, flags: r.muatan.flagsPost, tidakTepercaya: r.muatan.postTidakTepercaya },
+    karanganLolosPost: f5Post.length > 0,
+    ditahanValidator: r.penilai.RAW.f5Unsupported > 0 && r.penilai.POST.f5Unsupported === 0,
+    klasifikasiPost: r.klasifikasi.post,
+    bolehTautkanVoyagePost: r.klasifikasi.bolehTautkanVoyagePost,
+    integritasGt: r.penilai.integritasGt,
+  }
+}
+
+function agregatBlok(ringkas) {
+  const ok = ringkas.filter((r) => r.status === 'OK' && r.penilai)
+  const jumlah = (f) => ok.reduce((a, r) => a + f(r), 0)
+  return {
+    slot: ringkas.length,
+    ok: ok.length,
+    klasifikasiBenarPost: jumlah((r) => (r.klasifikasi.benarPost ? 1 : 0)),
+    kasusFatalPost: jumlah((r) => (r.penilai.POST.FATAL > 0 ? 1 : 0)),
+    fatalRaw: jumlah((r) => r.penilai.RAW.FATAL),
+    fatalPost: jumlah((r) => r.penilai.POST.FATAL),
+    f5UnsupportedRaw: jumlah((r) => r.penilai.RAW.f5Unsupported),
+    f5UnsupportedPost: jumlah((r) => r.penilai.POST.f5Unsupported),
+    halusinasiKritisPost: jumlah((r) => r.penilai.POST.halusinasiKritis),
+    recallPost: { benar: jumlah((r) => r.penilai.POST.recall.benar), total: jumlah((r) => r.penilai.POST.recall.total) },
+    kasusInconclusiveGt: ok.filter((r) => r.penilai.integritasGt === S3.INCONCLUSIVE_GT).map((r) => r.kasus),
+  }
+}
+
+// ------------------------------------------------------------------ inti
+/**
+ * Jalankan Eval-4. Mengembalikan laporan tersanitasi (tidak menulis laporan).
+ *   offline → transport stub (bawaan: jawaban sempurna dari GT); TIDAK pernah fetch nyata.
+ *   live    → fetch nyata (BELUM terbuka: kesiapanLiveEval4 menolak — lihat penghalangLiveEval4) ATAU `transportUji` (uji; label DRY_RUN).
+ * `checkpoint` = toko (buatTokoCheckpointBerkas/Memori) atau null; `lanjut` = resume dari toko itu.
+ */
+export async function jalankanRunnerEval4({
+  mode,
+  env = process.env,
+  hariIni = new Date(),
+  log = () => {},
+  jawabStub = null,
+  opsiStub = {},
+  transportUji = null,
+  konfigUji,
+  validasiUji = null,
+  penilaiUji = null,
+  bekuUji = null,
+  checkpoint = null,
+  lanjut = false,
+  sinyalJeda = () => false,
+  terlihatUji = null,
+} = {}) {
+  const tolak = (verdict, galat) => ({ label: LABEL_DRY, verdict, mode: mode ?? null, galat, panggilanNyata: 0, panggilanTransport: 0 })
+  if (mode !== MODE.OFFLINE && mode !== MODE.LIVE) return tolak('DITOLAK_MODE', ['MODE_WAJIB_EKSPLISIT'])
+  const pakaiSeam = !!(validasiUji || penilaiUji || bekuUji || terlihatUji || konfigUji !== undefined)
+  if (mode === MODE.LIVE && !transportUji && pakaiSeam) return tolak('DITOLAK_PRASYARAT', ['SEAM_UJI_DILARANG_SAAT_JARINGAN'])
+
+  // ── PREFLIGHT (urutan tetap; galat apa pun → 0 panggilan) ──
+  const integritas = bekuUji ? bekuUji() : verifikasiBekuEval4()
+  if (integritas.length) return tolak('DITOLAK_INTEGRITAS', integritas)
+  const require = createRequire(import.meta.url)
+  const jiti = require('jiti')(fileURLToPath(import.meta.url), { alias: { '@': join(AKAR, 'src') }, interopDefault: true })
+  const muat = (rel) => jiti(join(AKAR, rel))
+  const X = muat('src/lib/ai/vessel-call-extract.ts')
+  const galatPrompt = verifikasiIkatanPromptV4(X.PROMPT_INTAKE_V4)
+  if (X.PROMPT_INTAKE_V4.tool?.function?.name !== TOOL_PAKSA_EVAL4) galatPrompt.push('TOOL_PAKSA_BERBEDA')
+  if (galatPrompt.length) return tolak('DITOLAK_IKATAN_PROMPT', galatPrompt)
+  if (X.VERSI_PROMPT_INTAKE !== '3') return tolak('DITOLAK_IKATAN_PROMPT', ['PROMPT_PRODUKSI_BUKAN_V3'])
+  let opsiIdentitas
+  try {
+    opsiIdentitas = M.opsiEkstraktorEval4()
+  } catch (e) {
+    return tolak('DITOLAK_IDENTITAS_MODEL', [String(e?.message ?? e)])
+  }
+  if (opsiIdentitas.modelWajib !== M.EXPECTED_MODEL_ID || opsiIdentitas.servedWajib !== M.EXPECTED_SERVED_MODEL_ID) return tolak('DITOLAK_IDENTITAS_MODEL', ['OPSI_IDENTITAS_BERBEDA'])
+
+  const P = muat('src/services/intake/intake-policy.ts')
+  const V = muat('src/lib/vessels.ts')
+  const MC = muat('src/lib/ai/model-capabilities.ts')
+  const NORM_VALIDASI = { imo: V.normalisasiImo, imoSah: V.imoCheckDigitSah, mmsi: V.normalisasiMmsi, mmsiSah: V.mmsiSah, callSign: V.normalisasiCallSign }
+  const NORM_SKOR = { namaKapal: P.normalisasiNamaKapal, namaPort: P.normalisasiNamaPort, namaPihak: P.normalisasiNamaPihak, unlocode: P.normalisasiUnlocode, imo: V.normalisasiImo, mmsi: V.normalisasiMmsi, callSign: V.normalisasiCallSign }
+
+  const konfig = konfigUji !== undefined ? konfigUji : KONFIG_OWNER_EVAL4
+  if (mode === MODE.LIVE || konfig !== null) {
+    const galatKonfig = periksaKonfigOwner(konfig, { terlihat: terlihatUji ?? kasusTerlihat(hariIni), hariIni })
+    if (galatKonfig.length) return tolak('DITOLAK_KONFIG_OWNER', galatKonfig)
+  }
+  const petaRg = new Map(RG.KASUS_REGRESI_MUATAN.map((k) => [k.id, k]))
+  const tambahNormal = (k) => ({ ...k, teksNormal: P.normalisasiTeksSumber(k.teks) })
+  const regresi = H.bekukanDalam(URUTAN_REGRESI.map((id) => tambahNormal(petaRg.get(id))))
+  const paketRun = konfig ? resolusiPaket(konfig.paket, hariIni) : null
+  const heldout = H.bekukanDalam((paketRun?.kasus ?? []).map(tambahNormal))
+  const kasus = [...regresi, ...heldout]
+  const galatKasus = []
+  for (const k of kasus) for (const m of E2.masalahKasusPenilai(k)) galatKasus.push(`${k.id}:${m}`)
+  const kons = G.periksaKonsistensiGtSumber(regresi)
+  if (!kons.lulus) galatKasus.push(...kons.gagal.map((t) => `${t.kasus}:GT_TIDAK_KONSISTEN_${t.aturan}`))
+  if (galatKasus.length) return tolak('DITOLAK_KASUS', galatKasus)
+  const petaKasus = new Map(kasus.map((k) => [k.id, k]))
+
+  const rencana = susunRencanaEval4({ regresi, heldout, ulangan: konfig?.ulangan ?? 1 })
+  const batas = konfig?.batas ?? BATAS_LURING_STUB
+  const plafonUsd = konfig?.plafonPerPanggilanUsd ?? PLAFON_LURING_STUB_USD
+  const galatBatas = periksaBatasEval4(batas)
+  if (galatBatas.length) return tolak('DITOLAK_BATAS', galatBatas)
+  if (rencana.length > batas.maksPanggilan) return tolak('DITOLAK_BATAS', ['RENCANA_MELEBIHI_BATAS_PANGGILAN'])
+  const pra = periksaPrasyaratEval4(env, mode)
+  if (pra.length) return tolak('DITOLAK_PRASYARAT', pra)
+
+  let transport
+  let fetchTransport
+  if (mode === MODE.OFFLINE) {
+    if (transportUji) return tolak('DITOLAK_PRASYARAT', ['MODE_OFFLINE_TIDAK_MENERIMA_TRANSPORT'])
+    transport = TRANSPORT.STUB
+  } else {
+    if (jawabStub) return tolak('DITOLAK_PRASYARAT', ['MODE_LIVE_TIDAK_MENERIMA_STUB'])
+    transport = typeof transportUji === 'function' ? TRANSPORT.TEST_DOUBLE : TRANSPORT.NETWORK
+    fetchTransport = transportUji ?? globalThis.fetch
+  }
+  if (transport === TRANSPORT.NETWORK) {
+    const siap = M.kesiapanLiveEval4({ otorisasiOwnerLive: otorisasiLiveOwner(env), dilayani: M.EXPECTED_SERVED_MODEL_ID, konfigOwner: konfig, galatKonfig: periksaKonfigOwner(konfig, { terlihat: kasusTerlihat(hariIni), hariIni }), galatAnggaran: buktiAnggaranRencana(konfig).galat, buktiTransport: BUKTI_TRANSPORT_S5_EVAL4, harapanTransport: harapanTransportEval4() })
+    if (!siap.siap) return tolak('DITOLAK_KESIAPAN_LIVE', siap.alasan)
+    if (!checkpoint) return tolak('DITOLAK_PRASYARAT', ['CHECKPOINT_WAJIB_UNTUK_JARINGAN'])
+  }
+  const label = transport === TRANSPORT.NETWORK ? LABEL_LIVE : LABEL_DRY
+  const hariIso = new Date(hariIni).toISOString().slice(0, 10)
+  if (transport === TRANSPORT.STUB) fetchTransport = R2.buatPenyediaStubEval2(kasus, jawabStub ?? ((k) => R3.jawabanSempurnaEval3(k)), opsiStub).fn
+
+  // ── Titik-simpan: ikatan & resume ──
+  const ikatan = {
+    format: FORMAT_CHECKPOINT,
+    runner: VERSI_RUNNER_EVAL4,
+    mode,
+    transport,
+    modelDiminta: M.EXPECTED_MODEL_ID,
+    modelDilayani: M.EXPECTED_SERVED_MODEL_ID,
+    prompt: IKATAN_PROMPT_V4,
+    penilai: S3.VERSI_PENILAI_V2,
+    regresi: RG.VERSI_REGRESI_MUATAN,
+    shaBeku: SHA_BEKU_EVAL4,
+    paket: paketRun ? { versi: paketRun.versi, hashGt: paketRun.hashGt } : null,
+    ambang: konfig?.ambangKualitas ?? null,
+    ulangan: konfig?.ulangan ?? 1,
+    batas,
+    plafonUsd,
+    sidikRencana: sidikRencana(rencana),
+    tanggalEfektif: hariIso,
+    sidikSumber: sidikSumberKasus(kasus),
+    bentukTransport: BENTUK_TRANSPORT_EVAL4,
+    profilTransport: PROFIL_TRANSPORT_EVAL4,
+  }
+  let cp = null
+  if (lanjut) {
+    if (!checkpoint?.ada()) return tolak('DITOLAK_RESUME', ['CHECKPOINT_TIDAK_ADA'])
+    try {
+      cp = checkpoint.baca()
+    } catch {
+      return tolak('DITOLAK_RESUME', ['CHECKPOINT_TIDAK_TERBACA'])
+    }
+    const gr = periksaResume(cp, ikatan)
+    if (gr.length) return tolak('DITOLAK_RESUME', gr)
+  } else if (checkpoint?.ada()) return tolak('DITOLAK_PRASYARAT', ['CHECKPOINT_SUDAH_ADA_PAKAI_RESUME_ATAU_JALUR_BARU'])
+
+  const pindai = (t) => {
+    const temuan = R3.pindaiLaporanEval3(t, { kunci: env.SPIKE_OPENROUTER_API_KEY, kasus })
+    if (t.includes(FRASA_OTORISASI_EVAL4)) temuan.push('FRASA_OTORISASI')
+    return [...new Set(temuan)]
+  }
+  const snapshot = Object.fromEntries(ENV_DIKELOLA.map((n) => [n, process.env[n]]))
+  const fetchSebelum = globalThis.fetch
+  let jaringanTerblokir = 0
+  const { jalur, keadaan, slotAktif } = R3.rakitJalurPenyedia(fetchTransport, batas, { plafonUsd })
+  const jalurEval4 = pagarBadanEval4(jalur, keadaan)
+  const selesaiSebelumnya = new Map()
+  if (cp) {
+    // Akumulasi run lintas-resume: batas panggilan/biaya/token berlaku untuk SELURUH run, bukan per sesi.
+    keadaan.total = cp.akuntansi.total
+    keadaan.biaya = cp.akuntansi.biaya
+    keadaan.token = { ...cp.akuntansi.token }
+    keadaan.panggilan.push(...cp.akuntansi.panggilan)
+    for (const s of cp.slot) selesaiSebelumnya.set(s.seq, s)
+  }
+  const ringkas = []
+  const pelanggaranToleransiNol = []
+  let dijeda = false
+  let galatFatal = null
+  const simpan = (status, inflight) => {
+    if (!checkpoint) return
+    // Slot sesi terdahulu SELALU ikut (tak pernah hilang saat sesi lanjutan menulis ulang checkpoint).
+    const gabungan = new Map([...selesaiSebelumnya].map(([seq, s]) => [seq, s]))
+    for (const r of ringkas) if (!r.dariCheckpoint) gabungan.set(r.seq, r)
+    const obj = {
+      format: FORMAT_CHECKPOINT,
+      ikatan,
+      status,
+      inflight,
+      diperbarui: new Date().toISOString(),
+      sesi: (cp?.sesi ?? 0) + 1,
+      slot: [...gabungan.values()].sort((a, b) => a.seq - b.seq).filter((r) => r.status === 'OK' || status !== 'DIJEDA'),
+      akuntansi: { total: keadaan.total, biaya: keadaan.biaya, token: { ...keadaan.token }, panggilan: keadaan.panggilan, ditolak: keadaan.ditolak },
+    }
+    const temuan = pindai(JSON.stringify(obj))
+    if (temuan.length) throw new Error(`EVAL4_CHECKPOINT_DITAHAN_PRIVASI:${temuan.join('+')}`)
+    checkpoint.tulis(obj)
+  }
+  const berhentiKeras = () => !!keadaan.berhenti || keadaan.ditolak.some((d) => STOP_ALASAN.includes(d.alasan))
+  const validasiAsli = validasiUji ?? P.validasiEkstraksi
+  const validasi = (raw, k) => validasiAsli(raw, { inputKind: 'TEXT', sourceText: k.teksNormal, hariIni: hariIso, norm: NORM_VALIDASI })
+  const penilai = penilaiUji ?? S3.nilaiKasusV2
+  try {
+    globalThis.fetch = (url, init) => {
+      if (String(url) !== H.URL_OPENROUTER) {
+        jaringanTerblokir++
+        return Promise.reject(new Error('EVAL4_JARINGAN_DIBLOKIR'))
+      }
+      return jalurEval4(url, init)
+    }
+    process.env.OPENROUTER_API_KEY = transport === TRANSPORT.STUB ? KUNCI_STUB : env.SPIKE_OPENROUTER_API_KEY
+    delete process.env.TAH_INTAKE_MODEL
+    const PR = muat('src/lib/ai/perekam-panggilan.ts')
+    const ekstraktor = X.buatEkstraktorOpenRouter(X.PROMPT_INTAKE_V4, opsiIdentitas)
+    const ekstrak = (k, catat) => PR.jalankanDenganKonteks({ model: M.EXPECTED_MODEL_ID, kemampuan: PROFIL_TRANSPORT_EVAL4, catat }, () => X.ekstrakDenganBatasWaktu(ekstraktor, { kind: 'TEXT', text: k.teksNormal }, BATAS_WAKTU_MS))
+    simpan('BERJALAN', null)
+    log(`RENCANA PANGGILAN (${rencana.length} maks, tanpa ulang; plafon/panggilan US$${plafonUsd}; batas keras US$${batas.biayaKerasUsd}; sidik ${ikatan.sidikRencana.slice(0, 16)}…):`)
+    for (const r of rencana) log(`  #${String(r.seq).padStart(2)} ${r.blok} ${r.kasus} u${r.ulangan} → ${r.model}`)
+
+    for (const r of rencana) {
+      const k = petaKasus.get(r.kasus)
+      if (selesaiSebelumnya.has(r.seq)) {
+        ringkas.push({ ...selesaiSebelumnya.get(r.seq), dariCheckpoint: true })
+        continue
+      }
+      const slot = { seq: r.seq, blok: r.blok, ulangan: r.ulangan, model: r.model, status: null, panggilan: [], perekam: [] }
+      if (dijeda || berhentiKeras()) {
+        slot.status = 'TIDAK_DIJALANKAN'
+        slot.sebab = dijeda ? 'DIJEDA' : keadaan.berhenti ?? 'BATAS'
+        ringkas.push(ringkasSlot({ slot, kasus: k, raw: null, post: null, nilai: null, P }))
+        continue
+      }
+      if (sinyalJeda()) {
+        dijeda = true
+        slot.status = 'TIDAK_DIJALANKAN'
+        slot.sebab = 'DIJEDA'
+        ringkas.push(ringkasSlot({ slot, kasus: k, raw: null, post: null, nilai: null, P }))
+        continue
+      }
+      simpan('BERJALAN', r.seq)
+      const idx = keadaan.panggilan.length
+      const idxDitolak = keadaan.ditolak.length
+      slotAktif.model = r.model
+      slotAktif.percobaan = 0
+      let raw = null
+      let post = null
+      let nilai = null
+      let galatEkstrak = null
+      try {
+        raw = await ekstrak(k, (m) => slot.perekam.push({ status: m.status, errorCode: m.errorCode, requestedModel: m.requestedModel, servedModel: m.servedModel, providerRequestId: m.providerRequestId, promptVersion: m.promptVersion, schemaVersion: m.schemaVersion, promptHashCocok: m.promptHash === IKATAN_PROMPT_V4.hashPrompt }))
+      } catch (e) {
+        galatEkstrak = typeof e?.kode === 'string' ? e.kode : 'ERROR'
+      } finally {
+        slotAktif.model = null
+      }
+      slot.panggilan = keadaan.panggilan.slice(idx)
+      const ditolakSlot = keadaan.ditolak.slice(idxDitolak)
+      const infra = slot.panggilan.find((p) => p.http !== 'SUKSES')
+      const berhenti = (sebab) => {
+        keadaan.berhenti = keadaan.berhenti ?? sebab
+      }
+      if (ditolakSlot.length) {
+        slot.status = TOLAK_SLOT.includes(ditolakSlot[0].alasan) ? `GAGAL:${ditolakSlot[0].alasan}` : `DIHENTIKAN:${ditolakSlot[0].alasan}`
+        berhenti(ditolakSlot[0].alasan)
+      } else if (slot.panggilan.length === 0) {
+        slot.status = `GAGAL:TANPA_PANGGILAN_PENYEDIA:${galatEkstrak ?? 'ERROR'}`
+        berhenti('TANPA_PANGGILAN_PENYEDIA')
+      } else if (slot.panggilan.length > 1) {
+        slot.status = 'GAGAL:PERCOBAAN_ULANG'
+        berhenti('PERCOBAAN_ULANG')
+      } else if (infra) {
+        slot.status = `GAGAL:TRANSPORT_${infra.http}${infra.httpStatus ? `_${infra.httpStatus}` : ''}`
+        berhenti('GAGAL_TRANSPORT')
+      } else if (slot.panggilan.some((p) => typeof p.biayaUsd === 'number' && p.biayaUsd > plafonUsd)) {
+        slot.status = 'GAGAL:BIAYA_PER_PANGGILAN_MELEBIHI_PLAFON'
+        berhenti('BIAYA_PER_PANGGILAN_MELEBIHI_PLAFON')
+      } else if (slot.panggilan.some((p) => !p.servedModel)) {
+        slot.status = `GAGAL:${M.INCONCLUSIVE_MODEL_IDENTITY}:SERVED_TIDAK_DILAPORKAN`
+        berhenti('SERVED_MODEL_TIDAK_DILAPORKAN')
+      } else if (slot.panggilan.some((p) => !M.periksaIdentitasModel({ diminta: p.requestedModel, dilayani: p.servedModel }).ok)) {
+        const alasan = slot.panggilan.map((p) => M.periksaIdentitasModel({ diminta: p.requestedModel, dilayani: p.servedModel })).find((x) => !x.ok).alasan
+        slot.status = `GAGAL:${M.INCONCLUSIVE_MODEL_IDENTITY}:${alasan}`
+        berhenti('SERVED_MODEL_BERBEDA')
+      } else if (keadaan.berhenti) slot.status = `GAGAL:${keadaan.berhenti}`
+      else if (galatEkstrak) {
+        slot.status = `GAGAL:${galatEkstrak}`
+        berhenti(`EKSTRAKSI_${galatEkstrak}`)
+      }
+      if (!slot.status && slot.perekam.some((m) => m.status !== 'OK' || !m.promptHashCocok || m.promptVersion !== '4')) {
+        slot.status = 'GAGAL:PEREKAM_TIDAK_KONSISTEN'
+        berhenti('PEREKAM_TIDAK_KONSISTEN')
+      }
+      if (slot.status) raw = null
+      if (!slot.status) {
+        const masalah = S.masalahArgumen(raw)
+        if (masalah.length) {
+          slot.status = `GAGAL:ARGUMEN_TIDAK_SAH:${masalah.join('+')}`
+          berhenti('ARGUMEN_TIDAK_SAH')
+          raw = null
+        }
+      }
+      // POST: validator produksi atas KLON RAW (RAW tak pernah ditimpa).
+      if (!slot.status) {
+        try {
+          post = validasi(structuredClone(raw), k)
+        } catch {
+          slot.status = 'GAGAL:VALIDATOR_ERROR'
+          berhenti('VALIDATOR_ERROR')
+        }
+      }
+      if (!slot.status) {
+        try {
+          nilai = penilai(k, raw, post, NORM_SKOR)
+          if (nilai.ekstraktorGagal) {
+            slot.status = `GAGAL:ARGUMEN_TIDAK_SAH:${(nilai.argumenTidakSah ?? []).join('+') || 'EKSTRAKTOR_GAGAL'}`
+            berhenti('EKSTRAKTOR_GAGAL')
+            nilai = null
+          } else slot.status = 'OK'
+        } catch {
+          slot.status = 'GAGAL:PENILAI_ERROR'
+          berhenti('PENILAI_ERROR')
+          nilai = null
+        }
+      }
+      const tandaTanganPost = nilai && post ? S.tandaTanganKritis(S.tampilanPost(post), NORM_SKOR, k.gt.classification) : null
+      const rk = ringkasSlot({ slot, kasus: k, raw, post, nilai, P, tandaTanganPost })
+      ringkas.push(rk)
+      const nolToleransi = pelanggaranToleransiNolSlot(rk)
+      if (nolToleransi.length) {
+        berhenti('TOLERANSI_NOL_FATAL_POST')
+        pelanggaranToleransiNol.push(...nolToleransi)
+      }
+      simpan(slot.status === 'OK' && !nolToleransi.length ? 'BERJALAN' : 'BERHENTI', null)
+      log(`  ${String(r.seq).padStart(3)} ${r.blok.padEnd(20)} ${r.kasus} u${r.ulangan} → ${slot.status}; FATAL RAW/POST=${rk.penilai?.RAW.FATAL ?? '-'}/${rk.penilai?.POST.FATAL ?? '-'}`)
+    }
+    const semuaOk = ringkas.length === rencana.length && ringkas.every((r) => r.status === 'OK')
+    simpan(semuaOk ? 'SELESAI' : dijeda && !keadaan.berhenti ? 'DIJEDA' : 'BERHENTI', null)
+  } catch (e) {
+    galatFatal = e?.message?.startsWith('EVAL4_') ? e.message.split(':')[0] : `${e?.name ?? 'Error'}`
+  } finally {
+    globalThis.fetch = fetchSebelum
+    for (const n of ENV_DIKELOLA) {
+      if (snapshot[n] === undefined) delete process.env[n]
+      else process.env[n] = snapshot[n]
+    }
+  }
+
+  // ── Agregat, H20, putusan & laporan (HANYA ringkasan tersanitasi; RAW/POST tak pernah ditulis) ──
+  const perSeq = new Map(ringkas.map((r) => [r.seq, r]))
+  const regresiHasil = Object.fromEntries(rencana.filter((r) => r.blok === BLOK_REGRESI).map((r) => [r.kasus, { seq: r.seq, ...hasilRegresi(perSeq.get(r.seq)) }]))
+  const h20 = { kasus: KASUS_H20, asal: 'Eval-3 H20 (regresi, bukan held-out)', kriteria: 'LULUS = POST tanpa F5 (tak ada muatan tak berbukti yang lolos validator); RAW ditampilkan terpisah', ...regresiHasil[KASUS_H20] }
+  const blokRegresi = ringkas.filter((r) => r.blok === BLOK_REGRESI)
+  const blokHeldout = ringkas.filter((r) => r.blok === BLOK_HELDOUT)
+  const regresiGagal = Object.values(regresiHasil).some((x) => x.hasil === 'GAGAL')
+  const regresiLengkap = Object.values(regresiHasil).every((x) => x.hasil === 'LULUS' || x.hasil === 'GAGAL')
+  const integritasGt = S3.integritasGtRun(ringkas.filter((r) => r.penilai).map((r) => ({ id: r.kasus, integritasGt: r.penilai.integritasGt })))
+  const lengkap = !galatFatal && ringkas.length === rencana.length && ringkas.every((r) => r.status === 'OK')
+  const pelanggaranPagar = keadaan.ditolak.filter((d) => ['HOST_TIDAK_DIIZINKAN', 'MODEL_TIDAK_DIIZINKAN', ...TOLAK_SLOT].includes(d.alasan)).map((d) => d.alasan)
+  if (jaringanTerblokir) pelanggaranPagar.push('PERCOBAAN_JARINGAN_LAIN')
+  const gerbangEval4 = konfig ? evaluasiGerbangEval4({ ringkas, rencana, ambang: konfig.ambangKualitas, ulangan: konfig.ulangan, integritasGt }) : null
+  const verdictTanpaKonfig = galatFatal
+    ? 'GAGAL_RUNNER'
+    : regresiGagal
+      ? 'GAGAL_REGRESI_MUATAN'
+      : dijeda && !keadaan.berhenti
+        ? 'DIJEDA'
+        : !lengkap || !regresiLengkap
+          ? 'INCONCLUSIVE_BERHENTI'
+          : integritasGt.status === S3.INCONCLUSIVE_GT
+            ? S3.INCONCLUSIVE_GT
+            : heldout.length === 0
+              ? 'REGRESI_SAJA_TANPA_HELDOUT'
+              : 'MENUNGGU_GERBANG_OWNER'
+  const verdict = !konfig ? verdictTanpaKonfig : galatFatal ? 'GAGAL_RUNNER' : gerbangEval4.putusan === 'FAIL' ? 'FAIL' : dijeda && !keadaan.berhenti ? 'DIJEDA' : gerbangEval4.putusan
+  const laporan = {
+    label,
+    evaluasi: 'PRD-005 Eval-4 (Sonnet 5 saja, Prompt v4 kandidat)',
+    runner: VERSI_RUNNER_EVAL4,
+    penilai: S3.VERSI_PENILAI_V2,
+    pemeriksaGt: G.VERSI_PEMERIKSA_GT,
+    regresi: RG.VERSI_REGRESI_MUATAN,
+    shaBeku: SHA_BEKU_EVAL4,
+    ikatanPrompt: IKATAN_PROMPT_V4,
+    bentukTransport: (() => {
+      const g = M.periksaBuktiTransport(BUKTI_TRANSPORT_S5_EVAL4, harapanTransportEval4())
+      return { ...BENTUK_TRANSPORT_EVAL4, sidik: sidikBentukTransportEval4(), buktiKapabilitas: g.length ? `TIDAK_BERLAKU:${g.join('+')}` : `TERBUKTI:${BUKTI_TRANSPORT_S5_EVAL4.providerRequestId}` }
+    })(),
+    identitasModel: { diminta: M.EXPECTED_MODEL_ID, dilayaniWajib: M.EXPECTED_SERVED_MODEL_ID, cakupanBukti: 'OpenRouter saja; ID model internal upstream tidak diverifikasi mandiri' },
+    registri: { statusSonnet5: MC.cariEntriModel(M.EXPECTED_MODEL_ID)?.status ?? null, gerbangProduksiTertutup: MC.resolusiModelIntake({ TAH_INTAKE_MODEL: M.EXPECTED_MODEL_ID }).aktif === false },
+    paketHeldout: paketRun ? { versi: paketRun.versi, hashGt: paketRun.hashGt, sumber: paketRun.sumber, kasus: heldout.length } : null,
+    mode,
+    transport,
+    tanggalEksekusi: hariIso,
+    catatanModel: 'anthropic/claude-sonnet-5 TETAP PENDING_SPIKE — laporan ini bukan aktivasi/promosi; Prompt v4 tetap kandidat.',
+    panggilanNyata: transport === TRANSPORT.NETWORK ? keadaan.total : 0,
+    panggilanTransport: keadaan.total,
+    kunciTerpakai: transport === TRANSPORT.STUB ? 'stub' : 'SPIKE_OPENROUTER_API_KEY (nilai tidak dicatat)',
+    rencana: { direncanakan: rencana.length, regresi: rencana.filter((r) => r.blok === BLOK_REGRESI).length, heldout: rencana.filter((r) => r.blok === BLOK_HELDOUT).length, ulangan: konfig?.ulangan ?? 1, sidik: ikatan.sidikRencana, daftar: rencana.map((r) => `${r.seq}:${r.blok}:${r.kasus}:u${r.ulangan}`) },
+    anggaran: konfig ? buktiAnggaranRencana(konfig) : null,
+    batas,
+    plafonPerPanggilanUsd: plafonUsd,
+    sumberBatas: konfig ? 'KONFIG_OWNER' : 'BATAS_LURING_STUB',
+    akuntansi: R3.ringkasAkuntansi(keadaan, ringkas),
+    checkpoint: checkpoint ? { jalur: checkpoint.jalur === 'memori' ? 'memori' : '[di luar repo]', dilanjutkan: !!cp, sesi: (cp?.sesi ?? 0) + 1, slotDariCheckpoint: ringkas.filter((r) => r.dariCheckpoint).length } : null,
+    berhenti: keadaan.berhenti,
+    kebijakanBerhenti: KEBIJAKAN_BERHENTI_EVAL4,
+    pelanggaranToleransiNol,
+    dijeda,
+    ditolakPencegat: keadaan.ditolak,
+    jaringanTerblokir,
+    operasional: { lengkap, pelanggaranPagar, tanpaUlang: !ringkas.some((r) => (r.panggilan?.length ?? 0) > 1) && !keadaan.ditolak.some((d) => d.alasan === 'PERCOBAAN_ULANG') },
+    verdict,
+    h20,
+    regresiMuatan: regresiHasil,
+    integritasGt,
+    agregat: { [BLOK_REGRESI]: agregatBlok(blokRegresi), [BLOK_HELDOUT]: agregatBlok(blokHeldout) },
+    gerbang: gerbangEval4 ?? { status: 'TANPA_KONFIG_OWNER', catatan: 'Tanpa konfigurasi owner: hanya regresi; tidak ada PASS.' },
+    totalTokenInput: keadaan.token.input,
+    totalTokenOutput: keadaan.token.output,
+    totalBiayaUsd: Number(keadaan.biaya.toFixed(6)),
+    galat: [galatFatal].filter(Boolean),
+    slot: ringkas,
+  }
+  const temuan = pindai(JSON.stringify(laporan))
+  laporan.privasi = { temuan, lulus: temuan.length === 0 }
+  if (!bekuUji && verifikasiBekuEval4().length) {
+    laporan.integritasAkhir = 'BERUBAH_SELAMA_RUN'
+    laporan.verdict = 'DITOLAK_INTEGRITAS'
+  }
+  return laporan
+}
+
+/** Tulis laporan HANYA bila pemindai privasi lulus (jalur di luar repo). */
+export function tulisLaporanAman(jalur, laporan) {
+  const g = R1.periksaJalurLaporan(jalur)
+  if (g.length) throw new Error(`EVAL4_${g[0]}`)
+  if (!laporan?.privasi?.lulus) return { jalur: H.tulisLaporan(jalur, { label: laporan?.label ?? LABEL_DRY, verdict: 'LAPORAN_DITAHAN_PRIVASI', temuan: laporan?.privasi?.temuan ?? ['TIDAK_DIPINDAI'] }), ditahan: true }
+  return { jalur: H.tulisLaporan(jalur, laporan), ditahan: false }
+}
+
+// ------------------------------------------------------------------ CLI
+/** Urai argv Eval-4: argumen Eval-1 (--mode, --report) + --checkpoint <jalur> + --resume. */
+export function uraiArgumenEval4(argv = []) {
+  const sisa = []
+  const galat = []
+  let checkpoint = null
+  let resume = false
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]
+    if (a === '--resume') resume = true
+    else if (a === '--checkpoint' || a.startsWith('--checkpoint=')) {
+      const v = a.includes('=') ? a.slice(a.indexOf('=') + 1) : argv[++i]
+      if (!v || v.startsWith('--')) galat.push('CHECKPOINT_TANPA_NILAI')
+      else checkpoint = v
+    } else sisa.push(a)
+  }
+  const dasar = R1.uraiArgumen(sisa)
+  galat.push(...dasar.galat)
+  if (resume && !checkpoint) galat.push('RESUME_BUTUH_CHECKPOINT')
+  if (checkpoint) {
+    const gj = R1.periksaJalurLaporan(checkpoint).map((x) => x.replace(/^REPORT/, 'CHECKPOINT'))
+    galat.push(...gj)
+    if (!gj.length && dasar.laporan && resolve(dasar.laporan) === resolve(checkpoint)) galat.push('CHECKPOINT_SAMA_DENGAN_REPORT')
+  }
+  return { ...dasar, checkpoint, resume, galat }
+}
+
+/** Cetak rencana panggilan LENGKAP & proyeksi maksimum (dipanggil sebelum eksekusi apa pun). */
+export function cetakRencana(cetak = console.log, konfig = KONFIG_OWNER_EVAL4, hariIni = new Date()) {
+  const { rencana, sidik, anggaran } = rincianRencanaEval4(konfig, hariIni)
+  cetak(`rencana panggilan: ${rencana.length} slot deterministik (sidik ${sidik.slice(0, 16)}…), tanpa ulang`)
+  for (const r of rencana) cetak(`  #${String(r.seq).padStart(2)} ${r.blok.padEnd(20)} ${r.kasus.padEnd(6)} u${r.ulangan}`)
+  if (anggaran) cetak(`proyeksi maksimum: ${anggaran.maksPanggilan} panggilan × plafon US$${anggaran.plafonPerPanggilanUsd} = US$${anggaran.maksBiayaUsd} vs batas keras US$${anggaran.batasKerasUsd} → ${anggaran.terbukti ? 'TERBUKTI ≤ batas' : `TIDAK TERBUKTI (plafon aman ≤ US$${anggaran.plafonAmanUsd}/panggilan)`}`)
+  return { rencana, anggaran }
+}
+
+export async function cli(argv = process.argv.slice(2), env = process.env, cetak = console.log) {
+  if (argv.length === 0) {
+    const integritas = verifikasiBekuEval4()
+    cetak('PRD-005 Eval-4 runner. Tidak ada mode bawaan; tidak ada panggilan. Mode live BELUM diotorisasi.')
+    cetak(`integritas beku  : ${integritas.length ? 'GAGAL ' + integritas.join(',') : 'OK'}`)
+    cetak(`konfigurasi owner: ${KONFIG_OWNER_EVAL4 === null ? 'BELUM DITETAPKAN' : `paket ${FH.VERSI_HELDOUT_EVAL4} (${KONFIG_OWNER_EVAL4.jumlahKasusHeldout} kasus) × ${KONFIG_OWNER_EVAL4.ulangan} ulangan + regresi ${URUTAN_REGRESI.join(', ')}`}`)
+    cetak(`penghalang LIVE  : ${penghalangLiveEval4().join(', ')}`)
+    cetakRencana(cetak)
+    cetak('pakai            : --mode offline|live --report <jalur absolut di luar repo> [--checkpoint <jalur> [--resume]]')
+    return 2
+  }
+  const a = uraiArgumenEval4(argv)
+  const galat = [...a.galat, ...(a.laporan !== null ? R1.periksaJalurLaporan(a.laporan) : [])]
+  if (!a.galat.length && a.mode) galat.push(...periksaPrasyaratEval4(env, a.mode))
+  if (galat.length) {
+    cetak(`DITOLAK (0 panggilan): ${galat.join(' | ')}`)
+    return 3
+  }
+  cetakRencana(cetak)
+  let jeda = false
+  const onSigint = () => {
+    jeda = true
+    cetak('SIGINT: jeda di batas slot berikutnya (slot yang sedang berjalan diselesaikan dulu).')
+  }
+  process.on('SIGINT', onSigint)
+  try {
+    cetak(`Eval-4 runner — mode ${a.mode.toUpperCase()} — ${a.mode === MODE.LIVE ? LABEL_LIVE + ' (panggilan penyedia NYATA)' : LABEL_DRY}`)
+    const laporan = await jalankanRunnerEval4({ mode: a.mode, env, log: cetak, checkpoint: a.checkpoint ? buatTokoCheckpointBerkas(resolve(a.checkpoint)) : null, lanjut: a.resume, sinyalJeda: () => jeda })
+    if (String(laporan.verdict).startsWith('DITOLAK')) {
+      cetak(`DITOLAK (0 panggilan): ${laporan.galat?.join(' | ')}`)
+      return 3
+    }
+    const { jalur, ditahan } = tulisLaporanAman(a.laporan, laporan)
+    cetak(`label=${laporan.label} transport=${laporan.transport} panggilanNyata=${laporan.panggilanNyata} panggilanTransport=${laporan.panggilanTransport} biaya=US$${laporan.akuntansi.biayaUsd}`)
+    cetak(`verdict=${laporan.verdict} H20=${laporan.h20.hasil} privasi=${laporan.privasi.lulus ? 'LULUS' : 'GAGAL'}`)
+    cetak(`laporan${ditahan ? ' DITAHAN (privasi)' : ''}: ${jalur}`)
+    return ditahan ? 4 : 0
+  } finally {
+    process.off('SIGINT', onSigint)
+  }
+}
+
+const diCli = process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])
+if (diCli) process.exit(await cli())

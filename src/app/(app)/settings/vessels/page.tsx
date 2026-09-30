@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { VesselsManager } from '@/components/settings/VesselsManager'
 import { getLang, type Lang } from '@/lib/i18n-server'
+import { PERAN_UBAH_KAPAL } from '@/lib/vessels'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,11 +21,13 @@ export default async function VesselsSettingsPage() {
         orderBy: { name: 'asc' },
       })
     : []
+  // PRD-002 Step 2 / D1 — tombol ubah hanya untuk peran penulis; server tetap menegakkan (403).
+  const canEdit = !!session?.user && (PERAN_UBAH_KAPAL as readonly string[]).includes(session.user.role)
 
   return (
     <div className="p-margin-page max-w-[1600px] mx-auto space-y-8">
       <PageHeader kicker={PH[getLang()].kicker} title={PH[getLang()].title} description={PH[getLang()].desc} />
-      <VesselsManager vessels={vessels} />
+      <VesselsManager vessels={vessels} canEdit={canEdit} />
     </div>
   )
 }

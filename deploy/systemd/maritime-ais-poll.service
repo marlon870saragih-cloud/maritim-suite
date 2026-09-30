@@ -1,0 +1,34 @@
+# Maritim Suite — job pengambilan posisi AIS (PRD-003 Step 4).
+#
+# ARTEFAK LOKAL. BELUM dipasang/diaktifkan di server mana pun. Pasang hanya pada
+# langkah deploy yang diotorisasi owner, SESUDAH: kuota bulanan (AIS_MONTHLY_CALL_CAP,
+# D5) ditetapkan, penyedia sungguhan terkonfirmasi, dan kapal pilot punya MMSI
+# terverifikasi (D2).
+#
+# Pasang: /etc/systemd/system/maritime-ais-poll.service
+# Pola sama dengan maritime-monitoring.service: token dibaca systemd (root) dari
+# /etc/tribuana/job-runner-token lewat LoadCredential — tak pernah ada di unit,
+# argumen proses, atau journal. Kunci API penyedia ada di .env aplikasi (proses PM2),
+# BUKAN di unit ini.
+#
+# Cakupan dikunci aplikasi (fail-closed): AIS_ENABLED=true, AIS_TENANT_IDS ⊆
+# AUTOMATION_TENANT_IDS, AIS_PROVIDER, AIS_MONTHLY_CALL_CAP.
+
+[Unit]
+Description=Maritim Suite - job pengambilan posisi AIS (ais-position-poll)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+DynamicUser=yes
+LoadCredential=job-token:/etc/tribuana/job-runner-token
+Environment=JOB_BASE_URL=http://127.0.0.1:3001
+ExecStart=/usr/local/sbin/maritime-job-run ais-position-poll
+TimeoutStartSec=360
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX

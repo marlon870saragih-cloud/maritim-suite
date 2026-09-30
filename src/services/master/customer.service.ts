@@ -60,7 +60,8 @@ export async function createCustomer(
   ctx: TenantContext,
   body: Record<string, unknown>,
 ): Promise<Customer> {
-  requireRole(ctx, 'ADMIN', 'OPERATOR')
+  // PRD-004 Step 3 / D3 — MANAJER_OPERASI untuk PEMBUATAN saja (master baru dari intake).
+  requireRole(ctx, 'ADMIN', 'OPERATOR', 'MANAJER_OPERASI')
   const db = forTenant(ctx)
   return db.customer.create({ data: { ...bacaInput(body), tenantId: ctx.tenantId } })
 }

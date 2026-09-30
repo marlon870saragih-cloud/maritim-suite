@@ -61,13 +61,23 @@ export const penyimpananLokal: PenyimpananBerkas = {
   },
 
   /**
-   * ⚠️ K110 — TIDAK ADA jalur kode Fase 7 yang memanggil ini. Hapus lampiran =
-   * soft delete; berkas fisik dipertahankan sampai kebijakan retensi ada (P36).
-   * Metodenya tetap disediakan karena ia bagian dari antarmuka yang harus
-   * dipenuhi adapter object storage nanti — bukan karena ia dipakai sekarang.
+   * K110/P36 — SATU-SATUNYA pemanggil sahnya adalah penyapuan retensi
+   * (services/ops/attachment-retention.ts). Hapus lampiran lewat UI tetap soft
+   * delete; berkas fisik baru dimusnahkan sesudah tenggang retensi lewat.
+   *
+   * ⚠️ Yang ditelan HANYA berkas-tidak-ada (ENOENT), supaya penyapuan idempoten:
+   * dijalankan dua kali atas baris yang sama tidak boleh gagal. Galat LAIN —
+   * izin ditolak, disk read-only, path keluar direktori — DILEMPAR, karena
+   * menelannya berarti baris ditandai `purgedAt` padahal berkasnya masih utuh
+   * di disk, dan kebohongan itu tak akan pernah ketahuan lagi.
    */
   async hapus(kunci) {
-    await unlink(pathDariKunci(kunci)).catch(() => undefined)
+    try {
+      await unlink(pathDariKunci(kunci))
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException)?.code === 'ENOENT') return
+      throw e
+    }
   },
 }
 

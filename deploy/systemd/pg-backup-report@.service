@@ -1,0 +1,25 @@
+# Laporkan hasil pg-backup.service ke Maritim Suite (PRD-002 Step 3, K186).
+#
+# Pasang: /etc/systemd/system/pg-backup-report@.service
+# Dipicu oleh drop-in pg-backup.service.d/10-lapor-status.conf; %i = ok | gagal.
+#
+# Unit ini TERPISAH dari pg-backup.service: kalau pelaporan gagal (aplikasi mati,
+# token belum dipasang), unit INI yang gagal dan terlihat di `systemctl --failed`,
+# sementara hasil pg-backup.service tetap apa adanya.
+
+[Unit]
+Description=Laporkan hasil pg-backup (%i) ke Maritim Suite
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=postgres
+Group=postgres
+EnvironmentFile=/etc/tribuana/pg-backup-report.env
+LoadCredential=job-token:/etc/tribuana/job-runner-token
+ExecStart=/usr/local/sbin/pg-backup-report %i
+TimeoutStartSec=300
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes

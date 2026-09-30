@@ -5,6 +5,7 @@
 // menampilkan field, urutan, label, dan gaya yang PERSIS sama.
 
 import { useT, type Lang } from '@/lib/i18n'
+import { SUMBER_MMSI, SUMBER_MMSI_TERVERIFIKASI } from '@/lib/vessels'
 
 export type Vessel = {
   id: string
@@ -19,6 +20,10 @@ export type Vessel = {
   beam: number | null
   maxDraft: number | null
   yearBuilt: number | null
+  // --- PRD-002 Step 2 ---
+  mmsi: string | null
+  mmsiSource: string | null
+  mmsiVerifiedAt: string | Date | null
 }
 
 export type FormState = Record<string, string>
@@ -26,6 +31,7 @@ export type FormState = Record<string, string>
 export const FIELD_KEYS = [
   'name', 'imoNumber', 'callSign', 'flag', 'vesselType',
   'gt', 'nrt', 'loa', 'beam', 'maxDraft', 'yearBuilt',
+  'mmsi', 'mmsiSource',
 ] as const
 
 export const emptyForm = (): FormState => Object.fromEntries(FIELD_KEYS.map((k) => [k, '']))
@@ -40,8 +46,24 @@ export const inputCls =
 export const labelCls = 'block text-[10px] font-mono uppercase tracking-wider text-text-secondary mb-1'
 
 const STR: Record<Lang, Record<string, string>> = {
-  id: { fName: 'Nama Kapal', fImo: 'No. IMO', fFlag: 'Bendera', fType: 'Tipe Kapal', fDraft: 'Draft Maks (m)', fYear: 'Tahun Bangun' },
-  en: { fName: 'Vessel Name', fImo: 'IMO No.', fFlag: 'Flag', fType: 'Vessel Type', fDraft: 'Max Draft (m)', fYear: 'Year Built' },
+  id: {
+    fName: 'Nama Kapal', fImo: 'No. IMO', fFlag: 'Bendera', fType: 'Tipe Kapal', fDraft: 'Draft Maks (m)', fYear: 'Tahun Bangun',
+    fMmsi: 'MMSI', mmsiPh: '9 digit', fMmsiSource: 'Sumber MMSI', selSource: '— pilih sumber —',
+    srcPUBLIC_TRACKING: 'Situs pelacakan publik (belum terverifikasi)',
+    srcCOMPANY_DOCUMENT: 'Dokumen perusahaan',
+    srcPRINCIPAL_CONFIRMATION: 'Konfirmasi principal',
+    srcOTHER_VERIFIED: 'Sumber terverifikasi lain',
+    verifiedOn: 'Terverifikasi', unverified: 'Belum terverifikasi', willVerify: 'Tercatat terverifikasi saat disimpan',
+  },
+  en: {
+    fName: 'Vessel Name', fImo: 'IMO No.', fFlag: 'Flag', fType: 'Vessel Type', fDraft: 'Max Draft (m)', fYear: 'Year Built',
+    fMmsi: 'MMSI', mmsiPh: '9 digits', fMmsiSource: 'MMSI Source', selSource: '— select source —',
+    srcPUBLIC_TRACKING: 'Public tracking site (unverified)',
+    srcCOMPANY_DOCUMENT: 'Company document',
+    srcPRINCIPAL_CONFIRMATION: 'Principal confirmation',
+    srcOTHER_VERIFIED: 'Other verified source',
+    verifiedOn: 'Verified', unverified: 'Unverified', willVerify: 'Recorded as verified on save',
+  },
 }
 
 export function Field({
@@ -75,19 +97,36 @@ export function Field({
   )
 }
 
+const fmtTanggal = (d: string | Date) => {
+  const v = new Date(d)
+  return Number.isNaN(v.getTime()) ? '' : v.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
 /**
- * Grid 11 field partikular kapal. `hints` opsional — dipakai preview import untuk
+ * Grid field partikular kapal. `hints` opsional — dipakai preview import untuk
  * menampilkan nilai LAMA di bawah tiap field saat mode update kapal yang sudah ada.
+ * `verifiedAt` opsional — status verifikasi MMSI tersimpan (hanya saat mengubah kapal).
  */
 export function VesselFieldsGrid({
-  form, set, hints,
+  form, set, hints, verifiedAt,
 }: {
   form: FormState
   set: (k: string, v: string) => void
   hints?: Partial<Record<string, string>>
+  verifiedAt?: string | Date | null
 }) {
   const t = useT(STR)
   const h = (k: string) => hints?.[k]
+  const sumber = form.mmsiSource ?? ''
+  const statusMmsi = !form.mmsi?.trim()
+    ? null
+    : sumber === 'PUBLIC_TRACKING'
+      ? t.unverified
+      : (SUMBER_MMSI_TERVERIFIKASI as readonly string[]).includes(sumber)
+        ? verifiedAt
+          ? `${t.verifiedOn} · ${fmtTanggal(verifiedAt)}`
+          : t.willVerify
+        : null
   return (
     <div className="grid grid-cols-2 gap-3">
       <div className="col-span-2">
@@ -95,6 +134,24 @@ export function VesselFieldsGrid({
       </div>
       <Field label={t.fImo} k="imoNumber" form={form} set={set} placeholder="9123456" hint={h('imoNumber')} />
       <Field label="Call Sign" k="callSign" form={form} set={set} placeholder="YBxx" hint={h('callSign')} />
+      <Field label={t.fMmsi} k="mmsi" form={form} set={set} placeholder={t.mmsiPh} hint={h('mmsi')} />
+      <div>
+        <label className={labelCls} htmlFor="vessel-mmsi-source">{t.fMmsiSource}</label>
+        <select
+          id="vessel-mmsi-source"
+          name="mmsiSource"
+          value={sumber}
+          onChange={(e) => set('mmsiSource', e.target.value)}
+          className={inputCls}
+        >
+          <option value="">{t.selSource}</option>
+          {SUMBER_MMSI.map((s) => (
+            <option key={s} value={s}>{t[`src${s}`]}</option>
+          ))}
+        </select>
+        {statusMmsi && <p className="mt-1 text-[10px] text-text-secondary/80 font-mono">{statusMmsi}</p>}
+        {h('mmsiSource') && <p className="mt-1 text-[10px] text-text-secondary/80 font-mono truncate">{h('mmsiSource')}</p>}
+      </div>
       <Field label={t.fFlag} k="flag" form={form} set={set} placeholder="Indonesia" hint={h('flag')} />
       <Field label={t.fType} k="vesselType" form={form} set={set} placeholder="Bulk Carrier" hint={h('vesselType')} />
       <Field label="GT" k="gt" form={form} set={set} type="number" placeholder="25000" hint={h('gt')} />

@@ -37,6 +37,9 @@ import { AttachmentPanel } from '@/components/ops/AttachmentPanel'
 import { CommentPanel } from '@/components/ops/CommentPanel'
 import { TimelinePanel } from '@/components/ops/TimelinePanel'
 import { VoyageEventDialog } from '@/components/ops/VoyageEventDialog'
+// PRD-002 Step 2 — kapal-kapal voyage (tug + barge).
+import { VoyageVesselsPanel } from './VoyageVesselsPanel'
+import type { KapalVoyageRow } from '@/services/master/voyage-vessel.service'
 
 const STR: Record<Lang, Record<string, string>> = {
   id: {
@@ -109,9 +112,11 @@ function Field({ label, value }: { label: string; value: string }) {
 
 export function VoyageWorkspace({
   voyage, counts, vessels, principals, customers, ports,
-  users, tasks, role, currentUserId, voyageAnchors,
+  users, tasks, role, currentUserId, voyageAnchors, voyageVessels,
 }: {
   voyage: WorkspaceVoyage
+  /** PRD-002 Step 2 — dari kapalVoyage(): kapal utama selalu ada (isPrimary). */
+  voyageVessels: KapalVoyageRow[]
   counts: VoyageFinanceCounts
   vessels: Option[]
   principals: Option[]
@@ -335,6 +340,13 @@ export function VoyageWorkspace({
           <Field label={t.fNotes} value={voyage.notes ?? '—'} />
         </div>
 
+        <VoyageVesselsPanel
+          voyageId={voyage.id}
+          rows={voyageVessels}
+          vessels={vessels}
+          canEdit={role === 'ADMIN' || role === 'OPERATOR'}
+        />
+
         <div className="grid gap-4 md:grid-cols-2">
           <div className="rounded-md border border-card-border/60 bg-surface/30 px-3.5 py-3">
             <p className="text-[10px] font-mono uppercase tracking-wider text-text-secondary mb-2">{t.estimasi}</p>
@@ -498,7 +510,8 @@ export function VoyageWorkspace({
               />
             </div>
 
-            <div className="col-span-2 grid grid-cols-4 gap-3">
+            {/* 4 kolom di dialog max-w-2xl → tiap input date ±140px, tahun (yyyy) terpotong. */}
+            <div className="col-span-2 grid grid-cols-2 sm:grid-cols-3 gap-3">
               <div>
                 <label className={labelCls}>{t.fEta}</label>
                 <input type="date" value={form.eta} onChange={(e) => set('eta', e.target.value)} className={inputCls} />

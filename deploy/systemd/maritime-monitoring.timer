@@ -1,0 +1,21 @@
+# Maritim Suite — jadwal job pemantauan voyage internal (PRD-002 Step 5B).
+#
+# Pasang: /etc/systemd/system/maritime-monitoring.timer
+#
+# Tiap jam pada menit :30 (UTC mesin) — separuh jam dari maritime-reminders
+# (hourly, :00) supaya dua job tak bertumpuk. Ambang terkecil kebijakan adalah
+# 12 jam (ACTUAL_DATE_MISSING), DATA_STALE 24 jam, ETA mundur >= 1 hari; satu
+# kali per jam sudah jauh lebih rapat dari yang dibutuhkan, dan dedupe
+# MONITORING_ERROR memang per voyage per jam UTC.
+
+[Unit]
+Description=Maritim Suite - jadwal pemantauan voyage internal (tiap jam :30)
+
+[Timer]
+OnCalendar=*-*-* *:30:00
+RandomizedDelaySec=120
+Persistent=true
+Unit=maritime-monitoring.service
+
+[Install]
+WantedBy=timers.target

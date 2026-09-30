@@ -6,6 +6,8 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { AppShell } from '@/components/layout/AppShell'
 import { tenantAccess } from '@/lib/billing/access'
+import { bolehAksesAutomation } from '@/services/automation/access'
+import { bolehAksesIntake } from '@/services/intake/intake-access'
 
 const ROLE_LABEL: Record<string, string> = {
   ADMIN: 'Administrator',
@@ -61,6 +63,12 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     companyName: tenant?.companyName ?? 'Maritime Suite',
   }
 
+  // PRD-002 Step 5B — Automation Hub privat: menu hanya untuk tenant di allowlist
+  // id + peran ADMIN/MANAJER_OPERASI. Route & service tetap menegakkan pagar yang sama.
+  const showAutomation = bolehAksesAutomation({ tenantId: session.user.tenantId, role: session.user.role })
+  // PRD-004 Step 3 — Vessel Call Intake: pagar Hub + flag VESSEL_CALL_INTAKE_ENABLED.
+  const showIntake = bolehAksesIntake({ tenantId: session.user.tenantId, role: session.user.role })
+
   const lockedBanner = access.locked ? (
     <div className="bg-status-danger/12 border-b border-status-danger/30 px-margin-page py-2.5">
       <div className="max-w-[1600px] mx-auto flex items-center justify-between flex-wrap gap-2">
@@ -85,6 +93,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       user={user}
       vesselCount={vesselCount}
       principalCount={principalCount}
+      showAutomation={showAutomation}
+      showIntake={showIntake}
       banner={lockedBanner}
     >
       {children}

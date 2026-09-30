@@ -1,0 +1,112 @@
+{
+  "versi": "prd005-eval5/beku-1",
+  "kandidat": {
+    "commitDasar": "a67baf4be908b3aec2b9469d5f0b402ff531f72e",
+    "sidik": "5e863242dd4cd6cc018b532a8eba0a44b5221c83464ba052e2c4add9ef0ac259",
+    "berkas": {
+      "src/lib/ai/vessel-call-extract.ts": "441349587e36407d8d0bf14bd4a9178edc4ad2d0b5b29bf5c2da45797337fd0a",
+      "src/services/intake/intake-policy.ts": "4f5b1273d9a01ceee308f201a40a7594ce6fabc2220cacc0657f139f50f2059c",
+      "src/lib/maritim-lexicon.ts": "864e4e3bf4cb47ef6e1d112ad42b5c9efd9d402c459e2d8be465f0bbab41fb83",
+      "src/lib/ai/model-capabilities.ts": "99da39fb121e18f00e05c15c6e8979432686305c7aeb16732857e04b4382c9cc",
+      "src/lib/ai/openrouter.ts": "fbef6e842ea8fcd71d802f69d4e3bd6f559f4820c9cac96f48ffdc6dffea1f41",
+      "src/lib/ai/perekam-panggilan.ts": "76718f4c8c7ee723ae77152ef725519a1c8bb8c4928f0d512fa76588c8863e35",
+      "src/services/intake/intake-ledger.ts": "9e67930728a9263e92c70d2fa19e44bc7bc18542b265b2a25ab16fc5ec821eef",
+      "src/services/intake/intake.service.ts": "cdfed782c66e83b175ab64d35e15c07ab2bb9ce225078de1fef24c6c71792976",
+      "src/services/intake/intake-access.ts": "3a77670a2c8d58487cf681efa6c4c46bbf8a47d60f99d1288f5a3dbff0189ce0",
+      "src/services/intake/intake-gate.ts": "98521d074c3aa0043ea4ce3c4c6e107313e96e5f82e4fd3ecd2a0a61b5255d9d",
+      "src/services/intake/intake-hash.ts": "862d3e086c24f578bdd4a07a70664de6fff96d6831e289dcb1d5ccd69e4525d3",
+      "src/lib/vessels.ts": "57afea8c9230fca4bc787c3d95243687efa96be36c7af5adb09cbcf53d1ac0f3",
+      "src/lib/business-time.ts": "d468feb621729267a82a37ea920b890a69fbbf23440e2c50f723b34841cc80eb",
+      "src/services/tah/agent-run.service.ts": "902f8439f743e3271a3c9795d514bcce8460e5d839ebc8cd9b89265f7d029d4a",
+      "src/services/tah/tah-policy.ts": "67a078e8066b7685a87f1b526402c74f58d3f3d6aaed16542516d7986ca7ff70",
+      "src/services/tah/ringkasan-intake.ts": "c0092a49d96237a9fbac22f59320ee4de44b922e8cb7af2bbfd227d7459c0b79"
+    },
+    "prompt": {
+      "id": "vessel-call-extract",
+      "versi": "4",
+      "versiSkema": "4",
+      "hash": "6ed1edba38780badcff111e70f63e83d95668f15b99644f174bac1984ce65959",
+      "tool": "isi_intake_kunjungan"
+    },
+    "rute": {
+      "aktif": true,
+      "rute": "EXPLICIT",
+      "model": "anthropic/claude-sonnet-5",
+      "kemampuan": {
+        "acceptsTemperature": false,
+        "supportsForcedToolChoice": true,
+        "supportsPdfNative": false
+      },
+      "promptIntake": {
+        "versi": "4",
+        "hash": "6ed1edba38780badcff111e70f63e83d95668f15b99644f174bac1984ce65959"
+      }
+    },
+    "transport": {
+      "model": "anthropic/claude-sonnet-5",
+      "temperature": "TIDAK_DIKIRIM",
+      "tool": "isi_intake_kunjungan",
+      "toolChoice": "FUNCTION_PAKSA",
+      "fallback": "TIDAK_ADA",
+      "servedWajib": "anthropic/claude-sonnet-5"
+    }
+  },
+  "dataset": {
+    "versi": "prd005-eval5/blind-1",
+    "jumlahKasus": 40,
+    "hashDataset": "21dc22f6921e84fd21cada0e1ab878e71b2c354341ea10f697c8db2c07a83821",
+    "hashGt": "6c8fa7dd8cd2c019115d5a17ad3cd3cba2e54b2c4d3d9ab2b2f4bff23cc7abb5"
+  },
+  "penilai": {
+    "scorer": "prd005-e5-eval4/scorer-3",
+    "scorerDasar": "prd005-step3c-eval1/scorer-1",
+    "pemeriksaGt": "prd005-e5-eval4/gt-sumber-2",
+    "pemeriksaPaket": "prd005-eval5/pemeriksa-paket-1",
+    "regresi": "prd005-e5-eval4/regresi-muatan-1"
+  },
+  "runner": "prd005-eval5/runner-1",
+  "rencana": {
+    "model": "anthropic/claude-sonnet-5",
+    "panggilan": 82,
+    "heldout": 40,
+    "ulangan": 2,
+    "regresi": [
+      "RG-H20",
+      "RG-H18"
+    ]
+  },
+  "anggaran": {
+    "batasKerasUsd": 3,
+    "plafonPerPanggilanUsd": 0.035
+  },
+  "ambang": {
+    "h20MuatanTakBerbuktiPostMaks": 0,
+    "muatanTakBerbuktiPostMaks": 0,
+    "fatalPostMaks": 0,
+    "identitasBerbedaMaks": 0,
+    "kegagalanOutputToolMaks": 0,
+    "lulusHeldoutMin": 0.9,
+    "konsistensiUlanganMin": 0.9
+  },
+  "berkas": {
+    "prisma/fixtures/spike-intake/eval5-blind-cases.json": "654e7a9f291d28b77587bf6f922f25e555d42be6c069d6d3795ed8987c288011",
+    "prisma/fixtures/spike-intake/eval5-blind-cases.mjs": "5426b7c69ccc99f5a5c759983f7d8c3faca63ee1b9636b7c57cf80c3d169782a",
+    "prisma/fixtures/spike-intake/eval4-regresi-muatan.mjs": "01871bf6cd2c266cb0070497a071a211c8601f92c8a8341e00890dacc6921012",
+    "prisma/fixtures/spike-intake/eval3-cases.mjs": "c6098c1a06a9cc771e202b15c65fd38d351a89a258f03985002ef4a3450853d1",
+    "docs/PRD-005-EVAL5-DATASET-SPEC.md": "3c2288f663dc99a163ca727cf3af90b90195bb42a02d367d04dde62a2d6494e5",
+    "docs/PRD-005-EVAL5-PROTOCOL.md": "eaae5589e1858481f7ce7ecd86c4ca27854ee8cf3c42211f806fafe3a125da04",
+    "prisma/spike-eval5-runner.mjs": "191df1b208e6126e658c5911b828918b7c29f3dd7d0c79d0cd49435988512399",
+    "prisma/spike-eval5-kandidat.mjs": "47fb3e8982600390c7ea0545a8eec4a8e9ec9dfd0df7a613d889b5ab875f0a65",
+    "prisma/spike-eval5-dataset.mjs": "5b63a08a772d96f4b4137307ec89977f6fd6b4643fcf149618b0fcb5b59cd5f7",
+    "prisma/spike-eval4-runner.mjs": "358328211c71287263cc2475a56f257103c661daadd5252496bd2f8b0d3f3471",
+    "prisma/spike-eval4-scorer.mjs": "a513cf676862f356cf1e242736b17bd94d0af06bc9c08718b415b602ef3bb12d",
+    "prisma/spike-eval4-identitas-model.mjs": "c4b0d3598d7481d5273fbbbf53522bd7b403f906bdafa9b36d65ebe81ec574d2",
+    "prisma/spike-gt-konsistensi.mjs": "85430b4f3b967cdb8a7e47f6f46df64f935c40143fb78c2f24ff8d4fb1ed7957",
+    "prisma/spike-eval3-runner.mjs": "a6cc5fead1b25dbbf8a5b669458f1e6fd3ee09d8c6c190f3db1066bc7973f8c2",
+    "prisma/spike-eval2-runner.mjs": "08d3cd2145099ecbe6789a157306e7a2c83db98f366d179e9c17399af8c72a1f",
+    "prisma/spike-eval2-penilai.mjs": "0773cf2acbcb88bda628e67c585d61d20aa7dd951e7cd59926ef57747c36f8e9",
+    "prisma/spike-eval1-runner.mjs": "9b5c80fd8f8a16350d29d3614239aa2801ef5e0f001b044d959aac1d3a004a21",
+    "prisma/spike-eval1-scorer.mjs": "e5c89ca4ca917ea51856ab74795e388ac91860e1cd8843fd16294cdda300f493",
+    "prisma/spike-eval1.mjs": "00c46f5fb864c993fb88f43d9a9305ff50c1f5773581d34751ec98d1bd3acd0d"
+  }
+}

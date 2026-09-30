@@ -314,7 +314,8 @@ async function main() {
       barisVoyageA?.jumlah === jumlahVoyageANyata,
       `${barisVoyageA?.jumlah} vs ${jumlahVoyageANyata}`,
     )
-    cek('ringkasan mencakup SEMUA 10 nama peristiwa (termasuk yang 0)', ringkasanA.perPeristiwa.length === 10, ringkasanA.perPeristiwa.length)
+    // PRD-004 Step 3 menambah INTAKE_EXTRACTED ke daftar tertutup → 11 nama.
+    cek('ringkasan mencakup SEMUA 11 nama peristiwa (termasuk yang 0)', ringkasanA.perPeristiwa.length === 11 && ringkasanA.perPeristiwa.some((x) => x.nama === 'INTAKE_EXTRACTED'), ringkasanA.perPeristiwa.length)
 
     // ==================== 6. Tak ada layar lintas-tenant (K184) ====================
     console.log('\n6. Grep src/app/ — tak ada layar yang membaca UsageEvent lintas-tenant (butir 6)')

@@ -1021,6 +1021,15 @@ Tiga aturan:
 
 Satu perkecualian yang diizinkan, dan hanya satu: **satu penyegaran terjadwal per hari** untuk voyage ber-status `WORKING`/`ARRIVED`, lewat endpoint job ber-token yang sudah ada (K88), berbatas jumlah per jalan (pola K102). Ia berguna nyata (kapal yang mendekat), jumlahnya kecil, dan tunduk kuota yang sama.
 
+> **Amandemen K177 — PRD-003 (keputusan owner D1, 15 Sep 2026).** Untuk **pilot internal PT Tribuana Solusi Maritim saja**, pengambilan posisi AIS **terjadwal** diizinkan lewat job `ais-position-poll` (Automation Hub). Batasnya menggantikan "satu penyegaran per hari" hanya untuk tenant pilot, dan alasan penolakan asli K177 (biaya diam-diam) dijawab dengan pagar berikut — bukan diabaikan:
+> - **Hanya tenant di `AIS_TENANT_IDS`** (wajib subset `AUTOMATION_TENANT_IDS`); tenant SaaS lain tetap tunduk K177 apa adanya.
+> - **Interval dari konfigurasi** (`AIS_POLL_INTERVAL_MIN`, bawaan 60 menit, lantai 15 menit dan batas minimum adapter).
+> - **Kuota panggilan bulanan wajib** (`AIS_MONTHLY_CALL_CAP`, D5). Selama nilainya belum ditetapkan, **tidak ada satu pun panggilan ke penyedia** (gagal tertutup); kuota habis → jalan `DISABLED_QUOTA`.
+> - **Hanya kapal sumber posisi (TUG, D4) dengan MMSI terverifikasi (D2)**; MMSI dari pelacakan publik tidak pernah diambil.
+> - Kunci sewa (tanpa jalan ganda), backoff eksponensial maks. 6 jam, retensi observasi 90 hari & run 180 hari (D3).
+> - K176 dan K178 **tetap berlaku penuh**: AIS tidak pernah menulis Voyage/Vessel/ETA/ATA; sinyal (`AIS_STALE`, `AIS_PROVIDER_DOWN`) hanya ditinjau manusia. Pengambilan atas permintaan tetap boleh dibangun kemudian.
+> - Rincian desain: PRD-003 Step 3 (desain model data AIS); implementasi lokal: PRD-003 Step 4 (`src/services/ais/`).
+
 ### K178 — AIS **tidak pernah** mengubah ETA/ATA sendiri; ia mengusulkan, manusia menekan
 
 Godaan yang paling masuk akal di bagian ini: posisi AIS menunjukkan kapal sudah sandar → tandai `ata` otomatis.
