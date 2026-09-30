@@ -33,13 +33,22 @@ Keputusan owner (2026-09-27). Bila dokumen lain bertentangan, dokumen inilah yan
 4. Deployment, perubahan env produksi, dan aktivasi fitur (mis. `TAH_INTAKE_MODEL`) masing-masing
    butuh persetujuan owner tersendiri.
 
-## Yang BELUM terverifikasi (jangan dianggap fakta)
+## Terverifikasi dari VM (audit read-only 2026-09-30)
 
-Detail VM produksi — nama instance, zona, proyek GCP, pengelola proses, direktori rilis, versi yang
-berjalan, dan status migrasi database — **belum** diverifikasi dari VM oleh sesi mana pun yang
-menulis dokumen ini. `docs/PRD-002-STEP3-INFRA.md` memuat **rencana** deploy VM (mis. `tribuana-vm`,
-PM2 `maritime-suite` di `127.0.0.1:3001`, Postgres 16 lokal) yang ditandai "BELUM dipasang"; rinciannya
-wajib dicocokkan dengan VM sebelum dipakai.
+Rincian dan bukti: `docs/PRODUCTION-STATE-2026-09-30.md`. Ringkasnya, per 2026-09-30:
+
+- Instance GCE di zona `asia-southeast2-a`; aplikasi mendengarkan port `3001` di SEMUA antarmuka (bukan hanya loopback);
+  nginx mendengarkan 80/443; PostgreSQL 16 lokal hanya di `127.0.0.1:5432`, DB `maritime_suite`.
+- Versi yang berjalan = commit **`ac922f6`** (direktori rilis hasil ekstrak arsip, bukan git checkout; build 2026-09-27).
+- Status migrasi: 21 diterapkan, 0 gagal — termasuk ketujuh migrasi PRD-002..005.
+- Railway diputus dari repo GitHub oleh owner (2026-09-30); deploy produksi dilakukan manual.
+
+## Yang MASIH belum terverifikasi
+
+- Siapa yang melakukan deploy 2026-09-14/18/27, dan prosedur yang dipakai (tidak ada catatan deploy di repo).
+- Rantai pengelola proses aplikasi (user & instans PM2 yang menjalankannya).
+- Konfigurasi upstream nginx, dan apakah firewall GCP memblokir akses langsung dari luar ke port `3001`.
+- Keadaan sesudah 2026-09-30 — selalu baca ulang dari VM (aturan 1).
 
 ## Catatan dokumen historis
 

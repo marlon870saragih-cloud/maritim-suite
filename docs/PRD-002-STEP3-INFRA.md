@@ -1,6 +1,8 @@
 # PRD-002 Step 3 — Infrastructure Closure
 
-Status: **disiapkan, BELUM dipasang di produksi.** Tidak ada perubahan produksi di Step 3.
+Status: disiapkan di Step 3 (tanpa perubahan produksi saat itu). **KOREKSI 2026-09-30:** SUDAH dipasang di produksi —
+unit/timer, drop-in pelapor backup, dan migrasi PRD-002 diterapkan 2026-09-14; lihat `docs/PRODUCTION-STATE-2026-09-30.md`.
+§4 di bawah adalah RENCANA historis; jangan dijalankan ulang apa adanya.
 Rujukan: `TAH-PRD-002-step1-design` §G–§I, `TAH-PRD-001-step0b-closure`.
 
 ## 1. Apa yang berubah di repo
@@ -26,6 +28,7 @@ Tanggal voyage (ETA…ATD, D4) **tidak** disentuh: tetap tanggal kalender ber-ko
 - **Retry-safe:** jalan gagal/terputus tak meninggalkan kunci setengah jadi; jalan berikutnya melahirkan yang belum ada.
 - **Terlihat:** respons `{job, ok, total:{dibuat,dilewati,dibatasi,gagal}, hasil[]}`; log `[jobs/run] {"job":…,"ok":…,"tenantGagal":[…],"total":{…}}`; unit systemd gagal bila `ok≠true`.
 - **Transisi kunci UTC→WITA:** produksi belum pernah menjalankan job (0 baris ber-`dedupeKey`, Step 0B), jadi tidak ada notifikasi ganda saat transisi.
+  (Terverifikasi 2026-09-30: kode WITA sudah berjalan di produksi; baris ber-`dedupeKey` masih 0.)
 
 ### `maritime-job-run.sh <job>`
 `0` ok · `1` HTTP≠200 atau `ok≠true` · `64` argumen · `75` app tak terjangkau · `78` token tak terbaca.
@@ -56,7 +59,7 @@ Target: `tribuana-vm` (asia-southeast2-a), app PM2 `maritime-suite` di `127.0.0.
 2. **Backup DB produksi (manual, WAJIB)** — sebagai postgres:
    `pg_dump -Fc -d maritime_suite -f /var/backups/manual/maritime_suite-pre-prd002-<UTC>.dump`
 3. **Verifikasi artefak backup** — `ls -l` (ukuran > 0), `sha256sum`, `pg_restore --list <dump> | wc -l` > 0. Disarankan: pulihkan ke DB sementara `maritime_suite_verify`, hitung `Voyage`/`Vessel`/`Tenant`, lalu drop. **Tanpa langkah 2–3 lulus, STOP.**
-4. **Status migrasi sebelum** — `npx prisma migrate status`: tepat dua tertunda
+4. **Status migrasi sebelum** — (historis; per 2026-09-30 SEMUA migrasi sudah diterapkan) `npx prisma migrate status`: tepat dua tertunda
    `20260914120000_prd002_vessel_identity_voyage_vessels`, `20260914130000_prd002_voyage_vessel_fk_cascade`; tak ada migrasi gagal. Jawaban "reset" = STOP (pelajaran K7).
 5. **Urutan deploy aplikasi** — unggah rilis ke direktori baru (rilis lama tetap ada) → `npm ci` → `npx prisma generate` → `npm run build`. Tambahkan `JOB_RUNNER_BASE_URL=http://127.0.0.1:3001` ke `~/maritime-suite/.env`.
 6. **`npx prisma migrate deploy`** — lalu cek: `_prisma_migrations` memuat kedua nama; `SELECT count(*) FROM "Voyage"` = `SELECT count(DISTINCT "voyageId") FROM "VoyageVessel"`; nol voyage tanpa baris; nol pasangan kembar.
@@ -68,6 +71,7 @@ Target: `tribuana-vm` (asia-southeast2-a), app PM2 `maritime-suite` di `127.0.0.
    - Salin unit + drop-in ke `/etc/systemd/system/`, env file ke `/etc/tribuana/pg-backup-report.env` (setelah butir §3.2).
    - `systemd-analyze verify` pada tiap unit → `systemctl daemon-reload`.
    - `maritime-reminders.timer`: **pasang, JANGAN enable** sampai keputusan D3.
+     (Per 2026-09-30 timer ini ENABLED di produksi; owner memutuskan tetap ENABLED — keputusan D-2, 2026-09-30.)
 9. **Smoke test umum** — halaman login 200; `/api/auth/csrf` 200; `POST /api/jobs/run` tanpa token → 401.
 10. **Smoke vessel identity** — sebagai ADMIN: `GET /api/vessels` 200, field `mmsi`/`mmsiSource`/`mmsiVerifiedAt` ada (null); pengguna VIEWER `POST /api/vessels` → 403. **Tanpa data kapal pilot.**
 11. **Smoke kompatibilitas multi-vessel** — `GET /api/voyages/<id>` untuk voyage lama: `vesselId` & `vessel` tetap ada, `vessels[0].vesselId` = `vesselId`; PDF EPDA/invoice voyage lama tetap 200.

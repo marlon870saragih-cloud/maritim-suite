@@ -60,6 +60,11 @@ Spike eval-only (`aktifkanSpikeEval`) hanya ada di runner Eval-8 dan tidak diimp
 Tidak ada deploy produksi, tidak ada promosi model, tidak ada LIVE, tidak ada remediasi tambahan, tidak ada dataset tambahan.
 Cabang `feat/prd002-step2-domain-foundation` (PRD-002..PRD-005) belum di-merge ke `main`.
 
+**KOREKSI 2026-09-30 (audit VM read-only):** "tidak ada deploy produksi" di atas hanya benar untuk langkah closure ini.
+Produksi SUDAH menjalankan rilis cabang `ac922f6` (build 2026-09-27; skema PRD-002..005 diterapkan). Rilis itu mendahului
+`4cd338d`, sehingga registrinya masih memuat Sonnet 5 `VERIFIED` — namun DORMAN: `TAH_INTAKE_MODEL` tak diset, intake & TAH Core
+mati, 0 panggilan model; model global = Sonnet 4.5. Validator V3 belum ter-deploy. Bukti: `docs/PRODUCTION-STATE-2026-09-30.md`.
+
 ## 8. FUTURE DESIGN ITEM — §5.2 (bukan blocker pekerjaan TAH lain)
 
 - FDI-005-01 — Penanda lampau operasi (§5.2) terlalu lebar: EX, LALU, TERAKHIR, PRIOR, SUDAH, SEBELUMNYA, LAST PORT, PREVIOUS
