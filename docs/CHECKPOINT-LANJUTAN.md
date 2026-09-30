@@ -1,3 +1,7 @@
+> **Checkpoint lanjutan terbaru:** baca [TAH-CURRENT-CHECKPOINT.md](TAH-CURRENT-CHECKPOINT.md) dan [Gap Analysis 30 September 2026](TAH-GAP-ANALYSIS-2026-09-30.md).
+>
+> Dokumen di bawah dipertahankan sebagai catatan historis. PR #1 sudah merged ke main pada 30 September 2026, 04.15.17 UTC; pernyataan "belum merged" di bawah tidak lagi menggambarkan GitHub saat gap audit. Keadaan produksi tetap merujuk bukti audit VM sebelumnya, bukan verifikasi live baru.
+
 # CHECKPOINT — lanjutkan dari sini (dibuat 2026-09-29)
 
 > Baca dokumen ini PERTAMA saat sesi berikutnya dimulai. Semua keputusan di bawah adalah keputusan owner yang berlaku.
