@@ -48,7 +48,8 @@ export function periksaModeFake(a: { mode: unknown; penyedia: unknown }): Hasil<
 
 /**
  * PRD §13.3 (minimum) + Q4 (SIGNAL_DISMISSED, SIGNAL_EXPIRED) + SIGNAL_STATE_INVALID (gagal tertutup)
- * + REVISED (D-2B-03: revisi lama → CANCELED saat revisi baru dibuat).
+ * + REVISED (D-2B-03: revisi lama → CANCELED saat revisi baru dibuat)
+ * + APPROVAL_REJECTED (D-2D-03: approval ditolak manusia → pesan CANCELED).
  */
 export const KODE_ALASAN = [
   'EVENT_NOT_ALLOWED',
@@ -80,6 +81,7 @@ export const KODE_ALASAN = [
   'SIGNAL_EXPIRED',
   'SIGNAL_STATE_INVALID',
   'REVISED',
+  'APPROVAL_REJECTED',
 ] as const
 export type KodeAlasan = (typeof KODE_ALASAN)[number]
 
@@ -667,11 +669,10 @@ export const bolehCancel = (s: string): boolean => transisiPesanSah(s, 'CANCELED
 // ======================================================= approval (Q1, Q8)
 
 /**
- * Deskripsi kebijakan approval WA-1 — BUKAN entri registry (registry & service
- * approval = Step 2D). Q8: PRD WA-1 TANPA TTL produk (P-05) → `ttlProdukJam: null`.
- * Isu kompatibilitas tercatat: TahApprovalRequest.expiresAt wajib (non-null) dan
- * validasiRegistry mensyaratkan kedaluwarsaJam 1..720 → diselesaikan di audit 2D,
- * TANPA menetapkan expiry 720 jam di sini.
+ * Deskripsi kebijakan approval WA-1 (pasangan entri registry `WA_INTERNAL_FAKE_TEST`,
+ * src/services/tah/registry.ts — uji memastikan keduanya selaras). Q8 (D-2D-01): PRD
+ * WA-1 TANPA TTL produk (P-05) → `ttlProdukJam: null` = registry `kedaluwarsaJam: null`
+ * = TahApprovalRequest.expiresAt NULL. Tanpa tanggal sentinel, tanpa expiry 720 jam.
  */
 export const KEBIJAKAN_APPROVAL_WA1 = {
   kind: 'WA_INTERNAL_FAKE_TEST',

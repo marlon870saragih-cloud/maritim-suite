@@ -1,8 +1,9 @@
 // Komunikasi klien WA-1 — layanan Prepare / Candidate / Pratinjau (Step 2C).
 //
 // MonitoringSignal → candidate → revalidasi sumber #1 → render deterministik →
-// revisi CommunicationMessage immutable → pratinjau. BERHENTI sebelum approval:
-// tak ada approval, tak ada Send, tak ada CommunicationAttempt, tak ada jaringan.
+// revisi CommunicationMessage immutable → pratinjau. Approval ada di
+// communication-approval.service.ts (Step 2D); berkas ini hanya menghentikan approval
+// tertaut saat revisi diganti/diblokir. Tak ada Send, CommunicationAttempt, atau jaringan.
 //
 // Aturan keras (audit 2C-0 + keputusan owner D-2C-01..06):
 //   • Pemanggil hanya menyodorkan PENGENAL (signalId / candidateId / messageId,
@@ -30,6 +31,7 @@ import { forTenant, type TenantDb } from '../tenant-db'
 import { catatAudit, type EntriAudit } from '../finance/audit'
 import { requireAutomation } from '../automation/access'
 import { kunciTanggal } from '../master/voyage-dates'
+import { transisiEksekusiSah, transisiKeputusanSah } from '../tah/tah-policy'
 import {
   MEDAN_JADWAL,
   MODE_KOMUNIKASI,
@@ -57,7 +59,7 @@ import { BAHASA_PESAN, GalatTemplate, renderPesan, type BahasaPesan } from './co
 import { pilihPenerimaFixture } from './comm-fixture'
 import { sidikSnapshot, sidikSumber } from './comm-hash'
 
-type Tx = Parameters<Parameters<TenantDb['$transaction']>[0]>[0]
+export type Tx = Parameters<Parameters<TenantDb['$transaction']>[0]>[0]
 
 /** Transaksi baru per percobaan; P2002/konflik versi → ulang, lalu CONFLICT. */
 export const MAKS_PERCOBAAN_TX = 3
@@ -74,7 +76,7 @@ const JENIS_ANGGOTA: Readonly<Record<KunciCandidate['sourceType'], string>> = {
 
 // ================================================================ hasil bertipe
 
-type Penolakan = { alasan: KodeAlasan; medan?: string }
+export type Penolakan = { alasan: KodeAlasan; medan?: string }
 
 export type HasilSiapkanCandidate =
   | { hasil: 'SIAP'; candidateId: string; keluarga: KeluargaEvent; dibuatBaru: boolean }
@@ -97,7 +99,7 @@ export type HasilTandaiDipratinjau =
 // ================================================================= gerbang
 
 /** Urutan disengaja: pagar Automation (tenant → NOT_FOUND, peran → FORBIDDEN) lalu gerbang WA. */
-function gerbang(ctx: TenantContext): void {
+export function gerbang(ctx: TenantContext): void {
   requireAutomation(ctx)
   if (ctx.system) throw forbidden('Komunikasi klien hanya dapat disiapkan oleh pengguna, bukan proses sistem.')
   const k = bacaKonfigurasiKomunikasi(process.env)
@@ -109,18 +111,25 @@ const idSah = (v: unknown, nama: string): string => {
   return v
 }
 
-class KonflikKonkurensi extends Error {
+export class KonflikKonkurensi extends Error {
   constructor() {
     super('KONFLIK_KONKURENSI')
     this.name = 'KonflikKonkurensi'
   }
 }
 
+/**
+ * Konflik yang aman diulang di transaksi baru: P2002 (unique), P2034 (write conflict), konflik
+ * versi optimistik, dan — pertahanan berlapis — deadlock (40P01) / gagal serialisasi (40001) yang
+ * kadang dilaporkan Prisma sebagai galat tak dikenal. Urutan kunci baris tetap dijaga
+ * (candidate → approval → pesan) supaya deadlock tak terjadi sejak awal.
+ */
 const bisaDiulang = (e: unknown): boolean =>
   e instanceof KonflikKonkurensi ||
-  (e instanceof Prisma.PrismaClientKnownRequestError && (e.code === 'P2002' || e.code === 'P2034'))
+  (e instanceof Prisma.PrismaClientKnownRequestError && (e.code === 'P2002' || e.code === 'P2034')) ||
+  (e instanceof Prisma.PrismaClientUnknownRequestError && /\b(40P01|40001)\b|deadlock detected|could not serialize/.test(e.message))
 
-async function denganUlang<T>(fn: () => Promise<T>): Promise<T> {
+export async function denganUlang<T>(fn: () => Promise<T>): Promise<T> {
   for (let percobaan = 1; ; percobaan++) {
     try {
       return await fn()
@@ -134,6 +143,8 @@ async function denganUlang<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 const audit = (ctx: TenantContext, tx: Tx, entri: EntriAudit) => catatAudit(ctx, entri, {}, tx)
+/** Audit di DALAM transaksi pemanggil (D-2C-02) — dipakai juga oleh layanan approval 2D. */
+export const auditKomunikasi = audit
 
 // =========================================================== pembaca fakta
 
@@ -265,7 +276,7 @@ async function bacaGrup(tx: Tx, kunci: KunciCandidate, keluarga: KeluargaEvent):
   return { kunci, keluarga, signalIds: g.grup[0]?.sinyalIds ?? [], reviewStates: g.grup[0]?.reviewStates ?? [] }
 }
 
-type CandidateBaris = {
+export type CandidateBaris = {
   id: string
   voyageId: string
   family: string
@@ -278,7 +289,7 @@ type CandidateBaris = {
   version: number
 }
 
-const PILIH_CANDIDATE = {
+export const PILIH_CANDIDATE = {
   id: true, voyageId: true, family: true, sourceType: true, sourceRef: true, signalIds: true, includedFields: true, state: true, blockReason: true, version: true,
 } as const
 
@@ -336,8 +347,12 @@ async function auditBlokir(ctx: TenantContext, tx: Tx, candidateId: string, blok
   })
 }
 
-/** Hard block: candidate ACTIVE → BLOCKED + setiap revisi aktif → BLOCKED (activeKey dilepas) + audit — satu transaksi. */
-async function blokirCandidate(ctx: TenantContext, tx: Tx, c: CandidateBaris, blok: Penolakan): Promise<void> {
+/**
+ * Hard block: candidate ACTIVE → BLOCKED + setiap revisi aktif → BLOCKED (activeKey dilepas)
+ * + approval tertaut dihentikan (D-2D-04: PENDING → CANCELLED; APPROVED belum dieksekusi →
+ * eksekusi CANCELLED) + audit — satu transaksi.
+ */
+export async function blokirCandidate(ctx: TenantContext, tx: Tx, c: CandidateBaris, blok: Penolakan): Promise<void> {
   const n = await tx.communicationCandidate.updateMany({
     where: { id: c.id, state: 'ACTIVE', version: c.version },
     data: { state: 'BLOCKED', blockReason: blok.alasan, blockedAt: new Date(), version: { increment: 1 } },
@@ -345,10 +360,12 @@ async function blokirCandidate(ctx: TenantContext, tx: Tx, c: CandidateBaris, bl
   if (n.count === 0) throw new KonflikKonkurensi()
   const aktif = await tx.communicationMessage.findMany({
     where: { candidateId: c.id, activeKey: { not: null } },
-    select: { id: true, state: true, version: true },
+    select: { id: true, state: true, version: true, approvalRequestId: true },
   })
   for (const m of aktif) {
     if (!transisiPesanSah(m.state, 'BLOCKED')) throw new KonflikKonkurensi()
+    // Urutan kunci: approval SEBELUM pesan (sama dengan jalur approve) — mencegah deadlock.
+    await hentikanApprovalTertaut(ctx, tx, m.approvalRequestId, 'CANCELLED', blok.alasan)
     const u = await tx.communicationMessage.updateMany({
       where: { id: m.id, version: m.version, activeKey: { not: null } },
       data: { state: 'BLOCKED', reasonCode: blok.alasan, activeKey: null, version: { increment: 1 } },
@@ -367,7 +384,91 @@ async function auditTolakPrepare(ctx: TenantContext, tx: Tx, tabel: string, reco
   })
 }
 
-const tolakDari = (h: { alasan: KodeAlasan; medan?: string }): Penolakan => (h.medan === undefined ? { alasan: h.alasan } : { alasan: h.alasan, medan: h.medan })
+export const tolakDari = (h: { alasan: KodeAlasan; medan?: string }): Penolakan => (h.medan === undefined ? { alasan: h.alasan } : { alasan: h.alasan, medan: h.medan })
+
+// ============================================== approval tertaut & revalidasi (2D)
+
+/**
+ * D-2D-04 — hentikan approval yang tertaut ke revisi yang sedang dibatalkan/diblokir, dalam
+ * transaksi pemanggil. PENDING → `modePending` (CANCELLED untuk hard block/basi, SUPERSEDED
+ * untuk revisi diganti). APPROVED yang eksekusinya belum mulai/gagal → eksekusi CANCELLED
+ * (invarian TAH: keputusan APPROVED final, hanya mesin eksekusi yang bergerak). Status final
+ * lain dibiarkan. Baris approval yang sudah terhapus retensi → tak ada yang dilakukan.
+ */
+export async function hentikanApprovalTertaut(
+  ctx: TenantContext,
+  tx: Tx,
+  approvalRequestId: string | null,
+  modePending: 'CANCELLED' | 'SUPERSEDED',
+  alasan: string,
+): Promise<void> {
+  if (!approvalRequestId) return
+  const a = await tx.tahApprovalRequest.findFirst({
+    where: { id: approvalRequestId },
+    select: { id: true, status: true, executionStatus: true, version: true },
+  })
+  if (!a) return
+  const sekarang = new Date()
+  if (a.status === 'PENDING') {
+    if (!transisiKeputusanSah('PENDING', modePending)) throw new Error('[komunikasi] transisi approval tidak sah.')
+    const n = await tx.tahApprovalRequest.updateMany({
+      where: { id: a.id, status: 'PENDING', version: a.version },
+      data: { status: modePending, decidedAt: sekarang, decisionNote: alasan, finalizedAt: sekarang, version: { increment: 1 } },
+    })
+    if (n.count === 0) throw new KonflikKonkurensi()
+    await audit(ctx, tx, {
+      tableName: 'TahApprovalRequest',
+      recordId: a.id,
+      action: 'UPDATE',
+      oldValue: { status: 'PENDING' },
+      newValue: { peristiwa: 'WA1_APPROVAL_DIHENTIKAN', status: modePending, alasan },
+    })
+    return
+  }
+  if (a.status === 'APPROVED' && (a.executionStatus === 'NOT_STARTED' || a.executionStatus === 'FAILED')) {
+    if (!transisiEksekusiSah(a.executionStatus, 'CANCELLED', 'APPROVED')) throw new Error('[komunikasi] transisi eksekusi tidak sah.')
+    const n = await tx.tahApprovalRequest.updateMany({
+      where: { id: a.id, status: 'APPROVED', executionStatus: a.executionStatus, version: a.version },
+      data: { executionStatus: 'CANCELLED', executionErrorCode: alasan, finalizedAt: sekarang, version: { increment: 1 } },
+    })
+    if (n.count === 0) throw new KonflikKonkurensi()
+    await audit(ctx, tx, {
+      tableName: 'TahApprovalRequest',
+      recordId: a.id,
+      action: 'UPDATE',
+      oldValue: { status: 'APPROVED', executionStatus: a.executionStatus },
+      newValue: { peristiwa: 'WA1_EKSEKUSI_DIBATALKAN', executionStatus: 'CANCELLED', alasan },
+    })
+    return
+  }
+  if (a.status === 'APPROVED' && a.executionStatus === 'RUNNING') throw new KonflikKonkurensi()
+}
+
+export type HasilRevalidasiCandidate =
+  | { ok: true; kunci: KunciCandidate; fakta: FaktaKanonikJadwal | FaktaKanonikMilestone; sourceFingerprint: string }
+  | { ok: false; sifat: 'KERAS' | 'PULIH'; tolak: Penolakan }
+
+/**
+ * Revalidasi penuh (grup sinyal P-08/Q4 + sumber) untuk candidate ACTIVE — dipakai layanan
+ * approval 2D saat meminta DAN saat menyetujui (D-2D-08). Tanpa efek samping; pemanggil yang
+ * memutuskan hard block / penolakan.
+ */
+export async function revalidasiCandidate(tx: Tx, ctx: TenantContext, c: CandidateBaris): Promise<HasilRevalidasiCandidate> {
+  const v = await tx.voyage.findFirst({ where: { id: c.voyageId }, select: PILIH_VOYAGE })
+  if (!v) throw new Error('[komunikasi] voyage candidate tidak terbaca di tenant ini.')
+  if (c.sourceType !== 'AUDIT_LOG' && c.sourceType !== 'VOYAGE_EVENT') throw new Error('[komunikasi] sourceType candidate tidak sah.')
+  const kunci: KunciCandidate = { tenantId: ctx.tenantId, voyageId: c.voyageId, sourceType: c.sourceType, sourceRef: c.sourceRef }
+  const keluarga = c.family as KeluargaEvent
+  const g = await bacaGrup(tx, kunci, keluarga)
+  const layak = kelayakanGrupSinyal(g.reviewStates)
+  if (!layak.ok) return { ok: false, sifat: 'KERAS', tolak: tolakDari(layak) }
+  const r = await revalidasiSumber(tx, kunci, keluarga, v)
+  if (!r.hasil.ok) {
+    const tolak = tolakDari(r.hasil)
+    return { ok: false, sifat: sifatAlasanPrepare(tolak.alasan) === 'PULIH' ? 'PULIH' : 'KERAS', tolak }
+  }
+  return { ok: true, kunci, fakta: r.hasil.nilai, sourceFingerprint: sidikSumber(kunci, r.hasil.nilai) }
+}
 
 // ================================================================ API service
 
@@ -537,14 +638,19 @@ async function revisiDalamTx(ctx: TenantContext, tx: Tx, candidateId: string, fi
 
   const aktif = await tx.communicationMessage.findFirst({
     where: { activeKey: logicalMessageKey },
-    select: { id: true, candidateId: true, revision: true, state: true, version: true, snapshotFingerprint: true },
+    select: { id: true, candidateId: true, revision: true, state: true, version: true, snapshotFingerprint: true, approvalRequestId: true },
   })
   if (aktif && aktif.candidateId !== c.id) throw new Error('[komunikasi] revisi aktif milik candidate lain.')
-  if (aktif && aktif.snapshotFingerprint === snapshotFingerprint && (aktif.state === 'DRAFT' || aktif.state === 'PREVIEWED')) {
+  // Snapshot identik → revisi yang ada dipakai apa adanya; approval-nya (PENDING/APPROVED) tetap berlaku.
+  if (aktif && aktif.snapshotFingerprint === snapshotFingerprint && (aktif.state === 'DRAFT' || aktif.state === 'PREVIEWED' || aktif.state === 'APPROVED')) {
     return { hasil: 'REVISI_SAMA', messageId: aktif.id, revision: aktif.revision, snapshotFingerprint }
   }
   if (aktif) {
     if (!transisiPesanSah(aktif.state, 'CANCELED')) throw new KonflikKonkurensi()
+    // D-2D-04: approval revisi lama TAK pernah dipakai ulang — PENDING → SUPERSEDED; APPROVED belum
+    // dieksekusi → eksekusi CANCELLED. Revisi baru wajib meminta approval sendiri. Urutan kunci:
+    // approval SEBELUM pesan (sama dengan jalur approve) — mencegah deadlock.
+    await hentikanApprovalTertaut(ctx, tx, aktif.approvalRequestId, 'SUPERSEDED', 'REVISED')
     const n = await tx.communicationMessage.updateMany({
       where: { id: aktif.id, version: aktif.version, activeKey: logicalMessageKey },
       data: { state: 'CANCELED', reasonCode: 'REVISED', activeKey: null, version: { increment: 1 } },

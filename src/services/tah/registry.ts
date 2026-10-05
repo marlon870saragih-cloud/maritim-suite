@@ -10,6 +10,7 @@
 //   • jenis TAH_DEV_NOOP — HANYA non-produksi, eksekutornya (Step 3C) tak berbuat
 //     apa pun; ada supaya gerbang persetujuan bisa diuji ujung-ke-ujung tanpa
 //     pengguna produksi (D6). Pengguna produksi native pertama = agen EPDA kelak.
+//   • jenis WA_INTERNAL_FAKE_TEST — WA-1 Step 2D, HANYA non-produksi (lihat entri).
 // Kait fungsi jenis (validasiUsulan, sidikBasis, eksekusi, rekonsiliasi)
 // ditambahkan Step 3C di service — sengaja tak ada di berkas data ini.
 
@@ -38,6 +39,19 @@ export const JENIS_APPROVAL_TAH: readonly DefinisiApprovalData[] = [
     setujuSendiri: true,
     kedaluwarsaJam: 72,
     bisaDiedit: true,
+    hanyaNonProduksi: true,
+  },
+  {
+    // WA-1 Step 2D (D-2D-05) — approval update klien SIMULASI (INTERNAL_FAKE_TEST, provider FAKE,
+    // tanpa egress). HANYA non-produksi; tanpa TTL produk (Q8, D-2D-01: expiresAt NULL); usulan
+    // (snapshot) tak bisa disunting. Komunikasi klien nyata (CLIENT_WA_UPDATE, EXTERNAL_COMMUNICATION,
+    // tanpa setuju-sendiri) SENGAJA belum didaftarkan.
+    kind: 'WA_INTERNAL_FAKE_TEST',
+    risiko: 'INTERNAL_WRITE',
+    peranWajib: ['ADMIN', 'MANAJER_OPERASI'],
+    setujuSendiri: true,
+    kedaluwarsaJam: null,
+    bisaDiedit: false,
     hanyaNonProduksi: true,
   },
 ]
