@@ -1,0 +1,272 @@
+# TAH / Maritim Suite — Current Checkpoint (CANONICAL)
+
+> **SESSION START RULE**
+> Every new TAH / Maritim Automation / WhatsApp Automation session MUST first read this file
+> (`docs/TAH-CURRENT-CHECKPOINT.md`) and continue from **NEXT EXACT STEP** (§L).
+> DO NOT perform a recovery audit from zero unless:
+> - this checkpoint explicitly says UNVERIFIED for the state you depend on,
+> - repository state materially changed without a checkpoint update,
+> - production state materially changed,
+> - or the owner explicitly requests a new audit.
+
+> **SESSION END RULE**
+> Before ending every development session, update this checkpoint with:
+> - date/time
+> - branch
+> - HEAD SHA
+> - working tree state
+> - completed step
+> - tests/results
+> - production state if changed
+> - known blockers
+> - NEXT EXACT STEP
+>
+> This checkpoint is the canonical handoff between the owner, ChatGPT, Claude Code, and future sessions.
+
+**Checkpoint resmi:** 2026-10-05 — TAH / Maritim Suite → WhatsApp Automation handoff.
+**Status pekerjaan:** TAH / PRD-005 **CLOSED**. Pekerjaan produk berikutnya: **Client Communication / WhatsApp Automation**.
+**Dokumen pendamping:** `docs/PRD-005-CLOSURE.md`, `docs/PRODUCTION-STATE-2026-09-30.md`, `docs/TAH-TECH-DEBT.md`,
+`docs/TAH-GAP-ANALYSIS-2026-09-30.md` (saat ini hanya di branch `docs/tah-gap-analysis-20260930`, belum di `main`).
+
+**Label bukti:**
+- **VERIFIED (tanggal)** — dibaca langsung oleh sesi yang menulis entri.
+- **OWNER-VERIFIED (tanggal)** — dijalankan/diamati owner di produksi dan dilaporkan; output mentah tidak ditinjau sesi penulis.
+- **HISTORICAL (tanggal)** — benar pada tanggal itu; belum diperiksa ulang.
+- **UNVERIFIED** — belum ada bukti.
+
+Repo ini PUBLIK: jangan mencatat credential, nilai env rahasia, ID proyek GCP, IP, atau data klien.
+
+---
+
+## A. OWNER DECISIONS (berlaku sampai diubah owner)
+
+| ID | Keputusan | Tanggal |
+|---|---|---|
+| OD-1 | Produksi resmi = GCP Compute Engine. Railway ditinggalkan (diputus & di-uninstall dari GitHub). Vercel App di-uninstall dari GitHub. | 2026-09-27 / 2026-09-30 |
+| OD-2 | **TAH / PRD-005 CLOSED.** Jangan membuka kembali PRD-005 atau menjalankan siklus evaluasi baru kecuali owner memerintahkan secara eksplisit. Validator V3 FINAL (`ac6460c`) tidak diubah; tidak ada Blind-C/Eval-9. | 2026-09-29 / 2026-10-05 |
+| OD-3 | **Pekerjaan produk berikutnya = Client Communication / WhatsApp Automation.** | 2026-10-05 |
+| OD-4 | **Arah model TAH ke depan = `anthropic/claude-sonnet-5`.** Ini arah, BUKAN promosi teknis (lihat §I). | 2026-10-05 |
+| OD-5 | Reminders produksi tetap ENABLED (D-2). | 2026-09-30 |
+| OD-6 | Tenant uji/duplikat di produksi = HOLD, tidak diubah (D-1). | 2026-09-30 |
+| OD-7 | Penyelarasan GitHub terpisah dari deploy produksi (D-3). Merge, deploy, aktivasi fitur, dan promosi model = langkah terpisah, masing-masing dengan persetujuan owner. | 2026-09-30 |
+| OD-8 | `origin/main` di GitHub = source of truth kode. Jangan melanjutkan dari folder/arsip/checkout lama. Jangan menyimpulkan `main` == produksi. | 2026-10-05 |
+| OD-9 | File ini = canonical checkpoint. | 2026-10-05 |
+
+## B. DEVELOPMENT / GITHUB REALITY — VERIFIED 2026-10-05
+
+| Item | Nilai |
+|---|---|
+| Repository | `marlon870saragih-cloud/maritim-suite` (public) |
+| `origin/main` | `0b5c1c5e4898926d19751086067f09fed47c6c77` — merge commit PR #1 (2026-09-30 04:15:17 UTC) |
+| PR #1 | MERGED (merge commit; parent `958c15a` + `7127d99`); PRD-002..005 ada di `main` |
+| `feat/prd002-step2-domain-foundation` | `7127d991f8487bfc9f096d22182f4c1c578a9e87`, sepenuhnya termasuk di `main`; belum dihapus |
+| `docs/tah-gap-analysis-20260930` | `139006d` — hanya dokumen, belum di-merge. File ini menggantikan versi checkpoint di branch tersebut; gap analysis-nya tetap rujukan perencanaan |
+| CI | Tidak ada (0 workflow). Tidak ada integrasi deploy otomatis di GitHub (webhook & deploy key kosong; GitHub App terpasang hanya Claude) |
+| Test terakhir yang benar-benar dijalankan | 2026-09-30 pada `f7635a2` (kode identik dengan `main`): tsc/lint/build hijau; 21/21 migrasi dari nol (PostgreSQL 16); suite offline & DB hijau. Merah yang diharapkan: `check-eval8-runner` E1c, `check-validator-remediasi` 61/70 |
+| Checkout lain milik owner | Checkout laptop lama (HEAD `28b0ef9`, enam file untracked termasuk `_wipe.mjs`) — HISTORICAL 2026-09-30. Jangan dijadikan basis kerja; jangan jalankan script untracked tanpa dibaca |
+
+## C. PRODUCTION / GCP REALITY — OWNER-VERIFIED 2026-10-05
+
+### GCP
+| Item | Nilai |
+|---|---|
+| VM | `tribuana-vm`, zone `asia-southeast2-a`, **RUNNING**, `e2-medium` |
+| Disk | 30 GB |
+| Billing | `billingEnabled=true`. Status trial vs paid: **UNVERIFIED** (`billingEnabled` hanya membuktikan akun billing tertaut) |
+
+### Maritim Suite
+| Item | Nilai |
+|---|---|
+| Proses | PM2 `maritime-suite` **online**; Node 22.23.2; port 3001 aktif |
+| Path aplikasi | `/home/LENOVO/maritime-suite` |
+| Reverse proxy | nginx **active**; `https://maritim.tribuanagency.com/login` → **HTTP 200** |
+| Jenis deploy | Build hasil deploy (arsip), **bukan git checkout** |
+
+### Kode produksi
+| Item | Nilai |
+|---|---|
+| Build | 27 Sep 2026 |
+| Fingerprint | **Cocok dengan rilis historis `ac922f6`** pada file pembeda (`intake-policy.ts`, `model-capabilities.ts`, `package.json`); `maritim-lexicon-v2.ts` & `-v3.ts` **tidak ada** → **Validator V3 tidak ada di produksi** |
+| Terhadap GitHub | Produksi **tidak identik** dengan `main`: 16 commit di belakang `main` (selisih berisi 0 migrasi — VERIFIED via git). **Jangan menyimpulkan GitHub `main` == produksi.** |
+
+### Konfigurasi produksi (nilai rahasia hanya PRESENT/ABSENT)
+| Kunci | Nilai |
+|---|---|
+| `AUTOMATION_MONITORING_ENABLED` | `true` |
+| `AUTOMATION_TENANT_IDS` | PRESENT (1 tenant) |
+| `OPENROUTER_SPK_MODEL` | `anthropic/claude-sonnet-4.5` |
+| `TAH_INTAKE_MODEL` | ABSENT |
+| `TAH_CORE_ENABLED` | ABSENT |
+| `VESSEL_CALL_INTAKE_ENABLED` | ABSENT |
+| `OPENROUTER_API_KEY` | PRESENT |
+| `DATABASE_URL` | PRESENT |
+
+**TAH Intake tidak terbukti aktif di produksi.** Jangan membuka kembali TAH hanya karena hal ini; pekerjaan pengembangan TAH/PRD-005 sudah CLOSED.
+
+### Scheduler (systemd)
+- `maritime-monitoring.timer` → `maritime-monitoring.service` → `/usr/local/sbin/maritime-job-run voyage-monitoring`; terobservasi berjalan kira-kira tiap jam.
+- Service bertipe `Type=oneshot`: status `inactive (dead)` sesudah eksekusi sukses adalah **NORMAL**.
+- Juga terpasang (HISTORICAL 2026-09-30): `maritime-reminders.timer` (enabled, tiap jam), `pg-backup.timer` (harian). `maritime-ais-poll.timer` tidak terpasang. Tidak ada mekanisme deploy otomatis di VM (tanpa cron/timer deploy/repo git).
+
+### Belum diverifikasi pada 2026-10-05
+- Log aplikasi produksi — **UNVERIFIED**.
+- Layanan lain di VM yang sama — **UNVERIFIED** (HISTORICAL 2026-09-30: `galangan-app`, `nouvo-api`, `ankor-app` di PM2, MariaDB, uvicorn, next-server lain). Tindakan pada VM berpotensi memengaruhi layanan tersebut.
+- Eksposur jaringan (app mendengarkan di semua antarmuka; aturan firewall GCP & upstream nginx) — **UNVERIFIED**.
+
+## D. VOYAGE MONITORING — PRODUCTION E2E VERIFIED (OWNER-VERIFIED 2026-10-05)
+
+**Data uji:** voyage `VYG-2026-000003`, kapal MT DS Grace, pelabuhan Balikpapan, agency type full, tujuan: uji otomasi produksi.
+
+**Hasil:**
+1. Voyage uji berhasil dibuat.
+2. Voyage langsung muncul di Automation Hub.
+3. Monitoring berhasil diaktifkan; Monitored Voyages berubah 0 → 1.
+4. Pemanggilan manual `sudo systemctl start maritime-monitoring.service` selesai SUCCESS; `voyage-monitoring` mengembalikan HTTP 200 / gagal 0.
+5. Baseline awal: status voyage PLANNED, Health = Healthy, last successful check tercatat.
+6. Status voyage dinaikkan manual PLANNED → CONFIRMED.
+7. Run monitoring berikutnya mendeteksi perubahan dan membuat satu sinyal **INFO — Status changed**:
+   "Status voyage VYG-2026-000003 berubah dari PLANNED menjadi CONFIRMED." Sumber sinyal: `AUDIT_LOG`.
+8. Sinyal muncul di Automation Hub → Alerts.
+9. Alur Human Review terverifikasi: admin meng-acknowledge sinyal dengan catatan
+   "Test automation - status change verified by admin".
+10. Sinyal tersimpan pada State=All sebagai **Acknowledged**; reviewer dan timestamp review tersimpan.
+
+**VERDICT: VOYAGE MONITORING PRODUCTION E2E = VERIFIED.**
+
+Alur yang terverifikasi:
+
+Voyage operational change → Audit Log → scheduled Voyage Monitoring → Signal / Alert → Human Review → Acknowledge → persistent Audit Trail
+
+Jangan membangun ulang atau mengaudit ulang alur ini dari nol pada sesi berikutnya kecuali ada bukti regresi.
+
+Catatan: voyage uji `VYG-2026-000003` beserta sinyalnya **masih ada di database produksi** (data uji, bukan data operasional). Pembersihan = keputusan owner terpisah.
+
+## E. DATABASE REALITY
+
+| Item | Nilai | Label |
+|---|---|---|
+| Engine | PostgreSQL 16 lokal di VM, DB `maritime_suite` | HISTORICAL 2026-09-30 |
+| Migrasi | 21 diterapkan, 0 gagal (termasuk 7 migrasi PRD-002..005) | HISTORICAL 2026-09-30; 2026-10-05 **UNVERIFIED** |
+| Tabel TAH/PRD | 11/11 ada | HISTORICAL 2026-09-30 |
+| `AgentRun` / `AgentModelCall` / `TahApprovalRequest` | 0 / 0 / 0 | HISTORICAL 2026-09-30; 2026-10-05 **UNVERIFIED** |
+| `MonitoredVoyage` | ≥ 1 (voyage uji) | OWNER-VERIFIED 2026-10-05 (via UI) |
+| `MonitoringSignal` | ≥ 1 (sinyal uji, Acknowledged) | OWNER-VERIFIED 2026-10-05 (via UI) |
+| `VesselCallIntake` | 1 (REJECTED, 2026-09-19, extractor v1) | HISTORICAL 2026-09-30 |
+| Lampiran | 0 dipurge; 7 kandidat (soft-deleted > 30 hari); tidak ada penjadwal purge | HISTORICAL 2026-09-30 |
+
+## F. COMPLETED
+
+- PRD-002: identitas kapal/MMSI, voyage multi-kapal, waktu bisnis WITA, job pengingat, pelaporan backup, unit systemd, monitoring voyage internal.
+- PRD-003: framework polling AIS (adapter NONE/FAKE).
+- PRD-004: Vessel Call Intake (fitur mati di produksi), retensi lampiran.
+- PRD-005 (**CLOSED**): ledger `AgentRun`/`AgentModelCall`, skema & kebijakan `TahApprovalRequest`, registri model gagal-tertutup, Validator V3 FINAL, harness Eval-1..8.
+  Blind-B offline jawaban sempurna 64/80 (80% < target 90%); safety gates toleransi-nol PASS. Angka tersebut bukan akurasi model live.
+- Penyelarasan GitHub: PR #1 merged; koreksi dokumen keadaan produksi (`7127d99`).
+- Audit merge-safety 2c/2d/2e PASS (2026-09-30); Railway & Vercel di-uninstall dari GitHub.
+- Gap analysis operasional (2026-09-30; gap kode diverifikasi ulang terhadap `main` pada 2026-10-05: masih ada).
+- **Voyage Monitoring production E2E VERIFIED (2026-10-05)** — lihat §D.
+
+## G. NOT COMPLETED / NEXT GAP
+
+**Batas alur yang sudah terverifikasi berakhir di:** Human Review / Acknowledged Signal / Audit Trail.
+Pekerjaan berikutnya dimulai **sesudah** batas ini. **Jangan membangun ulang Voyage Monitoring.**
+
+Komunikasi klien eksternal / pengiriman WhatsApp **belum** diimplementasikan maupun diverifikasi sebagai bagian alur produksi ini.
+
+Target alur konseptual:
+
+Validated operational event → tentukan apakah perlu komunikasi ke klien → tentukan penerima → buat pesan WhatsApp terkontrol → Human Approval bila diperlukan → pengiriman WhatsApp → status sent/delivered/failed → audit trail komunikasi
+
+Gap lain yang tetap terbuka (rujukan: gap analysis 2026-09-30):
+- Eksekusi approval TAH (`TahApprovalRequest` hanya skema/kebijakan; belum service/API/UI/executor).
+- Agen TAH selain INTAKE (registri: INTAKE + `TAH_DEV_NOOP` non-produksi).
+- TD-005-01 kuota AI, TD-005-02 self-approval intake terlihat portal, TD-005-03 update operasional voyage — OPEN.
+- Finance self-approval masih diizinkan (`IZINKAN_SETUJU_SENDIRI = true`).
+- Document intelligence/versioning, PNBP actual, vendor cost terpadu, profit v2.
+- AIS live (hanya NONE/FAKE; kontrak POLL), BMKG/cuaca, event engine lintas sumber.
+- Kenaikan rilis produksi `ac922f6` → `main`.
+
+## H. KNOWN BLOCKERS
+
+| Blocker | Dampak |
+|---|---|
+| Belum ada approval TAH yang bisa dieksekusi | Aksi eksternal (termasuk WhatsApp ke klien) belum boleh diotomatisasi tanpa desain gerbang approval |
+| Belum ada provider/akun WhatsApp, mapping penerima, dan kebijakan pengiriman | Pengiriman WA tidak bisa diuji end-to-end |
+| Promosi Sonnet 5 terkunci aturan PRD-005 (plafon V3 + larangan Blind-C/Eval-9) | Sonnet 5 tetap `PENDING_SPIKE` di `main` tanpa keputusan owner baru (lihat §I) |
+| `SPIKE_OPENROUTER_API_KEY` kedaluwarsa 2026-10-05 | Evaluasi LIVE apa pun butuh kunci baru + saldo terverifikasi |
+| Produksi menjalankan rilis lama `ac922f6` | Registri produksi berbeda dari `main` (Sonnet 5 `VERIFIED` vs `PENDING_SPIKE`) |
+| Status trial/paid GCP UNVERIFIED | Risiko layanan terhenti; VM dipakai bersama aplikasi lain |
+
+## I. MODEL STATUS — tiga keadaan, jangan dicampur
+
+| Keadaan | Status | Label |
+|---|---|---|
+| **OWNER MODEL DIRECTION** | `anthropic/claude-sonnet-5` | Keputusan owner 2026-10-05 |
+| **GITHUB MAIN TECHNICAL STATUS** | Sonnet 5 = **`PENDING_SPIKE`**; Sonnet 4.5 = `VERIFIED` (`LEGACY_IN_USE`). `TAH_INTAKE_MODEL=anthropic/claude-sonnet-5` di kode `main` → gagal tertutup `MODEL_TIDAK_TERVERIFIKASI`, 0 panggilan | VERIFIED 2026-10-05 |
+| **PRODUCTION (rilis lama `ac922f6`)** | Registri mencatat Sonnet 5 = **`VERIFIED`** (sebelum revert `4cd338d`), tetapi **dorman**: `TAH_INTAKE_MODEL`, `TAH_CORE_ENABLED`, `VESSEL_CALL_INTAKE_ENABLED` ABSENT. Model global `OPENROUTER_SPK_MODEL = anthropic/claude-sonnet-4.5` | OWNER-VERIFIED 2026-10-05 |
+
+**Jangan menyimpulkan TAH aktif hanya karena registri produksi menulis `VERIFIED`.**
+
+Riwayat singkat Sonnet 5: Eval-4 heldout-3 LIVE PASS 42/42 (TEXT, Prompt v4, validator lama) → promosi sempit `b89ca36` → dicabut `4cd338d` sesudah Eval-7 Blind-A → Eval-8 Blind-B gagal target karena plafon validator V3 (bukan kegagalan model). HTTP 402 hanya sekali di Eval-4 heldout-1 (infrastruktur, akar tidak terbukti).
+
+Syarat minimum mengubah status dari `PENDING_SPIKE` (butuh keputusan owner; PRD-005 tetap CLOSED): spesifikasi validator baru + dataset blind segar + evaluasi baru, ATAU perubahan kriteria penerimaan secara eksplisit; lalu evaluasi LIVE Sonnet 5 dengan validator final yang lulus ambang, otorisasi LIVE, kunci API baru, saldo terverifikasi.
+
+## J. WHATSAPP AUTOMATION STATUS
+
+- **Belum ada integrasi.** Di kode hanya tautan `wa.me` (click-to-chat manual) pada halaman login, landing, dan billing.
+- Email: hanya draft + pencatatan manual "tandai terkirim"; belum ada pengiriman otomatis.
+- Fondasi yang sudah terverifikasi di produksi dan menjadi titik awal: Voyage → Audit Log → Voyage Monitoring → Signal → Human Review → Acknowledge (§D).
+
+## K. UX BACKLOG (ditemukan saat uji 2026-10-05 — BACKLOG, jangan diimplementasikan saat update checkpoint)
+
+**Modal "Create New Voyage":** sesudah field diisi, klik di luar modal menutupnya; saat dibuka lagi, data yang sudah diisi hilang.
+Perilaku yang diinginkan:
+- klik tak sengaja di luar modal tidak boleh membuang data secara diam-diam;
+- simpan draft ATAU cegah tutup-dari-luar saat form sudah diisi (dirty);
+- bila user sengaja menutup form yang dirty, tampilkan konfirmasi seperti "Discard unsaved changes?".
+
+## L. NEXT EXACT STEP
+
+**STEP WA-0 — READ-ONLY ARCHITECTURE AUDIT: Client Communication / WhatsApp Automation.**
+
+Tujuan: mengidentifikasi komponen yang bisa dipakai ulang pada:
+- Voyage
+- Audit Log
+- Automation Signal
+- Human Review
+- data Principal / Contact
+- service terkait komunikasi
+- mekanisme approval
+- integrasi WhatsApp/provider yang sudah ada, bila ada
+
+WA-0 WAJIB READ-ONLY: tanpa coding, tanpa migrasi DB, tanpa registrasi provider, tanpa mengirim pesan WhatsApp, tanpa credential, tanpa deploy.
+
+Output WA-0: arsitektur minimum untuk memperluas alur yang sudah terverifikasi — dari event operasional yang sudah divalidasi/di-Acknowledge — menjadi komunikasi WhatsApp ke klien yang terkontrol.
+
+STOP sesudah audit dan tunggu persetujuan owner.
+
+## M. HARD STOP / OWNER APPROVAL REQUIRED
+
+Tidak boleh dilakukan tanpa persetujuan owner eksplisit pada sesi tersebut:
+- coding/implementasi fitur;
+- merge ke `main`, deploy, atau kenaikan rilis produksi;
+- migrasi atau write ke database produksi;
+- perubahan env/konfigurasi produksi, termasuk `TAH_INTAKE_MODEL`, `TAH_CORE_ENABLED`, `VESSEL_CALL_INTAKE_ENABLED`;
+- mengaktifkan TAH Intake;
+- perubahan registri model atau promosi Sonnet 5;
+- evaluasi LIVE / panggilan model berbayar;
+- membuka kembali PRD-005;
+- perubahan GCP, VM, nginx, firewall, PM2, billing;
+- registrasi provider WhatsApp atau pengiriman WhatsApp/email;
+- perubahan data tenant uji/duplikat (HOLD) atau pembersihan data uji;
+- menjalankan script untracked dari checkout lokal mana pun.
+
+## N. HISTORICAL CHECKPOINT (2026-09-30, tetap benar)
+
+- SHA kode yang diaudit pada gap analysis: `main@0b5c1c5`; PR #1 merged 2026-09-30 04:15:17 UTC.
+- PRD-005: Validator V3 FINAL `ac6460c`, kandidat `prd005-intake-text/kandidat-validator-v3-2`,
+  fingerprint `775b899b396ab8165ad98d140b5a9cd8c6062157e9ec2921551fde4b2b3b956c`.
+- Prinsip alur yang disepakati: source → ingest → validate → link ke pekerjaan → approval → action → audit. AI tidak boleh menciptakan fakta operasional/finansial tanpa sumber.
+- PNBP/biaya resmi mengikuti billing/nota resmi; internal cost/profit terpisah dari dokumen klien. Data sensitif dan credential tidak masuk repo publik.
+- External Data Pack historis dianggap cukup untuk desain; tidak perlu mengumpulkan dokumen dari nol.
+- Usulan urutan paket (gap analysis §5, belum disetujui sebagai komitmen): 0 rekonsiliasi baseline → 1 TAH Approval/audit/kontrol biaya AI → 2 Vessel Call + Document Intelligence → 3 EPDA/PR/vendor/PNBP actual → 4 profit v2/closing → 5 Event Engine → 6 AIS live + BMKG → 7 Client Communication Agent → 8 WhatsApp + pilot. Estimasi awal 8–13 minggu kerja (ketidakpastian tinggi). Per keputusan owner 2026-10-05 (OD-3), fokus berikutnya adalah Client Communication / WhatsApp di atas fondasi yang sudah terverifikasi (§D).
