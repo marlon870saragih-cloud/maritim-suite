@@ -37,12 +37,23 @@ export type EntriAudit = {
 const json = (v: unknown): Prisma.InputJsonValue | undefined =>
   v === undefined ? undefined : (v as Prisma.InputJsonValue)
 
+/**
+ * Klien penulis audit. Bawaan `forTenant(ctx)`. WA-1 Step 2C (D-2C-02): pemanggil
+ * boleh menyodorkan klien TRANSAKSI (`tx` dari `forTenant(ctx).$transaction`)
+ * supaya mutasi bisnis + baris AuditLog jatuh/bangun BERSAMA — gagal menulis audit
+ * menggagalkan seluruh transaksi. Pemanggil lama (tanpa argumen ke-4) tak berubah.
+ */
+export type KlienAudit = {
+  auditLog: { create(args: { data: Prisma.AuditLogUncheckedCreateInput }): PromiseLike<unknown> }
+}
+
 export async function catatAudit(
   ctx: TenantContext,
   entri: EntriAudit,
   jejak: Jejak = {},
+  db?: KlienAudit,
 ): Promise<void> {
-  await forTenant(ctx).auditLog.create({
+  await (db ?? forTenant(ctx)).auditLog.create({
     data: {
       tableName: entri.tableName,
       recordId: entri.recordId,

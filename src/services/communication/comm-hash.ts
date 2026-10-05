@@ -8,6 +8,7 @@
 // tak hingga/NaN, BigInt, fungsi, Date) DITOLAK alih-alih diam-diam diubah.
 
 import { createHash } from 'node:crypto'
+import type { FaktaKanonikJadwal, FaktaKanonikMilestone, KunciCandidate } from './comm-policy'
 
 export function jsonKanonikKomunikasi(v: unknown): string {
   if (v === null) return 'null'
@@ -36,4 +37,45 @@ export function jsonKanonikKomunikasi(v: unknown): string {
 /** sha256 hex atas JSON kanonik, berawalan domain supaya sidik antarjenis tak bisa tertukar. */
 export function sidikJariKomunikasi(domain: 'WA1_SOURCE' | 'WA1_SNAPSHOT', v: unknown): string {
   return createHash('sha256').update(`${domain}\n`).update(jsonKanonikKomunikasi(v), 'utf8').digest('hex')
+}
+
+/**
+ * WA-1 Step 2C — sidik SUMBER: hanya fakta yang membentuk MAKNA pesan (identitas
+ * sumber + nilai yang dipakai template). SENGAJA tanpa status voyage, timestamp,
+ * status sinyal (dicek terpisah), dan eventLocalTime (turunan occurredAt + zona;
+ * body sudah dibekukan) — supaya approval tak basi karena perubahan tak relevan.
+ */
+export function sidikSumber(kunci: KunciCandidate, f: FaktaKanonikJadwal | FaktaKanonikMilestone): string {
+  const dasar = {
+    v: 1,
+    tenantId: kunci.tenantId,
+    voyageId: kunci.voyageId,
+    sourceType: kunci.sourceType,
+    sourceRef: kunci.sourceRef,
+    keluarga: f.keluarga,
+    vesselName: f.vesselName,
+    voyageNumber: f.voyageNumber,
+    portName: f.portName,
+  }
+  return f.keluarga === 'SCHEDULE_CHANGE'
+    ? sidikJariKomunikasi('WA1_SOURCE', { ...dasar, perubahan: f.perubahan.map((p) => ({ medan: p.medan, lama: p.lama, baru: p.baru })) })
+    : sidikJariKomunikasi('WA1_SOURCE', { ...dasar, occurredAt: f.occurredAt, timezone: f.timezone })
+}
+
+export type IsiSidikSnapshot = {
+  sourceFingerprint: string
+  teksKunciCandidate: string
+  logicalMessageKey: string
+  recipientFixtureId: string
+  recipientIdentifier: string
+  language: string
+  templateId: string
+  templateVersion: number
+  body: string
+  mode: string
+}
+
+/** WA-1 Step 2C — sidik SNAPSHOT: tepat isi yang kelak disetujui (= proposalHash di 2D). */
+export function sidikSnapshot(s: IsiSidikSnapshot): string {
+  return sidikJariKomunikasi('WA1_SNAPSHOT', { v: 1, ...s })
 }

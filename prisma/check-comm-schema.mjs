@@ -109,7 +109,7 @@ cek('tanpa GRANT / RLS (portal default-deny, K147)', !/\bGRANT\b|ROW LEVEL SECUR
 cek('tak menyebut tabel TAH (termasuk komentar — kunci check-tah-policy)', !/AgentRun|AgentModelCall|TahApprovalRequest/.test(sqlMentah))
 
 // ===================================================================== S3
-bagian('[S3] Lingkup Step 2B')
+bagian('[S3] Lingkup Step 2B/2C')
 cek('TENANT_MODELS memuat ketiga model', MODEL.every((m) => TENANT_MODELS.has(m)))
 cek('registry TAH masih tanpa WA_INTERNAL_FAKE_TEST (approval = 2D)', !JENIS_APPROVAL_TAH.some((j) => j.kind === 'WA_INTERNAL_FAKE_TEST'))
 const jelajah = (rel, hasil = []) => {
@@ -121,7 +121,8 @@ const jelajah = (rel, hasil = []) => {
   return hasil
 }
 const pemakai = jelajah('src').filter((p) => /communicationCandidate|communicationMessage|communicationAttempt/.test(baca(p)))
-cek('belum ada kode aplikasi yang membaca/menulis tabel komunikasi (service = 2C)', pemakai.length === 0, pemakai.join(', '))
+cek('Step 2C: HANYA communication.service.ts yang membaca/menulis tabel komunikasi', pemakai.join() === 'src/services/communication/communication.service.ts', pemakai.join(', '))
+cek('Step 2C: service belum menulis CommunicationAttempt (Send = 2E)', !/communicationAttempt/.test(baca('src/services/communication/communication.service.ts')))
 
 // ===================================================================== DB
 const URL_DB = process.env.COMM_SCHEMA_DB_URL
