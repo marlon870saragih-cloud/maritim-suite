@@ -41,7 +41,7 @@ const bagian = (j) => console.log(`\n${j}`)
 const P = await import('../src/services/communication/comm-policy.ts')
 const F = await import('../src/services/communication/comm-fixture.ts')
 const { TENANT_MODELS, tenantGuardExtension } = await import('../src/services/tenant-guard.ts')
-const { JENIS_APPROVAL_TAH } = await import('../src/services/tah/registry.ts')
+const { JENIS_APPROVAL_TAH, JENIS_APPROVAL_WA_FAKE } = await import('../src/services/tah/registry.ts')
 
 const MODEL = ['CommunicationCandidate', 'CommunicationMessage', 'CommunicationAttempt']
 const schema = baca('prisma/schema.prisma')
@@ -109,9 +109,9 @@ cek('tanpa GRANT / RLS (portal default-deny, K147)', !/\bGRANT\b|ROW LEVEL SECUR
 cek('tak menyebut tabel TAH (termasuk komentar — kunci check-tah-policy)', !/AgentRun|AgentModelCall|TahApprovalRequest/.test(sqlMentah))
 
 // ===================================================================== S3
-bagian('[S3] Lingkup Step 2B/2C')
+bagian('[S3] Lingkup Step 2B/2C/2D')
 cek('TENANT_MODELS memuat ketiga model', MODEL.every((m) => TENANT_MODELS.has(m)))
-cek('registry TAH masih tanpa WA_INTERNAL_FAKE_TEST (approval = 2D)', !JENIS_APPROVAL_TAH.some((j) => j.kind === 'WA_INTERNAL_FAKE_TEST'))
+cek('Step 2D R1: definisi WA_INTERNAL_FAKE_TEST terpisah; registry TAH lama tanpa WA / CLIENT_WA_UPDATE', JENIS_APPROVAL_WA_FAKE.kind === 'WA_INTERNAL_FAKE_TEST' && !JENIS_APPROVAL_TAH.some((j) => ['WA_INTERNAL_FAKE_TEST', 'CLIENT_WA_UPDATE'].includes(j.kind)))
 const jelajah = (rel, hasil = []) => {
   for (const d of readdirSync(join(AKAR, rel), { withFileTypes: true })) {
     const p = `${rel}/${d.name}`
@@ -121,8 +121,8 @@ const jelajah = (rel, hasil = []) => {
   return hasil
 }
 const pemakai = jelajah('src').filter((p) => /communicationCandidate|communicationMessage|communicationAttempt/.test(baca(p)))
-cek('Step 2C: HANYA communication.service.ts yang membaca/menulis tabel komunikasi', pemakai.join() === 'src/services/communication/communication.service.ts', pemakai.join(', '))
-cek('Step 2C: service belum menulis CommunicationAttempt (Send = 2E)', !/communicationAttempt/.test(baca('src/services/communication/communication.service.ts')))
+cek('Step 2D: HANYA service Prepare (2C) & approval (2D) yang membaca/menulis tabel komunikasi', pemakai.sort().join() === 'src/services/communication/communication-approval.service.ts,src/services/communication/communication.service.ts', pemakai.join(', '))
+cek('Step 2D: kedua service belum menulis CommunicationAttempt (Send = 2E)', ['communication.service.ts', 'communication-approval.service.ts'].every((f) => !/communicationAttempt/.test(baca(`src/services/communication/${f}`))))
 
 // ===================================================================== DB
 const URL_DB = process.env.COMM_SCHEMA_DB_URL

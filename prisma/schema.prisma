@@ -2425,7 +2425,8 @@ model TahApprovalRequest {
   /// userId atau `system:<agentKey>`.
   requestedBy      String
   requiredRoles    String[]
-  expiresAt        DateTime
+  /// NULL = TANPA TTL produk (WA-1 Q8, D-2D-01) — hanya jenis non-produksi berkelas internal.
+  expiresAt        DateTime?
   revisionOf       String?
   revisionOfReq    TahApprovalRequest?  @relation("TahApprovalRevisi", fields: [revisionOf], references: [id], onDelete: SetNull)
   revisions        TahApprovalRequest[] @relation("TahApprovalRevisi")

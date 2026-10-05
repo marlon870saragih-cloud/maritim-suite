@@ -73,7 +73,7 @@ const T = await import('../src/services/communication/comm-template.ts')
 const F = await import('../src/services/communication/comm-fixture.ts')
 const H = await import('../src/services/communication/comm-hash.ts')
 const TAH = await import('../src/services/tah/tah-policy.ts')
-const { JENIS_APPROVAL_TAH } = await import('../src/services/tah/registry.ts')
+const { JENIS_APPROVAL_TAH, JENIS_APPROVAL_WA_FAKE } = await import('../src/services/tah/registry.ts')
 const { TENANT_MODELS } = await import('../src/services/tenant-guard.ts')
 const { STATUS_REVIEW, JENIS_SINYAL } = await import('../src/services/automation/monitoring-policy.ts')
 
@@ -478,6 +478,8 @@ bagian('[9] Mesin status & approval (TS-15, TS-16, Q8)')
   cek('D-2B-04: sifat alasan — KERAS persis 9 kode, PULIH persis 6 kode, keduanya terpisah', P.ALASAN_KERAS.join() === 'SOURCE_NOT_FOUND,SOURCE_DELETED,SOURCE_SUPERSEDED,SCHEDULE_FIRST_SET,SCHEDULE_CLEARED,EVENT_NOT_ALLOWED,SIGNAL_DISMISSED,SIGNAL_EXPIRED,SIGNAL_STATE_INVALID' && P.ALASAN_PULIH.join() === 'TIMEZONE_MISSING,TIMEZONE_INVALID,PORT_MISSING,PORT_AMBIGUOUS,REQUIRED_DATA_MISSING,TIME_IN_FUTURE' && P.ALASAN_KERAS.every((k) => !P.ALASAN_PULIH.includes(k)))
   cek('sifatAlasanPrepare: KERAS/PULIH/TOLAK', P.sifatAlasanPrepare('SOURCE_DELETED') === 'KERAS' && P.sifatAlasanPrepare('TIMEZONE_MISSING') === 'PULIH' && ['FEATURE_DISABLED', 'CONTACT_INELIGIBLE', 'ALREADY_FAKE_SENT', 'UNAUTHORIZED'].every((k) => P.sifatAlasanPrepare(k) === 'TOLAK'))
   cek('semua alasan yang bisa dihasilkan revalidasi sumber/kelayakan sinyal tergolong KERAS atau PULIH', ['EVENT_NOT_ALLOWED', 'SOURCE_NOT_FOUND', 'SOURCE_DELETED', 'SOURCE_SUPERSEDED', 'SCHEDULE_FIRST_SET', 'SCHEDULE_CLEARED', 'PORT_MISSING', 'PORT_AMBIGUOUS', 'TIMEZONE_MISSING', 'TIMEZONE_INVALID', 'TIME_IN_FUTURE', 'REQUIRED_DATA_MISSING', 'SIGNAL_DISMISSED', 'SIGNAL_EXPIRED', 'SIGNAL_STATE_INVALID'].every((k) => P.sifatAlasanPrepare(k) !== 'TOLAK'))
+  cek('D-2D-03: kode alasan APPROVAL_REJECTED ada & bukan hasil revalidasi (TOLAK)', P.KODE_ALASAN.includes('APPROVAL_REJECTED') && P.sifatAlasanPrepare('APPROVAL_REJECTED') === 'TOLAK' && P.sifatAlasanPrepare('APPROVAL_STALE') === 'TOLAK')
+  cek('D-2D-02/03: PREVIEWED → APPROVED dan PREVIEWED → CANCELED sah; tak ada state "menunggu approval" baru', P.transisiPesanSah('PREVIEWED', 'APPROVED') && P.transisiPesanSah('PREVIEWED', 'CANCELED') && P.STATUS_PESAN.length === 9)
   cek('D-2B-09: status attempt PERSIS QUEUED_FAKE, FAKE_SENT, FAKE_FAILED (subset STATUS_PESAN)', P.STATUS_ATTEMPT.join() === 'QUEUED_FAKE,FAKE_SENT,FAKE_FAILED' && P.STATUS_ATTEMPT.every((x) => P.STATUS_PESAN.includes(x)))
 }
 
@@ -520,7 +522,8 @@ bagian('[12] Egress & lingkup Step 2A')
   const berkas = readdirSync(dir).filter((f) => f.endsWith('.ts')).sort()
   const MURNI = ['comm-fixture.ts', 'comm-hash.ts', 'comm-policy.ts', 'comm-template.ts']
   const SERVICE = 'communication.service.ts'
-  cek('modul komunikasi = empat berkas murni (2A) + satu service (2C)', berkas.join() === [...MURNI, SERVICE].sort().join(), berkas.join())
+  const APPROVAL = 'communication-approval.service.ts'
+  cek('modul komunikasi = empat berkas murni (2A) + service Prepare (2C) + service approval (2D)', berkas.join() === [...MURNI, SERVICE, APPROVAL].sort().join(), berkas.join())
   const tanpaKomentar = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
   const POLA_JARINGAN = /\bfetch\b|https?:|node:(http|https|net|tls|dns|dgram|http2|child_process)|['"](http|https|net|tls|dns|ws|undici|axios|node-fetch)['"]|WebSocket|XMLHttpRequest/
   const POLA_META = /wa\.me|graph\.facebook|whatsapp-web|baileys|twilio|@whiskeysockets|whatsapp-cloud/i
@@ -533,16 +536,32 @@ bagian('[12] Egress & lingkup Step 2A')
     cek(`${f}: tanpa Meta/WhatsApp SDK atau wa.me`, !POLA_META.test(kode))
     cek(`${f}: tanpa DB/env/LLM`, !/prisma|forTenant|process\.env|openrouter|lib\/ai|anthropic|\$queryRaw|\$executeRaw/i.test(kode))
   }
+  const sumberImpor = (kode) => [...kode.matchAll(/^import\b[\s\S]*?from '([^']+)'/gm)].map((x) => x[1])
+  const IZIN_IMPOR = {
+    [SERVICE]: ['@prisma/client', '../context', '../errors', '../tenant-db', '../finance/audit', '../automation/access', '../master/voyage-dates', '../tah/tah-policy', './comm-policy', './comm-template', './comm-fixture', './comm-hash'],
+    [APPROVAL]: ['@prisma/client', '../context', '../errors', '../tenant-db', '../automation/gate', '../tah/registry', '../tah/tah-policy', './comm-policy', './comm-hash', './communication.service'],
+  }
+  for (const f of [SERVICE, APPROVAL]) {
+    const kode = tanpaKomentar(readFileSync(join(dir, f), 'utf8'))
+    const imp = sumberImpor(kode)
+    cek(`${f}: impor hanya dari daftar izin (tanpa @/lib/prisma, lib/ai, route, UI)`, imp.length > 0 && imp.every((x) => IZIN_IMPOR[f].includes(x)), imp.join(' | '))
+    cek(`${f}: tanpa fetch/http/https/net/tls/dns/WebSocket/XMLHttpRequest`, !POLA_JARINGAN.test(kode))
+    cek(`${f}: tanpa Meta/WhatsApp SDK atau wa.me`, !POLA_META.test(kode))
+    cek(`${f}: DB hanya lewat forTenant (tanpa raw SQL / LLM)`, /forTenant\(ctx\)/.test(kode) && !/\$queryRaw|\$executeRaw|openrouter|lib\/ai|anthropic/i.test(kode))
+    cek(`${f}: tanpa Send/Attempt/provider (tanpa CommunicationAttempt, penyedia, state kirim FAKE)`, !/communicationAttempt|CommunicationAttempt|penyedia|provider|'QUEUED_FAKE'|'FAKE_SENT'|'FAKE_FAILED'/i.test(kode))
+    cek(`${f}: tak pernah MENULIS successKey / fakeReceipt (blok data)`, !/data:\s*\{[^}]*\b(successKey|fakeReceipt)\b/.test(kode))
+  }
   {
     const kode = tanpaKomentar(readFileSync(join(dir, SERVICE), 'utf8'))
-    const sumberImpor = [...kode.matchAll(/^import\b[\s\S]*?from '([^']+)'/gm)].map((x) => x[1])
-    const IZIN_IMPOR = ['@prisma/client', '../context', '../errors', '../tenant-db', '../finance/audit', '../automation/access', '../master/voyage-dates', './comm-policy', './comm-template', './comm-fixture', './comm-hash']
-    cek(`${SERVICE}: impor hanya dari daftar izin (tanpa @/lib/prisma, lib/ai, route, UI)`, sumberImpor.length > 0 && sumberImpor.every((x) => IZIN_IMPOR.includes(x)), sumberImpor.join(' | '))
-    cek(`${SERVICE}: tanpa fetch/http/https/net/tls/dns/WebSocket/XMLHttpRequest`, !POLA_JARINGAN.test(kode))
-    cek(`${SERVICE}: tanpa Meta/WhatsApp SDK atau wa.me`, !POLA_META.test(kode))
-    cek(`${SERVICE}: DB hanya lewat forTenant (tanpa raw SQL / LLM)`, /forTenant\(ctx\)/.test(kode) && !/\$queryRaw|\$executeRaw|openrouter|lib\/ai|anthropic/i.test(kode))
     cek(`${SERVICE}: process.env HANYA untuk gerbang WA`, [...kode.matchAll(/process\.env/g)].length === 1 && /bacaKonfigurasiKomunikasi\(process\.env\)/.test(kode))
-    cek(`${SERVICE}: Step 2C tanpa approval/attempt/send (tanpa TahApprovalRequest, CommunicationAttempt, provider)`, !/tahApprovalRequest|TahApprovalRequest|communicationAttempt|CommunicationAttempt|registry|penyedia|provider/i.test(kode))
+    cek(`${SERVICE}: TIDAK membuat approval & tak memuat registry (hanya menghentikan approval tertaut)`, !/tahApprovalRequest\.create|tah\/registry|JENIS_APPROVAL_TAH/.test(kode) && /tahApprovalRequest\.updateMany/.test(kode))
+  }
+  {
+    const kode = tanpaKomentar(readFileSync(join(dir, APPROVAL), 'utf8'))
+    cek(`${APPROVAL}: process.env HANYA NODE_ENV untuk jenisBolehDiLingkungan`, [...kode.matchAll(/process\.env/g)].length === 1 && /jenisBolehDiLingkungan\(j, process\.env\.NODE_ENV\)/.test(kode))
+    cek(`${APPROVAL}: memakai bolehMemutuskan & validasiRegistry TAH (tanpa kerangka approval kedua)`, /bolehMemutuskan\(/.test(kode) && /validasiRegistry\(/.test(kode) && /tahApprovalRequest\.create\(/.test(kode))
+    cek(`${APPROVAL}: proposalHash = snapshotFingerprint, basisFingerprint = sourceFingerprint (tanpa hash alternatif)`, /proposalHash: m\.snapshotFingerprint/.test(kode) && /basisFingerprint: m\.sourceFingerprint/.test(kode) && !/createHash|sidikJariKomunikasi\(/.test(kode))
+    cek(`${APPROVAL}: idempotencyKey = WA1:<messageId>`, /`WA1:\$\{messageId\}`/.test(kode))
   }
   // Batas lingkup — diamandemen secara sengaja pada slice yang memperluasnya. Step 2B
   // (persistensi) mengganti tiga kunci "tanpa schema/migrasi/TENANT_MODELS" menjadi bentuk 2B PERSIS;
@@ -553,7 +572,16 @@ bagian('[12] Egress & lingkup Step 2A')
   const migWa = readdirSync(join(AKAR, 'prisma/migrations')).filter((d) => /wa1|communication/i.test(d))
   cek('Step 2B: PERSIS satu migrasi WA (…_wa1_step2b_communication)', migWa.length === 1 && /^\d{14}_wa1_step2b_communication$/.test(migWa[0]), migWa.join())
   cek('Step 2B: TENANT_MODELS memuat PERSIS tiga model Communication*', [...TENANT_MODELS].filter((m) => /^Communication/.test(m)).sort().join() === modelKom.join())
-  cek('Step 2A: registry TAH tanpa WA_INTERNAL_FAKE_TEST', !JENIS_APPROVAL_TAH.some((j) => j.kind === 'WA_INTERNAL_FAKE_TEST'))
+  const waReg = JENIS_APPROVAL_WA_FAKE
+  cek('Step 2D R1: definisi WA terpisah selaras KEBIJAKAN_APPROVAL_WA1 (non-produksi, tanpa TTL, internal, tak bisa disunting)', waReg.kind === P.KEBIJAKAN_APPROVAL_WA1.kind && waReg.hanyaNonProduksi === P.KEBIJAKAN_APPROVAL_WA1.hanyaNonProduksi && waReg.kedaluwarsaJam === P.KEBIJAKAN_APPROVAL_WA1.ttlProdukJam && waReg.risiko === 'INTERNAL_WRITE' && waReg.bisaDiedit === false && waReg.setujuSendiri === true)
+  cek('Step 2D R1: registry TAH lama tak memuat WA_INTERNAL_FAKE_TEST / CLIENT_WA_UPDATE (kontrak beku utuh)', !JENIS_APPROVAL_TAH.some((j) => ['WA_INTERNAL_FAKE_TEST', 'CLIENT_WA_UPDATE'].includes(j.kind)))
+  const pembuatApproval = readdirSync(join(AKAR, 'src'), { recursive: true })
+    .filter((f) => /\.(ts|tsx)$/.test(f))
+    .map((f) => `src/${f}`)
+    .filter((f) => /tahApprovalRequest\.create\(/.test(baca(f)))
+  cek('Step 2D R1: SATU-SATUNYA pembuat TahApprovalRequest = service approval WA (tanpa jalur NULL-TTL umum)', pembuatApproval.join() === 'src/services/communication/communication-approval.service.ts', pembuatApproval.join())
+  const kodeAp = baca('src/services/communication/communication-approval.service.ts')
+  cek('Step 2D R1: kind & expiresAt diturunkan dari definisi WA, bukan dari input', /kind: jenis\.kind,/.test(kodeAp) && /expiresAt: jenis\.kedaluwarsaJam,/.test(kodeAp) && /const j = JENIS_APPROVAL_WA_FAKE/.test(kodeAp) && !/input\??\.(kind|expiresAt|proposalHash|requiredRoles|actionRisk)/.test(kodeAp))
   cek('Step 2A: belum ada route/halaman komunikasi', !existsSync(join(AKAR, 'src/app/api/automation/communications')) && !existsSync(join(AKAR, 'src/app/(app)/automation/communications')))
   const rujuk = /services\/communication/
   const jelajah = (rel, hasil = []) => {
