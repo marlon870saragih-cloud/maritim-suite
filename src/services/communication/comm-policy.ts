@@ -590,17 +590,18 @@ export type StatusPesan = (typeof STATUS_PESAN)[number]
 /**
  * PRD §12.3. Dua tambahan turunan AC-10 (ditandai): Send dari APPROVED atau
  * retry dari FAKE_FAILED yang menemukan sumber terhapus/superseded SEBELUM
- * klaim → BLOCKED. Tidak ada state SENT/DELIVERED/READ nyata di WA-1.
+ * klaim → BLOCKED. D-2C-01: PREVIEWED/NEEDS_REVIEW → BLOCKED HANYA saat
+ * candidate di-hard-block (sifatAlasanPrepare = 'KERAS'). Tidak ada state SENT/DELIVERED/READ nyata di WA-1.
  * SETIAP transisi wajib diaudit (§14); lihat transisiWajibAudit.
  */
 const TRANSISI_PESAN: Readonly<Record<StatusPesan, readonly StatusPesan[]>> = {
   DRAFT: ['PREVIEWED', 'BLOCKED', 'CANCELED'],
-  PREVIEWED: ['APPROVED', 'DRAFT', 'CANCELED'],
+  PREVIEWED: ['APPROVED', 'DRAFT', 'CANCELED', /* D-2C-01: hard block */ 'BLOCKED'],
   APPROVED: ['QUEUED_FAKE', 'NEEDS_REVIEW', 'CANCELED', /* AC-10 */ 'BLOCKED'],
   QUEUED_FAKE: ['FAKE_SENT', 'FAKE_FAILED', 'NEEDS_REVIEW', 'BLOCKED'],
   FAKE_SENT: [],
   FAKE_FAILED: ['QUEUED_FAKE', 'NEEDS_REVIEW', 'CANCELED', /* AC-10 */ 'BLOCKED'],
-  NEEDS_REVIEW: ['DRAFT', 'CANCELED'],
+  NEEDS_REVIEW: ['DRAFT', 'CANCELED', /* D-2C-01: hard block */ 'BLOCKED'],
   BLOCKED: [],
   CANCELED: [],
 }
@@ -622,6 +623,40 @@ export const statusPesanTerminal = (s: string): boolean => s === 'FAKE_SENT' || 
 
 /** §14 — seluruh transisi sah wajib menghasilkan entri audit; tak ada pengecualian. */
 export const transisiWajibAudit = (dari: string, ke: string): boolean => transisiPesanSah(dari, ke)
+
+// ================================================ sifat alasan Prepare (D-2B-04)
+
+/**
+ * D-2B-04 / D-2C-04 / D-2C-05. KERAS → candidate BLOCKED terminal (revisi aktif ikut
+ * BLOCKED). PULIH → candidate tetap/menjadi ACTIVE, TANPA pesan; boleh diulang setelah
+ * fakta sumber diperbaiki. Kode lain (gerbang/otorisasi/kontak) bukan hasil revalidasi
+ * sumber → TOLAK tanpa perubahan state.
+ */
+export const ALASAN_KERAS: readonly KodeAlasan[] = [
+  'SOURCE_NOT_FOUND',
+  'SOURCE_DELETED',
+  'SOURCE_SUPERSEDED',
+  'SCHEDULE_FIRST_SET',
+  'SCHEDULE_CLEARED',
+  'EVENT_NOT_ALLOWED',
+  'SIGNAL_DISMISSED',
+  'SIGNAL_EXPIRED',
+  'SIGNAL_STATE_INVALID',
+]
+export const ALASAN_PULIH: readonly KodeAlasan[] = [
+  'TIMEZONE_MISSING',
+  'TIMEZONE_INVALID',
+  'PORT_MISSING',
+  'PORT_AMBIGUOUS',
+  'REQUIRED_DATA_MISSING',
+  'TIME_IN_FUTURE',
+]
+
+export function sifatAlasanPrepare(kode: KodeAlasan): 'KERAS' | 'PULIH' | 'TOLAK' {
+  if (ALASAN_KERAS.includes(kode)) return 'KERAS'
+  if (ALASAN_PULIH.includes(kode)) return 'PULIH'
+  return 'TOLAK'
+}
 
 /** FAKE Send hanya dari APPROVED, atau retry manual dari FAKE_FAILED (FR-16). */
 export const bolehMintaSend = (s: string): boolean => s === 'APPROVED' || s === 'FAKE_FAILED'

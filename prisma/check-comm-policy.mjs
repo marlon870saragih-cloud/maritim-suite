@@ -474,6 +474,10 @@ bagian('[9] Mesin status & approval (TS-15, TS-16, Q8)')
   cek('kode alasan unik', new Set(P.KODE_ALASAN).size === P.KODE_ALASAN.length)
   cek('D-2B-03: kode alasan REVISED ada (revisi lama → CANCELED)', P.KODE_ALASAN.includes('REVISED') && P.transisiPesanSah('PREVIEWED', 'CANCELED') && P.transisiPesanSah('NEEDS_REVIEW', 'CANCELED'))
   cek('D-2B-05: status candidate PERSIS ACTIVE, BLOCKED', P.STATUS_CANDIDATE.join() === 'ACTIVE,BLOCKED')
+  cek('D-2C-01: PREVIEWED → BLOCKED dan NEEDS_REVIEW → BLOCKED (hard block); tak ada pelebaran lain', P.transisiPesanSah('PREVIEWED', 'BLOCKED') && P.transisiPesanSah('NEEDS_REVIEW', 'BLOCKED') && !P.transisiPesanSah('PREVIEWED', 'QUEUED_FAKE') && !P.transisiPesanSah('NEEDS_REVIEW', 'APPROVED') && !P.transisiPesanSah('BLOCKED', 'DRAFT'))
+  cek('D-2B-04: sifat alasan — KERAS persis 9 kode, PULIH persis 6 kode, keduanya terpisah', P.ALASAN_KERAS.join() === 'SOURCE_NOT_FOUND,SOURCE_DELETED,SOURCE_SUPERSEDED,SCHEDULE_FIRST_SET,SCHEDULE_CLEARED,EVENT_NOT_ALLOWED,SIGNAL_DISMISSED,SIGNAL_EXPIRED,SIGNAL_STATE_INVALID' && P.ALASAN_PULIH.join() === 'TIMEZONE_MISSING,TIMEZONE_INVALID,PORT_MISSING,PORT_AMBIGUOUS,REQUIRED_DATA_MISSING,TIME_IN_FUTURE' && P.ALASAN_KERAS.every((k) => !P.ALASAN_PULIH.includes(k)))
+  cek('sifatAlasanPrepare: KERAS/PULIH/TOLAK', P.sifatAlasanPrepare('SOURCE_DELETED') === 'KERAS' && P.sifatAlasanPrepare('TIMEZONE_MISSING') === 'PULIH' && ['FEATURE_DISABLED', 'CONTACT_INELIGIBLE', 'ALREADY_FAKE_SENT', 'UNAUTHORIZED'].every((k) => P.sifatAlasanPrepare(k) === 'TOLAK'))
+  cek('semua alasan yang bisa dihasilkan revalidasi sumber/kelayakan sinyal tergolong KERAS atau PULIH', ['EVENT_NOT_ALLOWED', 'SOURCE_NOT_FOUND', 'SOURCE_DELETED', 'SOURCE_SUPERSEDED', 'SCHEDULE_FIRST_SET', 'SCHEDULE_CLEARED', 'PORT_MISSING', 'PORT_AMBIGUOUS', 'TIMEZONE_MISSING', 'TIMEZONE_INVALID', 'TIME_IN_FUTURE', 'REQUIRED_DATA_MISSING', 'SIGNAL_DISMISSED', 'SIGNAL_EXPIRED', 'SIGNAL_STATE_INVALID'].every((k) => P.sifatAlasanPrepare(k) !== 'TOLAK'))
   cek('D-2B-09: status attempt PERSIS QUEUED_FAKE, FAKE_SENT, FAKE_FAILED (subset STATUS_PESAN)', P.STATUS_ATTEMPT.join() === 'QUEUED_FAKE,FAKE_SENT,FAKE_FAILED' && P.STATUS_ATTEMPT.every((x) => P.STATUS_PESAN.includes(x)))
 }
 
@@ -514,16 +518,31 @@ bagian('[12] Egress & lingkup Step 2A')
   cek('NOL panggilan jaringan selama seluruh uji (fetch/http/https/net/tls/dns/WebSocket)', egress.length === 0, egress.join(','))
   const dir = join(AKAR, 'src/services/communication')
   const berkas = readdirSync(dir).filter((f) => f.endsWith('.ts')).sort()
-  cek('modul komunikasi hanya empat berkas murni Step 2A', berkas.join() === 'comm-fixture.ts,comm-hash.ts,comm-policy.ts,comm-template.ts', berkas.join())
-  for (const f of berkas) {
-    const s = readFileSync(join(dir, f), 'utf8')
-    const kode = s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+  const MURNI = ['comm-fixture.ts', 'comm-hash.ts', 'comm-policy.ts', 'comm-template.ts']
+  const SERVICE = 'communication.service.ts'
+  cek('modul komunikasi = empat berkas murni (2A) + satu service (2C)', berkas.join() === [...MURNI, SERVICE].sort().join(), berkas.join())
+  const tanpaKomentar = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+  const POLA_JARINGAN = /\bfetch\b|https?:|node:(http|https|net|tls|dns|dgram|http2|child_process)|['"](http|https|net|tls|dns|ws|undici|axios|node-fetch)['"]|WebSocket|XMLHttpRequest/
+  const POLA_META = /wa\.me|graph\.facebook|whatsapp-web|baileys|twilio|@whiskeysockets|whatsapp-cloud/i
+  for (const f of MURNI) {
+    const kode = tanpaKomentar(readFileSync(join(dir, f), 'utf8'))
     const imporJalan = [...kode.matchAll(/^import\s+(?!type\b).*$/gm)].map((x) => x[0])
     const izin = f === 'comm-hash.ts' ? ["import { createHash } from 'node:crypto'"] : []
     cek(`${f}: impor saat jalan hanya yang diizinkan`, imporJalan.every((i) => izin.includes(i)), imporJalan.join(' | '))
-    cek(`${f}: tanpa fetch/http/https/net/tls/dns/WebSocket/XMLHttpRequest`, !/\bfetch\b|https?:|node:(http|https|net|tls|dns|dgram|http2|child_process)|['"](http|https|net|tls|dns|ws|undici|axios|node-fetch)['"]|WebSocket|XMLHttpRequest/.test(kode))
-    cek(`${f}: tanpa Meta/WhatsApp SDK atau wa.me`, !/wa\.me|graph\.facebook|whatsapp-web|baileys|twilio|@whiskeysockets|whatsapp-cloud/i.test(kode))
+    cek(`${f}: tanpa fetch/http/https/net/tls/dns/WebSocket/XMLHttpRequest`, !POLA_JARINGAN.test(kode))
+    cek(`${f}: tanpa Meta/WhatsApp SDK atau wa.me`, !POLA_META.test(kode))
     cek(`${f}: tanpa DB/env/LLM`, !/prisma|forTenant|process\.env|openrouter|lib\/ai|anthropic|\$queryRaw|\$executeRaw/i.test(kode))
+  }
+  {
+    const kode = tanpaKomentar(readFileSync(join(dir, SERVICE), 'utf8'))
+    const sumberImpor = [...kode.matchAll(/^import\b[\s\S]*?from '([^']+)'/gm)].map((x) => x[1])
+    const IZIN_IMPOR = ['@prisma/client', '../context', '../errors', '../tenant-db', '../finance/audit', '../automation/access', '../master/voyage-dates', './comm-policy', './comm-template', './comm-fixture', './comm-hash']
+    cek(`${SERVICE}: impor hanya dari daftar izin (tanpa @/lib/prisma, lib/ai, route, UI)`, sumberImpor.length > 0 && sumberImpor.every((x) => IZIN_IMPOR.includes(x)), sumberImpor.join(' | '))
+    cek(`${SERVICE}: tanpa fetch/http/https/net/tls/dns/WebSocket/XMLHttpRequest`, !POLA_JARINGAN.test(kode))
+    cek(`${SERVICE}: tanpa Meta/WhatsApp SDK atau wa.me`, !POLA_META.test(kode))
+    cek(`${SERVICE}: DB hanya lewat forTenant (tanpa raw SQL / LLM)`, /forTenant\(ctx\)/.test(kode) && !/\$queryRaw|\$executeRaw|openrouter|lib\/ai|anthropic/i.test(kode))
+    cek(`${SERVICE}: process.env HANYA untuk gerbang WA`, [...kode.matchAll(/process\.env/g)].length === 1 && /bacaKonfigurasiKomunikasi\(process\.env\)/.test(kode))
+    cek(`${SERVICE}: Step 2C tanpa approval/attempt/send (tanpa TahApprovalRequest, CommunicationAttempt, provider)`, !/tahApprovalRequest|TahApprovalRequest|communicationAttempt|CommunicationAttempt|registry|penyedia|provider/i.test(kode))
   }
   // Batas lingkup — diamandemen secara sengaja pada slice yang memperluasnya. Step 2B
   // (persistensi) mengganti tiga kunci "tanpa schema/migrasi/TENANT_MODELS" menjadi bentuk 2B PERSIS;
@@ -546,7 +565,7 @@ bagian('[12] Egress & lingkup Step 2A')
     return hasil
   }
   const perujuk = jelajah('src').filter((p) => rujuk.test(baca(p)))
-  cek('Step 2A: belum ada kode aplikasi yang memakai modul komunikasi', perujuk.length === 0, perujuk.join(', '))
+  cek('Step 2C: belum ada kode aplikasi (route/UI/service lain) yang memakai modul komunikasi', perujuk.length === 0, perujuk.join(', '))
 }
 
 console.log(`\nHasil: ${lulus} lulus, ${gagal} gagal`)
