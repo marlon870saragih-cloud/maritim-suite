@@ -61,7 +61,7 @@ import {
   usulanApprovalBolehDibersihkan,
   validasiRegistry,
 } from '../src/services/tah/tah-policy.ts'
-import { AGEN_TAH, JENIS_APPROVAL_TAH } from '../src/services/tah/registry.ts'
+import { AGEN_TAH, JENIS_APPROVAL_TAH, JENIS_APPROVAL_WA_FAKE } from '../src/services/tah/registry.ts'
 import {
   JENIS_INPUT_MODEL,
   PETA_KEMAMPUAN_MODEL,
@@ -224,8 +224,6 @@ bagian('4. MESIN KEPUTUSAN persetujuan')
   cek('PENDING tepat pada expiresAt → kedaluwarsa', sudahKedaluwarsa('PENDING', T0, T0))
   cek('PENDING sebelum expiresAt → belum', !sudahKedaluwarsa('PENDING', new Date(T0.getTime() + 1), T0))
   cek('APPROVED lewat expiresAt → TIDAK dikedaluwarsakan', !sudahKedaluwarsa('APPROVED', new Date(T0.getTime() - HARI), T0))
-  // WA-1 Step 2D — Q8 (D-2D-01): expiresAt NULL = tanpa TTL produk.
-  cek('Q8: expiresAt NULL → TIDAK pernah kedaluwarsa (PENDING, jauh di masa depan)', !sudahKedaluwarsa('PENDING', null, T0) && !sudahKedaluwarsa('PENDING', null, new Date(Date.UTC(9999, 0, 1))))
 }
 
 // =====================================================================
@@ -293,9 +291,7 @@ bagian('6. REGISTRY')
   const galatNyata = validasiRegistry(AGEN_TAH, JENIS_APPROVAL_TAH, PERAN_AUTOMATION)
   cek('registry nyata sah', galatNyata.length === 0, galatNyata.join('; '))
   cek('agen terdaftar di Step 3A hanya INTAKE', AGEN_TAH.map((a) => a.key).join() === 'INTAKE')
-  // Amandemen SENGAJA WA-1 Step 2D (D-2D-05): + WA_INTERNAL_FAKE_TEST. CLIENT_WA_UPDATE TETAP tak terdaftar.
-  cek('jenis persetujuan: TAH_DEV_NOOP (3A) + WA_INTERNAL_FAKE_TEST (WA-1 2D) — tidak lebih', JENIS_APPROVAL_TAH.map((j) => j.kind).join() === 'TAH_DEV_NOOP,WA_INTERNAL_FAKE_TEST')
-  cek('CLIENT_WA_UPDATE (komunikasi klien nyata) BELUM didaftarkan', !JENIS_APPROVAL_TAH.some((j) => j.kind === 'CLIENT_WA_UPDATE'))
+  cek('jenis persetujuan di Step 3A hanya TAH_DEV_NOOP', JENIS_APPROVAL_TAH.map((j) => j.kind).join() === 'TAH_DEV_NOOP')
   const intake = AGEN_TAH[0]
   const sumberEkstrak = baca('src/lib/ai/vessel-call-extract.ts')
   const versiKode = /VERSI_PENGEKSTRAK_INTAKE\s*=\s*'([^']+)'/.exec(sumberEkstrak)?.[1]
@@ -303,16 +299,19 @@ bagian('6. REGISTRY')
   cek('skema agen INTAKE = nama tool yang dipaksa di kode', new RegExp(`name:\\s*'${intake.skema.id}'`).test(sumberEkstrak))
   cek('persetujuan intake TETAP alur intake (jenisApproval kosong, D6)', intake.jenisApproval.length === 0)
   cek('agen INTAKE memakai setelan TAH_INTAKE_MODEL', intake.modelEnv === 'TAH_INTAKE_MODEL')
-  const noop = JENIS_APPROVAL_TAH.find((j) => j.kind === 'TAH_DEV_NOOP')
+  const noop = JENIS_APPROVAL_TAH[0]
   cek('TAH_DEV_NOOP hanya non-produksi', noop.hanyaNonProduksi === true)
   cek('TAH_DEV_NOOP ditolak di produksi', !jenisBolehDiLingkungan(noop, 'production'))
   cek('TAH_DEV_NOOP boleh di development', jenisBolehDiLingkungan(noop, 'development'))
-  const wa = JENIS_APPROVAL_TAH.find((j) => j.kind === 'WA_INTERNAL_FAKE_TEST')
-  cek('WA_INTERNAL_FAKE_TEST: INTERNAL_WRITE, ADMIN+MANAJER_OPERASI, setuju-sendiri, tanpa TTL, tak bisa disunting, non-produksi',
-    wa?.risiko === 'INTERNAL_WRITE' && wa.peranWajib.join() === 'ADMIN,MANAJER_OPERASI' && wa.setujuSendiri === true && wa.kedaluwarsaJam === null && wa.bisaDiedit === false && wa.hanyaNonProduksi === true)
-  cek('WA_INTERNAL_FAKE_TEST ditolak di produksi, boleh di development/test', !jenisBolehDiLingkungan(wa, 'production') && jenisBolehDiLingkungan(wa, 'development') && jenisBolehDiLingkungan(wa, 'test'))
-  cek('WA_INTERNAL_FAKE_TEST: setuju-sendiri efektif (internal + jenis true)', setujuSendiriEfektif(wa.risiko, wa.setujuSendiri) === true)
-  cek('EXTERNAL_COMMUNICATION TETAP melarang setuju-sendiri (originator = pemutus → SELF_APPROVAL_FORBIDDEN)',
+  // WA-1 Step 2D (keputusan owner R1): definisi WA TERPISAH dari JENIS_APPROVAL_TAH — kontrak & kebijakan
+  // TAH (tah-policy.ts, BEKU) tak berubah; uji di bawah hanya MEMBACA kebijakan beku itu.
+  const wa = JENIS_APPROVAL_WA_FAKE
+  cek('WA-1 R1: definisi WA terpisah; JENIS_APPROVAL_TAH tak memuat WA_INTERNAL_FAKE_TEST maupun CLIENT_WA_UPDATE', !JENIS_APPROVAL_TAH.some((j) => ['WA_INTERNAL_FAKE_TEST', 'CLIENT_WA_UPDATE'].includes(j.kind)))
+  cek('WA-1 R1: WA_INTERNAL_FAKE_TEST = INTERNAL_WRITE, ADMIN+MANAJER_OPERASI, setuju-sendiri, tanpa TTL, tak bisa disunting, non-produksi, beku',
+    wa.kind === 'WA_INTERNAL_FAKE_TEST' && wa.risiko === 'INTERNAL_WRITE' && wa.peranWajib.join() === 'ADMIN,MANAJER_OPERASI' && wa.setujuSendiri === true && wa.kedaluwarsaJam === null && wa.bisaDiedit === false && wa.hanyaNonProduksi === true && Object.isFrozen(wa) && Object.isFrozen(wa.peranWajib))
+  cek('WA-1 R1: WA ditolak di produksi oleh jenisBolehDiLingkungan (beku), boleh di development/test', !jenisBolehDiLingkungan(wa, 'production') && jenisBolehDiLingkungan(wa, 'development') && jenisBolehDiLingkungan(wa, 'test'))
+  cek('WA-1 R1: setuju-sendiri WA efektif menurut kebijakan beku (INTERNAL_WRITE + true)', setujuSendiriEfektif(wa.risiko, wa.setujuSendiri) === true)
+  cek('WA-1 R1: EXTERNAL_COMMUNICATION TETAP melarang setuju-sendiri (originator = pemutus → SELF_APPROVAL_FORBIDDEN)',
     bolehMemutuskan({ pemutus: { userId: 'u1', role: 'ADMIN' }, peranWajib: ['ADMIN', 'MANAJER_OPERASI'], kelas: 'EXTERNAL_COMMUNICATION', setujuSendiriJenis: true, originatorUserId: 'u1' }).kode === 'SELF_APPROVAL_FORBIDDEN')
 
   const JENIS_OK = { kind: 'CONTOH', risiko: 'INTERNAL_WRITE', peranWajib: ['ADMIN'], setujuSendiri: true, kedaluwarsaJam: 24, bisaDiedit: false }
@@ -335,14 +334,8 @@ bagian('6. REGISTRY')
   tolak('kedaluwarsa 0 jam', [AGEN_OK], [{ ...JENIS_OK, kedaluwarsaJam: 0 }], /kedaluwarsaJam/)
   tolak('kedaluwarsa 721 jam', [AGEN_OK], [{ ...JENIS_OK, kedaluwarsaJam: 721 }], /kedaluwarsaJam/)
   tolak('kedaluwarsa pecahan', [AGEN_OK], [{ ...JENIS_OK, kedaluwarsaJam: 1.5 }], /kedaluwarsaJam/)
-  // Q8 (D-2D-01): null = tanpa TTL — HANYA jenis hanyaNonProduksi berkelas internal.
-  cek('Q8: kedaluwarsaJam null + hanyaNonProduksi + INTERNAL_WRITE → diterima', validasiRegistry([AGEN_OK], [{ ...JENIS_OK, kedaluwarsaJam: null, hanyaNonProduksi: true }], PERAN_AUTOMATION).length === 0)
-  tolak('Q8: kedaluwarsaJam null TANPA hanyaNonProduksi (bisa jalan di produksi)', [AGEN_OK], [{ ...JENIS_OK, kedaluwarsaJam: null }], /hanya untuk jenis hanyaNonProduksi/)
-  tolak('Q8: kedaluwarsaJam null + hanyaNonProduksi:false', [AGEN_OK], [{ ...JENIS_OK, kedaluwarsaJam: null, hanyaNonProduksi: false }], /hanya untuk jenis hanyaNonProduksi/)
-  for (const kelas of ['EXTERNALLY_VISIBLE', 'EXTERNAL_COMMUNICATION', 'FINANCIAL']) {
-    tolak(`Q8: kedaluwarsaJam null + ${kelas} (walau non-produksi)`, [AGEN_OK], [{ ...JENIS_OK, risiko: kelas, setujuSendiri: false, kedaluwarsaJam: null, hanyaNonProduksi: true }], /hanya untuk kelas internal/)
-  }
-  tolak('Q8: kedaluwarsaJam undefined tetap ditolak', [AGEN_OK], [{ ...JENIS_OK, kedaluwarsaJam: undefined }], /kedaluwarsaJam/)
+  // WA-1 R1: TANPA jalur NULL-TTL umum — validasiRegistry beku tetap menolak null, bahkan untuk jenis non-produksi.
+  tolak('kedaluwarsaJam null (jenis TAH umum, termasuk non-produksi)', [AGEN_OK], [{ ...JENIS_OK, kedaluwarsaJam: null, hanyaNonProduksi: true }], /kedaluwarsaJam/)
   tolak('agen merujuk jenis tak terdaftar', [{ ...AGEN_OK, jenisApproval: ['HANTU'] }], [JENIS_OK], /tidak terdaftar/)
   tolak('modelEnv tak sah', [{ ...AGEN_OK, modelEnv: 'tah-model' }], [JENIS_OK], /modelEnv/)
   tolak('prompt tanpa versi', [{ ...AGEN_OK, prompt: { id: 'p', versi: '' } }], [JENIS_OK], /prompt wajib/)
@@ -592,12 +585,12 @@ bagian('10. SKEMA / MIGRASI / KUNCI SUMBER')
   // Amandemen SENGAJA WA-1 Step 2D (Q8, D-2D-01): SATU migrasi tata kelola boleh menyentuh tabel TAH —
   // persis `expiresAt DROP NOT NULL`. Migrasi lain tetap dilarang menyebut tabel TAH.
   const Q8 = '20261005120000_tah_q8_expires_at_nullable'
-  cek('migrasi lain (selain PRD-005 & Q8) tak menyebut tabel TAH', lain.filter((d) => d !== Q8).every((d) => !/AgentRun|AgentModelCall|TahApprovalRequest/.test(baca(`prisma/migrations/${d}/migration.sql`))))
+  cek('migrasi lama (selain PRD-005 & Q8) tak menyebut tabel TAH', lain.filter((d) => d !== Q8).every((d) => !/AgentRun|AgentModelCall|TahApprovalRequest/.test(baca(`prisma/migrations/${d}/migration.sql`))))
   const q8Dirs = readdirSync(join(AKAR, 'prisma/migrations')).filter((d) => /q8|expires_at/i.test(d))
   cek('Q8: tepat satu migrasi Q8', q8Dirs.length === 1 && q8Dirs[0] === Q8, q8Dirs.join())
   const sqlQ8 = existsSync(join(AKAR, 'prisma/migrations', Q8, 'migration.sql')) ? baca(`prisma/migrations/${Q8}/migration.sql`).replace(/--.*$/gm, '').replace(/\s+/g, ' ').trim() : ''
   cek('Q8: isi migrasi PERSIS `ALTER TABLE "TahApprovalRequest" ALTER COLUMN "expiresAt" DROP NOT NULL;`', sqlQ8 === 'ALTER TABLE "TahApprovalRequest" ALTER COLUMN "expiresAt" DROP NOT NULL;', sqlQ8)
-  cek('schema: TahApprovalRequest.expiresAt = DateTime? (Q8); kolom lain TAH tak berubah tipenya', /^\s+expiresAt\s+DateTime\?\s*$/m.test(blok('TahApprovalRequest')) && /^\s+proposalHash\s+String\s*$/m.test(blok('TahApprovalRequest')))
+  cek('Q8: schema TahApprovalRequest.expiresAt = DateTime? (kolom TAH lain tak berubah tipe)', /^\s+expiresAt\s+DateTime\?\s*$/m.test(blok('TahApprovalRequest')) && /^\s+proposalHash\s+String\s*$/m.test(blok('TahApprovalRequest')))
 
   // Step 3B: + ringkasan-intake.ts (ringkasan Q3, murni).
   const MURNI = ['src/services/tah/tah-policy.ts', 'src/services/tah/registry.ts', 'src/services/tah/ringkasan-intake.ts', 'src/lib/ai/model-capabilities.ts']
@@ -645,8 +638,7 @@ bagian('10. SKEMA / MIGRASI / KUNCI SUMBER')
   const bocor = semua.filter((f) => !DIIZINKAN_3B.has(f) && rujukTah.test(baca(f)))
   cek('Step 3B: di luar daftar izin, intake / lib ai / route / UI TIDAK merujuk TAH Core', bocor.length === 0, bocor.join(', '))
   cek('Step 3B: setiap berkas daftar izin memang ada', [...DIIZINKAN_3B].every((f) => existsSync(join(AKAR, f))))
-  // Pemakai TahApprovalRequest pertama = services/communication (WA-1 2D, di luar folder yang dipindai di sini);
-  // intake / lib ai / route / UI TETAP tidak memakainya.
+  // Pemakai TahApprovalRequest pertama = services/communication (WA-1 2D, di luar folder yang dipindai di sini).
   cek('Step 3B: TahApprovalRequest tidak dipakai intake / lib ai / route / UI', semua.every((f) => !/tahApprovalRequest|TahApprovalRequest/.test(baca(f))))
   cek('Step 3A/3B: belum ada route /api/tah', !existsSync(join(AKAR, 'src/app/api/tah')))
   cek('Step 3A/3B: belum ada halaman /automation/inbox', !existsSync(join(AKAR, 'src/app/(app)/automation/inbox')))

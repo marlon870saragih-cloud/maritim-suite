@@ -207,6 +207,12 @@ try {
   cek('registry: kind WA_INTERNAL_FAKE_TEST, INTERNAL_WRITE, peran ADMIN+MANAJER_OPERASI, originator = peminta', a1.kind === 'WA_INTERNAL_FAKE_TEST' && a1.actionRisk === 'INTERNAL_WRITE' && a1.requiredRoles.join() === 'ADMIN,MANAJER_OPERASI' && a1.originatorUserId === 'u-A' && a1.requestedBy === 'u-A')
   cek('35. Q8: expiresAt NULL (tanpa TTL produk); idempotencyKey WA1:<messageId>', a1.expiresAt === null && a1.idempotencyKey === `WA1:${m1.id}`)
   cek('usulan = snapshot immutable (body & sidik sama, ≤ 32 KB)', a1.proposal.body === m1.body && a1.proposal.snapshotFingerprint === m1.snapshotFingerprint && a1.proposal.messageId === m1.id && TAH.jsonMuat(a1.proposal, TAH.MAKS_BYTE_USULAN))
+  {
+    const p = await pratinjau(A)
+    const h = await AP.mintaApproval(A.ctx, { messageId: p.messageId, kind: 'TAH_DEV_NOOP', expiresAt: new Date(Date.now() + 3_600_000), proposalHash: 'f'.repeat(64), requiredRoles: ['ADMIN'], actionRisk: 'EXTERNAL_COMMUNICATION' })
+    const a = await approval(h.approvalRequestId)
+    cek('Q8-R1: pemanggil TAK bisa memilih kind / expiresAt / proposalHash / peran / risiko — semua diturunkan server', a.kind === 'WA_INTERNAL_FAKE_TEST' && a.expiresAt === null && a.proposalHash === p.fp && a.requiredRoles.join() === 'ADMIN,MANAJER_OPERASI' && a.actionRisk === 'INTERNAL_WRITE')
+  }
   const h1b = await AP.mintaApproval(A.ctx, { messageId: p1.messageId })
   cek('4. replay → approval SAMA, tanpa baris baru', h1b.hasil === 'APPROVAL_DIMINTA' && h1b.approvalRequestId === a1.id && h1b.dibuatBaru === false && (await adm.tahApprovalRequest.count({ where: { subjectId: m1.id } })) === 1)
   {
@@ -293,6 +299,19 @@ try {
     cek('policy mismatch: requiredRoles disunting → FORBIDDEN', (await kode(() => AP.setujuiPesan(A.ctx2, { approvalRequestId: h.approvalRequestId }))) === 'FORBIDDEN')
     await adm.tahApprovalRequest.updateMany({ where: { id: h.approvalRequestId }, data: { requiredRoles: ['ADMIN', 'MANAJER_OPERASI'], expiresAt: new Date(Date.now() + 3_600_000) } })
     cek('policy mismatch: expiresAt diisi (WA wajib tanpa TTL) → FORBIDDEN', (await kode(() => AP.setujuiPesan(A.ctx2, { approvalRequestId: h.approvalRequestId }))) === 'FORBIDDEN')
+  }
+  {
+    // Otorisasi/kebijakan SEBELUM revalidasi: sumber sudah terhapus, tetapi pemanggil ditolak kebijakan →
+    // TIDAK boleh ada hard block, pembatalan, transisi, atau audit bisnis.
+    const p = await pratinjau(A)
+    const h = await AP.mintaApproval(A.ctx, { messageId: p.messageId })
+    await adm.voyageEvent.updateMany({ where: { id: p.sumber.id }, data: { deletedAt: new Date() } })
+    await adm.tahApprovalRequest.updateMany({ where: { id: h.approvalRequestId }, data: { actionRisk: 'EXTERNAL_COMMUNICATION' } })
+    const auditSebelum = await adm.auditLog.count({ where: { tenantId: A.t.id } })
+    const e = await kode(() => AP.setujuiPesan(A.ctx2, { approvalRequestId: h.approvalRequestId }))
+    const e2 = await kode(() => AP.tolakPesan(A.ctx2, { approvalRequestId: h.approvalRequestId, decisionNote: 'tidak sesuai' }))
+    cek('otorisasi sebelum revalidasi: ditolak kebijakan → FORBIDDEN dan NOL mutasi (candidate ACTIVE, pesan PREVIEWED, approval PENDING, tanpa audit baru)',
+      e === 'FORBIDDEN' && e2 === 'FORBIDDEN' && (await kandidat(p.candidateId)).state === 'ACTIVE' && (await pesan(p.messageId)).state === 'PREVIEWED' && (await approval(h.approvalRequestId)).status === 'PENDING' && (await adm.auditLog.count({ where: { tenantId: A.t.id } })) === auditSebelum)
   }
   {
     const p = await pratinjau(A)
@@ -412,7 +431,7 @@ try {
     const hasil = r.map((x) => (x.status === 'fulfilled' ? x.value.hasil : x.reason?.code))
     const inv = await invarian(p.messageId)
     const pasangan = `${inv.a.status}/${inv.m.state}`
-    cek(`29. [${i + 1}] setujui vs tolak → tepat satu keputusan; pasangan konsisten`, ['APPROVED/APPROVED', 'REJECTED/CANCELED'].includes(pasangan) && hasil.filter((x) => x === 'DISETUJUI' || x === 'DITOLAK_PEMUTUS').length === 1 && inv.ok, `${hasil.join(',')} → ${pasangan}`)
+    cek(`29. [${i + 1}] setujui vs tolak → tepat satu keputusan; pasangan konsisten; yang kalah terkendali`, ['APPROVED/APPROVED', 'REJECTED/CANCELED'].includes(pasangan) && hasil.filter((x) => x === 'DISETUJUI' || x === 'DITOLAK_PEMUTUS').length === 1 && r.every((x) => x.status === 'fulfilled' || x.reason?.code === 'CONFLICT') && inv.ok, `${hasil.join(',')} → ${pasangan}`)
   }
   for (let i = 0; i < ULANG; i++) {
     const p = await pratinjau(A)
@@ -438,7 +457,7 @@ try {
     ])
     const hasil = r.map((x) => (x.status === 'fulfilled' ? x.value.hasil : x.reason?.code))
     const inv = await invarian(p.messageId)
-    cek(`31. [${i + 1}] setujui vs hard block → candidate & pesan BLOCKED; approval CANCELLED atau APPROVED+eksekusi CANCELLED`, inv.c.state === 'BLOCKED' && inv.m.state === 'BLOCKED' && (inv.a.status === 'CANCELLED' || (inv.a.status === 'APPROVED' && inv.a.executionStatus === 'CANCELLED')) && inv.ok, `${hasil.join(',')} → ${inv.a.status}/${inv.a.executionStatus}`)
+    cek(`31. [${i + 1}] setujui vs hard block → candidate & pesan BLOCKED; approval CANCELLED atau APPROVED+eksekusi CANCELLED; yang kalah terkendali`, inv.c.state === 'BLOCKED' && inv.m.state === 'BLOCKED' && (inv.a.status === 'CANCELLED' || (inv.a.status === 'APPROVED' && inv.a.executionStatus === 'CANCELLED')) && r.every((x) => x.status === 'fulfilled' || x.reason?.code === 'CONFLICT') && inv.ok, `${hasil.join(',')} → ${inv.a.status}/${inv.a.executionStatus}`)
   }
 
   // ================================================================== audit
@@ -475,9 +494,12 @@ try {
   const kolom = await adm.$queryRawUnsafe(`SELECT is_nullable FROM information_schema.columns WHERE table_name = 'TahApprovalRequest' AND column_name = 'expiresAt'`)
   cek('35. kolom expiresAt nullable di DB (migrasi Q8 diterapkan)', kolom[0]?.is_nullable === 'YES')
   cek('35. semua approval WA berstatus tanpa TTL (expiresAt NULL) kecuali yang disunting uji', (await adm.tahApprovalRequest.count({ where: { kind: 'WA_INTERNAL_FAKE_TEST', expiresAt: { not: null } } })) === 1)
-  cek('35. sudahKedaluwarsa(PENDING, null) = false', TAH.sudahKedaluwarsa('PENDING', null, new Date()) === false)
-  const reg = TAH.validasiRegistry([{ key: 'X_AGEN', versi: 'x/1', jenisRun: ['EXTRACT'], jenisApproval: [] }], [{ kind: 'X_PROD', risiko: 'INTERNAL_WRITE', peranWajib: ['ADMIN'], setujuSendiri: true, kedaluwarsaJam: null, bisaDiedit: false }], ['ADMIN', 'MANAJER_OPERASI'])
-  cek('36. kedaluwarsaJam null pada jenis yang bisa jalan di produksi → ditolak registry', reg.some((g) => /hanyaNonProduksi/.test(g)))
+  const REG = jiti('../src/services/tah/registry.ts')
+  cek('Q8-R1: definisi WA tertutup — tanpa TTL, non-produksi, INTERNAL_WRITE, setuju-sendiri, tak bisa disunting, beku', REG.JENIS_APPROVAL_WA_FAKE.kedaluwarsaJam === null && REG.JENIS_APPROVAL_WA_FAKE.hanyaNonProduksi === true && REG.JENIS_APPROVAL_WA_FAKE.risiko === 'INTERNAL_WRITE' && REG.JENIS_APPROVAL_WA_FAKE.setujuSendiri === true && REG.JENIS_APPROVAL_WA_FAKE.bisaDiedit === false && Object.isFrozen(REG.JENIS_APPROVAL_WA_FAKE))
+  cek('Q8-R1: definisi WA ditolak di produksi oleh kebijakan beku', !TAH.jenisBolehDiLingkungan(REG.JENIS_APPROVAL_WA_FAKE, 'production'))
+  const reg = TAH.validasiRegistry([{ key: 'X_AGEN', versi: 'x/1', jenisRun: ['EXTRACT'], jenisApproval: [] }], [{ kind: 'X_NONPROD', risiko: 'INTERNAL_WRITE', peranWajib: ['ADMIN'], setujuSendiri: true, kedaluwarsaJam: null, bisaDiedit: false, hanyaNonProduksi: true }], ['ADMIN', 'MANAJER_OPERASI'])
+  cek('36. Q8-R1: TIDAK ada jalur NULL-TTL umum — validasiRegistry beku menolak kedaluwarsaJam null (bahkan non-produksi)', reg.some((g) => /kedaluwarsaJam/.test(g)))
+  cek('Q8-R1: CLIENT_WA_UPDATE tidak ada di registry mana pun', !REG.JENIS_APPROVAL_TAH.some((j) => j.kind === 'CLIENT_WA_UPDATE') && REG.JENIS_APPROVAL_WA_FAKE.kind !== 'CLIENT_WA_UPDATE')
   cek('37. 0 CommunicationAttempt', (await adm.communicationAttempt.count()) === 0)
   cek('38. 0 Send: tak ada pesan QUEUED_FAKE/FAKE_SENT/FAKE_FAILED, successKey/fakeReceipt kosong; eksekusi tak pernah RUNNING/SUCCEEDED', (await adm.communicationMessage.count({ where: { OR: [{ state: { in: ['QUEUED_FAKE', 'FAKE_SENT', 'FAKE_FAILED'] } }, { successKey: { not: null } }, { fakeReceipt: { not: null } }] } })) === 0 && (await adm.tahApprovalRequest.count({ where: { executionStatus: { in: ['RUNNING', 'SUCCEEDED', 'SUCCEEDED_WITH_WARNINGS', 'FAILED'] } } })) === 0)
   cek('39. NOL panggilan jaringan (fetch/http/https/net/tls/dns/WebSocket)', egress.length === 0, egress.join(','))

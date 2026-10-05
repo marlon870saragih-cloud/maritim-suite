@@ -41,7 +41,7 @@ const bagian = (j) => console.log(`\n${j}`)
 const P = await import('../src/services/communication/comm-policy.ts')
 const F = await import('../src/services/communication/comm-fixture.ts')
 const { TENANT_MODELS, tenantGuardExtension } = await import('../src/services/tenant-guard.ts')
-const { JENIS_APPROVAL_TAH } = await import('../src/services/tah/registry.ts')
+const { JENIS_APPROVAL_TAH, JENIS_APPROVAL_WA_FAKE } = await import('../src/services/tah/registry.ts')
 
 const MODEL = ['CommunicationCandidate', 'CommunicationMessage', 'CommunicationAttempt']
 const schema = baca('prisma/schema.prisma')
@@ -111,7 +111,7 @@ cek('tak menyebut tabel TAH (termasuk komentar — kunci check-tah-policy)', !/A
 // ===================================================================== S3
 bagian('[S3] Lingkup Step 2B/2C/2D')
 cek('TENANT_MODELS memuat ketiga model', MODEL.every((m) => TENANT_MODELS.has(m)))
-cek('Step 2D: registry TAH memuat WA_INTERNAL_FAKE_TEST, belum CLIENT_WA_UPDATE', JENIS_APPROVAL_TAH.some((j) => j.kind === 'WA_INTERNAL_FAKE_TEST') && !JENIS_APPROVAL_TAH.some((j) => j.kind === 'CLIENT_WA_UPDATE'))
+cek('Step 2D R1: definisi WA_INTERNAL_FAKE_TEST terpisah; registry TAH lama tanpa WA / CLIENT_WA_UPDATE', JENIS_APPROVAL_WA_FAKE.kind === 'WA_INTERNAL_FAKE_TEST' && !JENIS_APPROVAL_TAH.some((j) => ['WA_INTERNAL_FAKE_TEST', 'CLIENT_WA_UPDATE'].includes(j.kind)))
 const jelajah = (rel, hasil = []) => {
   for (const d of readdirSync(join(AKAR, rel), { withFileTypes: true })) {
     const p = `${rel}/${d.name}`

@@ -669,10 +669,11 @@ export const bolehCancel = (s: string): boolean => transisiPesanSah(s, 'CANCELED
 // ======================================================= approval (Q1, Q8)
 
 /**
- * Deskripsi kebijakan approval WA-1 (pasangan entri registry `WA_INTERNAL_FAKE_TEST`,
- * src/services/tah/registry.ts — uji memastikan keduanya selaras). Q8 (D-2D-01): PRD
- * WA-1 TANPA TTL produk (P-05) → `ttlProdukJam: null` = registry `kedaluwarsaJam: null`
- * = TahApprovalRequest.expiresAt NULL. Tanpa tanggal sentinel, tanpa expiry 720 jam.
+ * Deskripsi kebijakan approval WA-1 (pasangan `JENIS_APPROVAL_WA_FAKE` di
+ * src/services/tah/registry.ts — definisi terpisah bertipe literal tertutup, keputusan R1;
+ * uji memastikan keduanya selaras). Q8 (D-2D-01): PRD WA-1 TANPA TTL produk (P-05) →
+ * `ttlProdukJam: null` = `kedaluwarsaJam: null` = TahApprovalRequest.expiresAt NULL.
+ * Tanpa tanggal sentinel, tanpa expiry 720 jam.
  */
 export const KEBIJAKAN_APPROVAL_WA1 = {
   kind: 'WA_INTERNAL_FAKE_TEST',

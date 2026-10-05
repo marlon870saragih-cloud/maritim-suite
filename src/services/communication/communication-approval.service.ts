@@ -6,8 +6,11 @@
 // menimbulkan efek samping apa pun di Step 2D.
 //
 // Memakai ulang TahApprovalRequest + kebijakan TAH (tanpa kerangka approval kedua):
-//   • jenis `WA_INTERNAL_FAKE_TEST` dari registry (INTERNAL_WRITE, non-produksi, tanpa TTL
-//     produk → expiresAt NULL, Q8/D-2D-01); registry divalidasi ulang setiap pemanggilan.
+//   • definisi `JENIS_APPROVAL_WA_FAKE` (registry.ts, tipe literal TERTUTUP — keputusan R1):
+//     INTERNAL_WRITE, non-produksi, tanpa TTL produk → expiresAt NULL (Q8/D-2D-01). tah-policy.ts
+//     (BEKU, kandidat Validator V3) tak diubah; setiap invarian definisi diperiksa ulang saat jalan.
+//     Satu-satunya jalur pembuat TahApprovalRequest di aplikasi = berkas ini, dengan kind &
+//     expiresAt yang diturunkan dari definisi itu — tak ada jalur NULL-TTL umum.
 //   • subjectType 'CommunicationMessage', subjectId = message.id, proposalHash =
 //     snapshotFingerprint (TANPA hash alternatif), basisFingerprint = sourceFingerprint.
 //   • satu approval per pesan immutable: idempotencyKey `WA1:<messageId>` + unique DB (D-2D-07).
@@ -26,7 +29,7 @@ import type { TenantContext } from '../context'
 import { forbidden, notFound, validation } from '../errors'
 import { forTenant } from '../tenant-db'
 import { PERAN_AUTOMATION } from '../automation/gate'
-import { AGEN_TAH, JENIS_APPROVAL_TAH } from '../tah/registry'
+import { AGEN_TAH, JENIS_APPROVAL_TAH, JENIS_APPROVAL_WA_FAKE, type DefinisiApprovalWaFake } from '../tah/registry'
 import {
   MAKS_BYTE_USULAN,
   MAKS_CATATAN,
@@ -34,11 +37,12 @@ import {
   bolehMemutuskan,
   jenisBolehDiLingkungan,
   jsonMuat,
+  kelasRisikoSah,
+  setujuSendiriEfektif,
   sudahKedaluwarsa,
   transisiEksekusiSah,
   transisiKeputusanSah,
   validasiRegistry,
-  type DefinisiApprovalData,
 } from '../tah/tah-policy'
 import { KEBIJAKAN_APPROVAL_WA1, teksKunciCandidate, teksKunciPesanLogis, transisiPesanSah, type KodeAlasan, type KunciCandidate } from './comm-policy'
 import { sidikSnapshot } from './comm-hash'
@@ -80,23 +84,34 @@ export type HasilKeputusan =
 // ================================================================ kebijakan jenis
 
 /**
- * Jenis approval WA-1 dari registry — registry seluruhnya divalidasi ulang (gagal tertutup),
- * entri harus PERSIS kebijakan 2A (non-produksi, tanpa TTL, internal, tak bisa disunting),
- * dan lingkungan tak boleh produksi (kunci kedua di samping gerbang WA).
+ * Definisi approval WA-1 (R1). Gagal tertutup bila SATU invarian menyimpang dari keputusan owner —
+ * meski tipe literalnya sudah mencegah, nilai saat jalan tetap diperiksa (mis. objek dimutasi):
+ * kind, kelas INTERNAL_WRITE (sah & boleh setuju-sendiri menurut kebijakan TAH yang beku), peran
+ * PERSIS ADMIN+MANAJER_OPERASI (⊆ peran Automation), setuju-sendiri, non-produksi, tak bisa
+ * disunting, tanpa TTL, dan kind tak bertabrakan dengan registry TAH lama (yang juga tetap
+ * divalidasi validasiRegistry beku). Lingkungan produksi ditolak (kunci kedua di samping gerbang WA).
  */
-function jenisWa(): DefinisiApprovalData {
+function jenisWa(): DefinisiApprovalWaFake {
   const galat = validasiRegistry(AGEN_TAH, JENIS_APPROVAL_TAH, PERAN_AUTOMATION)
   if (galat.length > 0) throw new Error(`[komunikasi] registry TAH tidak sah: ${galat.join('; ')}`)
-  const j = JENIS_APPROVAL_TAH.find((k) => k.kind === KEBIJAKAN_APPROVAL_WA1.kind)
-  if (
-    !j ||
-    j.hanyaNonProduksi !== KEBIJAKAN_APPROVAL_WA1.hanyaNonProduksi ||
-    j.kedaluwarsaJam !== KEBIJAKAN_APPROVAL_WA1.ttlProdukJam ||
-    j.risiko !== 'INTERNAL_WRITE' ||
-    j.bisaDiedit !== false
-  ) {
-    throw new Error('[komunikasi] entri registry WA_INTERNAL_FAKE_TEST menyimpang dari kebijakan WA-1.')
-  }
+  const j = JENIS_APPROVAL_WA_FAKE
+  const peran = [...j.peranWajib]
+  const sah =
+    Object.isFrozen(j) &&
+    j.kind === KEBIJAKAN_APPROVAL_WA1.kind &&
+    j.risiko === 'INTERNAL_WRITE' &&
+    kelasRisikoSah(j.risiko) &&
+    setujuSendiriEfektif(j.risiko, j.setujuSendiri) === true &&
+    j.setujuSendiri === true &&
+    peran.join() === 'ADMIN,MANAJER_OPERASI' &&
+    peran.every((r) => (PERAN_AUTOMATION as readonly string[]).includes(r)) &&
+    j.hanyaNonProduksi === KEBIJAKAN_APPROVAL_WA1.hanyaNonProduksi &&
+    j.hanyaNonProduksi === true &&
+    j.bisaDiedit === false &&
+    j.kedaluwarsaJam === KEBIJAKAN_APPROVAL_WA1.ttlProdukJam &&
+    j.kedaluwarsaJam === null &&
+    !JENIS_APPROVAL_TAH.some((k) => k.kind === j.kind)
+  if (!sah) throw new Error('[komunikasi] definisi WA_INTERNAL_FAKE_TEST menyimpang dari keputusan owner (R1/Q8).')
   if (!jenisBolehDiLingkungan(j, process.env.NODE_ENV)) throw forbidden('Approval WA-1 tidak diizinkan di produksi (ENV_NOT_ALLOWED).')
   return j
 }
@@ -124,15 +139,15 @@ const PILIH_APPROVAL = {
   status: true, executionStatus: true, version: true, originatorUserId: true, requiredRoles: true, expiresAt: true,
 } as const
 
-/** Baris approval harus PERSIS turunan registry; menyimpang (mis. disunting langsung di DB) → FORBIDDEN. */
-function cekKebijakanApproval(a: ApprovalBaris, j: DefinisiApprovalData): void {
+/** Baris approval harus PERSIS turunan definisi WA; menyimpang (mis. disunting langsung di DB) → FORBIDDEN. */
+function cekKebijakanApproval(a: ApprovalBaris, j: DefinisiApprovalWaFake): void {
   if (a.kind !== j.kind) throw forbidden('Approval ini bukan approval WA-1.')
   if (a.actionRisk !== j.risiko || !samaHimpunan(a.requiredRoles, j.peranWajib) || a.subjectType !== SUBJEK_APPROVAL || !a.subjectId || a.expiresAt !== null) {
     throw forbidden('Kebijakan approval tidak cocok dengan registry (POLICY_MISMATCH).')
   }
 }
 
-function otorisasiPemutus(ctx: TenantContext, a: ApprovalBaris, j: DefinisiApprovalData): void {
+function otorisasiPemutus(ctx: TenantContext, a: ApprovalBaris, j: DefinisiApprovalWaFake): void {
   const h = bolehMemutuskan({
     pemutus: { userId: ctx.userId, role: ctx.role, system: ctx.system },
     peranWajib: j.peranWajib,
@@ -264,7 +279,7 @@ export async function mintaApproval(ctx: TenantContext, input: { messageId: unkn
   return denganUlang(() => forTenant(ctx).$transaction((tx) => mintaDalamTx(ctx, tx, jenis, messageId)))
 }
 
-async function mintaDalamTx(ctx: TenantContext, tx: Tx, jenis: DefinisiApprovalData, messageId: string): Promise<HasilMintaApproval> {
+async function mintaDalamTx(ctx: TenantContext, tx: Tx, jenis: DefinisiApprovalWaFake, messageId: string): Promise<HasilMintaApproval> {
   const m = (await tx.communicationMessage.findFirst({ where: { id: messageId }, select: PILIH_PESAN })) as PesanBaris | null
   if (!m) throw notFound('Pesan')
 
@@ -362,7 +377,8 @@ async function mintaDalamTx(ctx: TenantContext, tx: Tx, jenis: DefinisiApprovalD
         originatorUserId: ctx.userId,
         requestedBy: ctx.userId,
         requiredRoles: [...jenis.peranWajib],
-        expiresAt: jenis.kedaluwarsaJam === null ? null : new Date(Date.now() + jenis.kedaluwarsaJam * 3_600_000),
+        // Q8: diturunkan HANYA dari definisi WA (literal null) — pemanggil tak pernah memilih kedaluwarsa.
+        expiresAt: jenis.kedaluwarsaJam,
         idempotencyKey: kunci,
       },
       select: { id: true, status: true },
@@ -394,7 +410,7 @@ async function mintaDalamTx(ctx: TenantContext, tx: Tx, jenis: DefinisiApprovalD
 async function siapkanKeputusan(
   ctx: TenantContext,
   tx: Tx,
-  jenis: DefinisiApprovalData,
+  jenis: DefinisiApprovalWaFake,
   approvalRequestId: string,
   revalidasi: boolean,
 ): Promise<{ selesai: HasilKeputusan } | { a: ApprovalBaris; m: PesanBaris }> {
@@ -403,7 +419,7 @@ async function siapkanKeputusan(
   cekKebijakanApproval(a, jenis)
   otorisasiPemutus(ctx, a, jenis)
   if (a.status !== 'PENDING') return { selesai: { hasil: 'SUDAH_DIPUTUSKAN', approvalRequestId: a.id, status: a.status } }
-  if (sudahKedaluwarsa(a.status, a.expiresAt, new Date())) {
+  if (a.expiresAt !== null && sudahKedaluwarsa(a.status, a.expiresAt, new Date())) {
     await hentikanApprovalTertaut(ctx, tx, a.id, 'CANCELLED', 'APPROVAL_STALE')
     return { selesai: { hasil: 'DITOLAK', approvalRequestId: a.id, alasan: 'APPROVAL_STALE', medan: 'expiresAt' } }
   }

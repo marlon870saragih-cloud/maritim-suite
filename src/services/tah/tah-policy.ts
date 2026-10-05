@@ -165,12 +165,7 @@ export const KEDALUWARSA_JAM_MIN = 1
 /** 30 hari: permintaan PENDING tak pernah cukup tua untuk tersentuh retensi 180 hari. */
 export const KEDALUWARSA_JAM_MAKS = 720
 
-/**
- * WA-1 Step 2D (Q8, D-2D-01): `expiresAt` NULL = TANPA TTL produk — tak pernah
- * kedaluwarsa. Hanya mungkin untuk jenis non-produksi (lihat validasiRegistry).
- */
-export function sudahKedaluwarsa(status: string, expiresAt: Date | null, sekarang: Date): boolean {
-  if (expiresAt === null) return false
+export function sudahKedaluwarsa(status: string, expiresAt: Date, sekarang: Date): boolean {
   return status === 'PENDING' && expiresAt.getTime() <= sekarang.getTime()
 }
 
@@ -322,17 +317,10 @@ export type DefinisiApprovalData = {
   risiko: KelasRisiko
   peranWajib: readonly string[]
   setujuSendiri: boolean
-  /** null = tanpa TTL produk (Q8) — HANYA untuk jenis hanyaNonProduksi berkelas internal. */
-  kedaluwarsaJam: number | null
+  kedaluwarsaJam: number
   bisaDiedit: boolean
   hanyaNonProduksi?: boolean
 }
-
-/**
- * Kelas tanpa visibilitas eksternal & tanpa akibat keuangan (definisi D5/D9). Hanya
- * kelas ini yang boleh tanpa TTL — dan itu pun hanya bila jenisnya non-produksi.
- */
-export const KELAS_INTERNAL: readonly KelasRisiko[] = ['READ_ONLY', 'INTERNAL_ANNOTATION', 'INTERNAL_WRITE']
 
 const POLA_KUNCI = /^[A-Z][A-Z0-9_]{1,39}$/
 const POLA_ENV = /^[A-Z][A-Z0-9_]{1,63}$/
@@ -363,11 +351,7 @@ export function validasiRegistry(
     else if (kelasRisikoSah(j.risiko) && j.setujuSendiri && !SETUJU_SENDIRI_BAWAAN[j.risiko]) {
       galat.push(`${n}: setujuSendiri lebih longgar dari bawaan kelas ${j.risiko} (D9)`)
     }
-    if (j?.kedaluwarsaJam === null) {
-      // Q8 (D-2D-01): tanpa TTL hanya untuk jenis yang PASTI non-produksi DAN berkelas internal.
-      if (j.hanyaNonProduksi !== true) galat.push(`${n}: kedaluwarsaJam null hanya untuk jenis hanyaNonProduksi`)
-      if (!kelasRisikoSah(j.risiko) || !KELAS_INTERNAL.includes(j.risiko)) galat.push(`${n}: kedaluwarsaJam null hanya untuk kelas internal`)
-    } else if (!Number.isInteger(j?.kedaluwarsaJam) || j.kedaluwarsaJam < KEDALUWARSA_JAM_MIN || j.kedaluwarsaJam > KEDALUWARSA_JAM_MAKS) {
+    if (!Number.isInteger(j?.kedaluwarsaJam) || j.kedaluwarsaJam < KEDALUWARSA_JAM_MIN || j.kedaluwarsaJam > KEDALUWARSA_JAM_MAKS) {
       galat.push(`${n}: kedaluwarsaJam di luar ${KEDALUWARSA_JAM_MIN}..${KEDALUWARSA_JAM_MAKS}`)
     }
     if (typeof j?.bisaDiedit !== 'boolean') galat.push(`${n}: bisaDiedit wajib boolean`)
