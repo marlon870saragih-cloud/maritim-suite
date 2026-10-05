@@ -12,7 +12,7 @@
 //   7. ZONA WAKTU Q10 — IANA bernama diterima; kosong/invalid/UTC/Etc/offset ditolak.
 //   8. TEMPLATE — body expected byte-per-byte (8 template), deterministik, token tersisa gagal.
 //   9. MESIN STATUS & APPROVAL — tabel transisi, ACK bukan approval (TS-16), Q8 tanpa TTL.
-//  10. FIXTURE — jelas TEST_FIXTURE, nomor fiksi, bukan dari Principal/Customer.
+//  10. FIXTURE — jelas TEST_FIXTURE, pengenal uji non-routable (bukan nomor telepon), bukan dari Principal/Customer.
 //  11. HASH — JSON kanonik stabil & menolak nilai tanpa bentuk stabil.
 //  12. EGRESS & LINGKUP — nol panggilan jaringan saat jalan, scan sumber, batas Step 2A.
 
@@ -171,7 +171,7 @@ bagian('[2] Keluarga event pilot (TS-13)')
   cek('allowlist persis empat keluarga', P.KELUARGA_EVENT.join() === 'SCHEDULE_CHANGE,EOSP,ALL_FAST,SAILED' && P.KODE_MILESTONE_PILOT.join() === 'EOSP,ALL_FAST,SAILED')
   const a = { tenantId: 'a', voyageId: 'b', sourceType: 'AUDIT_LOG', sourceRef: 'c' }
   cek('kunci candidate stabil & tak ambigu', P.teksKunciCandidate(a) === P.teksKunciCandidate({ ...a }) && P.teksKunciCandidate({ ...a, voyageId: 'b:AUDIT_LOG' , sourceRef: 'c' }) !== P.teksKunciCandidate(a))
-  cek('kunci pesan logis = candidate + nomor (P-06)', P.teksKunciPesanLogis(a, '+447700900001') !== P.teksKunciPesanLogis(a, '+447700900002'))
+  cek('kunci pesan logis = candidate + pengenal penerima (P-06)', P.teksKunciPesanLogis(a, 'TEST_FIXTURE_WA_001') !== P.teksKunciPesanLogis(a, 'TEST_FIXTURE_WA_002'))
 }
 
 // ============================================================================ 3
@@ -478,15 +478,16 @@ bagian('[9] Mesin status & approval (TS-15, TS-16, Q8)')
 bagian('[10] TEST_FIXTURE (Q3)')
 {
   cek('ada fixture, semuanya bertanda TEST_FIXTURE di penanda & nama', F.FIXTURE_PENERIMA.length >= 1 && F.FIXTURE_PENERIMA.every((f) => f.penanda === 'TEST_FIXTURE' && f.id.includes('TEST_FIXTURE') && f.nama.startsWith('TEST_FIXTURE')))
-  cek('nomor dalam rentang fiksi Ofcom +44 7700 900xxx', F.FIXTURE_PENERIMA.every((f) => /^\+447700900\d{3}$/.test(f.nomor)))
-  cek('tak ada nomor Indonesia (+62) / nomor pribadi', F.FIXTURE_PENERIMA.every((f) => !f.nomor.startsWith('+62')))
-  cek('id & nomor fixture unik', new Set(F.FIXTURE_PENERIMA.map((f) => f.id)).size === F.FIXTURE_PENERIMA.length && new Set(F.FIXTURE_PENERIMA.map((f) => f.nomor)).size === F.FIXTURE_PENERIMA.length)
+  cek('OD-2A-05: pengenal uji eksplisit TEST_FIXTURE_WA_nnn', F.FIXTURE_PENERIMA.every((f) => /^TEST_FIXTURE_WA_\d{3}$/.test(f.pengenal)))
+  cek('OD-2A-05: fixture tanpa nomor telepon / semantik E.164 (tak ada "+" atau medan nomor)', F.FIXTURE_PENERIMA.every((f) => !('nomor' in f) && !/^\+|\d{8,}/.test(f.pengenal)))
+  cek('OD-2A-05: sumber fixture tanpa angka berbentuk telepon', !/\+\d{6,}|\b0\d{9,}\b/.test(baca('src/services/communication/comm-fixture.ts')))
+  cek('id & pengenal fixture unik', new Set(F.FIXTURE_PENERIMA.map((f) => f.id)).size === F.FIXTURE_PENERIMA.length && new Set(F.FIXTURE_PENERIMA.map((f) => f.pengenal)).size === F.FIXTURE_PENERIMA.length)
   cek('pengirimanEksternal selalu false', F.FIXTURE_PENERIMA.every((f) => f.pengirimanEksternal === false))
   cek('bukti izin bertipe TEST_FIXTURE dan menyatakan BUKAN consent klien', F.FIXTURE_PENERIMA.every((f) => f.buktiIzin.jenis === 'TEST_FIXTURE' && /BUKAN consent klien/.test(f.buktiIzin.keterangan)))
   cek('skenario FAKE ketiganya tercakup', ['SUCCESS', 'FAIL_BEFORE_ACCEPT', 'FAIL_ONCE_THEN_SUCCESS'].every((s) => F.FIXTURE_PENERIMA.some((f) => f.skenario === s)))
   cek('fixture beku (tak bisa diubah saat jalan)', Object.isFrozen(F.FIXTURE_PENERIMA) && F.FIXTURE_PENERIMA.every((f) => Object.isFrozen(f) && Object.isFrozen(f.buktiIzin)))
   cek('pilih fixture terdaftar → lolos', F.pilihPenerimaFixture('WA1_TEST_FIXTURE_SUCCESS').ok)
-  cek('id tak terdaftar / nomor bebas → CONTACT_INELIGIBLE (FR-09)', ['+6281234567890', 'lain', null, undefined].every((x) => F.pilihPenerimaFixture(x).alasan === 'CONTACT_INELIGIBLE'))
+  cek('id tak terdaftar / nomor bebas → CONTACT_INELIGIBLE (FR-09)', ['TEST_FIXTURE_WA_999', 'nomor-bebas', 'lain', null, undefined].every((x) => F.pilihPenerimaFixture(x).alasan === 'CONTACT_INELIGIBLE'))
   const src = baca('src/services/communication/comm-fixture.ts').replace(/\/\/.*$/gm, '')
   cek('fixture tak merujuk Principal/Customer/DB/env', !/principal|customer|prisma|process\.env|forTenant/i.test(src))
 }

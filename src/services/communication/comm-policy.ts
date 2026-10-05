@@ -159,9 +159,9 @@ export function teksKunciCandidate(k: KunciCandidate): string {
   return JSON.stringify(['WA1C', k.tenantId, k.voyageId, k.sourceType, k.sourceRef])
 }
 
-/** P-06 — logical message = candidate key + nomor kanonik penerima. */
-export function teksKunciPesanLogis(k: KunciCandidate, nomorKanonik: string): string {
-  return JSON.stringify(['WA1M', k.tenantId, k.voyageId, k.sourceType, k.sourceRef, nomorKanonik])
+/** P-06 — logical message = candidate key + identitas penerima (WA-1: pengenal TEST_FIXTURE, OD-2A-05). */
+export function teksKunciPesanLogis(k: KunciCandidate, pengenalPenerima: string): string {
+  return JSON.stringify(['WA1M', k.tenantId, k.voyageId, k.sourceType, k.sourceRef, pengenalPenerima])
 }
 
 // ====================================================== kelayakan sinyal (P-08)
