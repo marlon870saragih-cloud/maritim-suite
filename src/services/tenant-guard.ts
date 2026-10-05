@@ -97,6 +97,11 @@ export const TENANT_MODELS: ReadonlySet<string> = new Set([
   'AgentRun',
   'AgentModelCall',
   'TahApprovalRequest',
+
+  // --- WA-1 Step 2B — komunikasi klien (proof-of-flow INTERNAL_FAKE_TEST) ---
+  'CommunicationCandidate',
+  'CommunicationMessage',
+  'CommunicationAttempt',
 ])
 
 /** Operasi yang aman disaring lewat `where`. */

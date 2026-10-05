@@ -472,6 +472,9 @@ bagian('[9] Mesin status & approval (TS-15, TS-16, Q8)')
   cek('TS-15: originator memutuskan kelas EXTERNAL_COMMUNICATION → SELF_APPROVAL_FORBIDDEN', TAH.bolehMemutuskan({ pemutus: { userId: 'u1', role: 'ADMIN' }, peranWajib: ['ADMIN', 'MANAJER_OPERASI'], kelas: 'EXTERNAL_COMMUNICATION', setujuSendiriJenis: true, originatorUserId: 'u1' }).kode === 'SELF_APPROVAL_FORBIDDEN')
   cek('kode alasan PRD §13.3 lengkap + Q4', ['EVENT_NOT_ALLOWED', 'SOURCE_NOT_FOUND', 'SOURCE_DELETED', 'SOURCE_SUPERSEDED', 'SCHEDULE_FIRST_SET', 'SCHEDULE_CLEARED', 'PORT_MISSING', 'PORT_AMBIGUOUS', 'TIMEZONE_MISSING', 'TIMEZONE_INVALID', 'TIME_IN_FUTURE', 'REQUIRED_DATA_MISSING', 'CONTACT_INELIGIBLE', 'CONSENT_NOT_GRANTED', 'UNAUTHORIZED', 'PREVIEW_REQUIRED', 'APPROVAL_REQUIRED', 'APPROVAL_STALE', 'SELF_APPROVAL_FORBIDDEN', 'MODE_NOT_FAKE', 'ENV_NOT_ALLOWED', 'FEATURE_DISABLED', 'ALREADY_FAKE_SENT', 'AUDIT_PERSIST_FAILED', 'FAKE_SIMULATED_FAILURE', 'SIGNAL_DISMISSED', 'SIGNAL_EXPIRED'].every((k) => P.KODE_ALASAN.includes(k)))
   cek('kode alasan unik', new Set(P.KODE_ALASAN).size === P.KODE_ALASAN.length)
+  cek('D-2B-03: kode alasan REVISED ada (revisi lama → CANCELED)', P.KODE_ALASAN.includes('REVISED') && P.transisiPesanSah('PREVIEWED', 'CANCELED') && P.transisiPesanSah('NEEDS_REVIEW', 'CANCELED'))
+  cek('D-2B-05: status candidate PERSIS ACTIVE, BLOCKED', P.STATUS_CANDIDATE.join() === 'ACTIVE,BLOCKED')
+  cek('D-2B-09: status attempt PERSIS QUEUED_FAKE, FAKE_SENT, FAKE_FAILED (subset STATUS_PESAN)', P.STATUS_ATTEMPT.join() === 'QUEUED_FAKE,FAKE_SENT,FAKE_FAILED' && P.STATUS_ATTEMPT.every((x) => P.STATUS_PESAN.includes(x)))
 }
 
 // =========================================================================== 10
@@ -522,11 +525,15 @@ bagian('[12] Egress & lingkup Step 2A')
     cek(`${f}: tanpa Meta/WhatsApp SDK atau wa.me`, !/wa\.me|graph\.facebook|whatsapp-web|baileys|twilio|@whiskeysockets|whatsapp-cloud/i.test(kode))
     cek(`${f}: tanpa DB/env/LLM`, !/prisma|forTenant|process\.env|openrouter|lib\/ai|anthropic|\$queryRaw|\$executeRaw/i.test(kode))
   }
-  // Batas Step 2A — diamandemen secara sengaja pada slice yang memperluasnya (2B/2D/2F).
+  // Batas lingkup — diamandemen secara sengaja pada slice yang memperluasnya. Step 2B
+  // (persistensi) mengganti tiga kunci "tanpa schema/migrasi/TENANT_MODELS" menjadi bentuk 2B PERSIS;
+  // rincian schema & DB diuji prisma/check-comm-schema.mjs.
   const schema = baca('prisma/schema.prisma')
-  cek('Step 2A: schema tanpa model Communication*', !/model Communication(Candidate|Message|Attempt)\b/.test(schema))
-  cek('Step 2A: tak ada migrasi WA', !readdirSync(join(AKAR, 'prisma/migrations')).some((d) => /wa1|communication/i.test(d)))
-  cek('Step 2A: TENANT_MODELS tanpa model Communication*', ![...TENANT_MODELS].some((m) => /^Communication/.test(m)))
+  const modelKom = [...schema.matchAll(/^model (Communication\w*) \{/gm)].map((m) => m[1]).sort()
+  cek('Step 2B: schema berisi PERSIS tiga model Communication*', modelKom.join() === 'CommunicationAttempt,CommunicationCandidate,CommunicationMessage', modelKom.join())
+  const migWa = readdirSync(join(AKAR, 'prisma/migrations')).filter((d) => /wa1|communication/i.test(d))
+  cek('Step 2B: PERSIS satu migrasi WA (…_wa1_step2b_communication)', migWa.length === 1 && /^\d{14}_wa1_step2b_communication$/.test(migWa[0]), migWa.join())
+  cek('Step 2B: TENANT_MODELS memuat PERSIS tiga model Communication*', [...TENANT_MODELS].filter((m) => /^Communication/.test(m)).sort().join() === modelKom.join())
   cek('Step 2A: registry TAH tanpa WA_INTERNAL_FAKE_TEST', !JENIS_APPROVAL_TAH.some((j) => j.kind === 'WA_INTERNAL_FAKE_TEST'))
   cek('Step 2A: belum ada route/halaman komunikasi', !existsSync(join(AKAR, 'src/app/api/automation/communications')) && !existsSync(join(AKAR, 'src/app/(app)/automation/communications')))
   const rujuk = /services\/communication/
