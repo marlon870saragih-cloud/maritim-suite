@@ -46,7 +46,10 @@ export function periksaModeFake(a: { mode: unknown; penyedia: unknown }): Hasil<
 
 // ============================================================== kode alasan
 
-/** PRD §13.3 (minimum) + Q4 (SIGNAL_DISMISSED, SIGNAL_EXPIRED) + SIGNAL_STATE_INVALID (gagal tertutup). */
+/**
+ * PRD §13.3 (minimum) + Q4 (SIGNAL_DISMISSED, SIGNAL_EXPIRED) + SIGNAL_STATE_INVALID (gagal tertutup)
+ * + REVISED (D-2B-03: revisi lama → CANCELED saat revisi baru dibuat).
+ */
 export const KODE_ALASAN = [
   'EVENT_NOT_ALLOWED',
   'SOURCE_NOT_FOUND',
@@ -76,6 +79,7 @@ export const KODE_ALASAN = [
   'SIGNAL_DISMISSED',
   'SIGNAL_EXPIRED',
   'SIGNAL_STATE_INVALID',
+  'REVISED',
 ] as const
 export type KodeAlasan = (typeof KODE_ALASAN)[number]
 
@@ -605,6 +609,14 @@ export function transisiPesanSah(dari: string, ke: string): boolean {
   const izin = (TRANSISI_PESAN as Record<string, readonly string[] | undefined>)[dari]
   return Array.isArray(izin) && izin.includes(ke)
 }
+
+/** D-2B-05 — status CommunicationCandidate. BLOCKED terminal (hanya alasan sumber keras, D-2B-04). */
+export const STATUS_CANDIDATE = ['ACTIVE', 'BLOCKED'] as const
+export type StatusCandidate = (typeof STATUS_CANDIDATE)[number]
+
+/** D-2B-09 — status CommunicationAttempt, kosakata yang sama dengan STATUS_PESAN. */
+export const STATUS_ATTEMPT = ['QUEUED_FAKE', 'FAKE_SENT', 'FAKE_FAILED'] as const
+export type StatusAttempt = (typeof STATUS_ATTEMPT)[number]
 
 export const statusPesanTerminal = (s: string): boolean => s === 'FAKE_SENT' || s === 'BLOCKED' || s === 'CANCELED'
 

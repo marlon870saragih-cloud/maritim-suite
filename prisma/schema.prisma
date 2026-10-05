@@ -137,6 +137,11 @@ model Tenant {
   agentRuns           AgentRun[]
   agentModelCalls     AgentModelCall[]
   tahApprovalRequests TahApprovalRequest[]
+
+  // --- WA-1 Step 2B (komunikasi klien — proof-of-flow INTERNAL_FAKE_TEST, tanpa egress) ---
+  communicationCandidates CommunicationCandidate[]
+  communicationMessages   CommunicationMessage[]
+  communicationAttempts   CommunicationAttempt[]
 }
 
 model Payment {
@@ -772,6 +777,9 @@ model Voyage {
   // tak ada kolom voyage yang berubah.
   agentRuns           AgentRun[]
   tahApprovalRequests TahApprovalRequest[]
+
+  // WA-1 Step 2B — kandidat update klien (FAKE). Hanya rujukan balik; tak ada kolom voyage yang berubah.
+  communicationCandidates CommunicationCandidate[]
 
   @@unique([tenantId, voyageNumber])
   @@unique([tenantId, sourceIntakeId])
@@ -2451,4 +2459,141 @@ model TahApprovalRequest {
   @@index([status, expiresAt])
   @@index([payloadPurgedAt, finalizedAt])
   @@index([finalizedAt])
+}
+
+// ============================================================================
+// WA-1 Step 2B — komunikasi klien (docs/whatsapp/PRD-WA-1.md v0.2, audit 2B-0).
+// Proof-of-flow INTERNAL_FAKE_TEST saja: TANPA egress, TANPA penyedia nyata.
+// Status/kode berupa String (pola K55); daftar sahnya di
+// src/services/communication/comm-policy.ts. Kolom pengguna = String polos
+// (pola AuditLog.userId). FK Tenant/Voyage CASCADE: RESTRICT/NO ACTION terbukti
+// menggagalkan penghapusan tenant. Aplikasi TIDAK punya jalur hapus — riwayat
+// append-only (P-07); invalidasi lewat status, bukan penghapusan.
+// ============================================================================
+
+/// Satu kejadian sumber yang layak dikomunikasikan. Jadwal: satu AuditLog
+/// UBAH_TANGGAL (ETA+ETD → SATU candidate, K-2). Milestone: satu VoyageEvent.
+model CommunicationCandidate {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  voyageId String
+  voyage   Voyage @relation(fields: [voyageId], references: [id], onDelete: Cascade)
+
+  /// SCHEDULE_CHANGE | EOSP | ALL_FAST | SAILED (KELUARGA_EVENT)
+  family         String
+  /// AUDIT_LOG | VOYAGE_EVENT. sourceRef SENGAJA tanpa FK (pola MonitoringSignal.sourceRef).
+  sourceType     String
+  sourceRef      String
+  /// MonitoringSignal.id anggota grup (terurut, unik) — tanpa FK.
+  signalIds      String[]  @default([])
+  /// Jadwal: AuditLog.medan ∩ {eta, etd}; milestone: kosong.
+  includedFields String[]  @default([])
+  /// ACTIVE | BLOCKED (STATUS_CANDIDATE, D-2B-05). BLOCKED terminal — hanya alasan sumber keras (D-2B-04).
+  state          String    @default("ACTIVE")
+  blockReason    String?
+  blockedAt      DateTime?
+
+  createdByUserId String
+  version         Int      @default(1)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  messages CommunicationMessage[]
+
+  @@unique([tenantId, voyageId, sourceType, sourceRef])
+}
+
+/// Satu REVISI pesan = satu baris; snapshot (penerima, bahasa, template, body,
+/// fakta, sidik) ditulis sekali saat INSERT dan tak pernah diubah. Revisi baru →
+/// revisi lama CANCELED (REVISED, D-2B-03).
+model CommunicationMessage {
+  id          String                 @id @default(cuid())
+  tenantId    String
+  tenant      Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  candidateId String
+  candidate   CommunicationCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  revision    Int
+
+  /// teksKunciPesanLogis(candidate, pengenal penerima) — P-06.
+  logicalMessageKey String
+  /// = logicalMessageKey selama revisi ini BELUM terminal; NULL saat terminal → maksimal
+  /// satu revisi aktif per pesan logis (D-2B-02; pola VesselCallIntake.activeHashKey).
+  activeKey         String?
+  /// = logicalMessageKey HANYA saat FAKE_SENT; selain itu NULL → maksimal satu sukses
+  /// per pesan logis, dijamin DATABASE (NULL saling berbeda di PostgreSQL).
+  successKey        String?
+
+  /// Snapshot — penerima TEST_FIXTURE (id + pengenal; bukan nomor/E.164, OD-2A-05).
+  recipientFixtureId  String
+  recipientIdentifier String
+  /// ID | EN
+  language            String
+  templateId          String
+  templateVersion     Int
+  body                String
+  /// Fakta kanonik yang dipakai template.
+  fields              Json
+  sourceFingerprint   String
+  /// = TahApprovalRequest.proposalHash approval yang mengikat revisi ini.
+  snapshotFingerprint String
+  /// INTERNAL_FAKE_TEST
+  mode                String
+
+  /// STATUS_PESAN (comm-policy.ts)
+  state             String    @default("DRAFT")
+  reasonCode        String?
+  previewedAt       DateTime?
+  previewedByUserId String?
+  /// TahApprovalRequest.id — SENGAJA tanpa FK (pola D1, D-2B-01): retensi approval
+  /// tak boleh menyentuh riwayat pesan.
+  approvalRequestId String?
+  /// Disalin saat APPROVE (D-2B-07) — riwayat tetap utuh setelah retensi approval.
+  approvedByUserId  String?
+  approvedAt        DateTime?
+  fakeReceipt       String?
+
+  createdByUserId String
+  version         Int      @default(1)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  attempts CommunicationAttempt[]
+
+  @@unique([candidateId, revision])
+  @@unique([tenantId, activeKey])
+  @@unique([tenantId, successKey])
+}
+
+/// Satu percobaan FAKE Send (FAKE saja — tanpa egress). Batas ≤ 5 percobaan
+/// ditegakkan service (MAKS_PERCOBAAN_EKSEKUSI), nomor ganda ditolak DATABASE.
+model CommunicationAttempt {
+  id        String               @id @default(cuid())
+  tenantId  String
+  tenant    Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  messageId String
+  message   CommunicationMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  attemptNo        Int
+  idempotencyKey   String
+  /// FAKE
+  provider         String
+  /// SKENARIO_FAKE (comm-fixture.ts)
+  scenario         String
+  /// QUEUED_FAKE | FAKE_SENT | FAKE_FAILED (STATUS_ATTEMPT, D-2B-09)
+  state            String  @default("QUEUED_FAKE")
+  reasonCode       String?
+  /// fake_… — bukan tanda terima penyedia.
+  receipt          String?
+  simulation       Boolean @default(true)
+  externalDelivery Boolean @default(false)
+
+  requestedByUserId String
+  claimedAt         DateTime  @default(now())
+  finishedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([messageId, attemptNo])
+  @@unique([tenantId, idempotencyKey])
 }
