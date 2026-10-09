@@ -525,7 +525,8 @@ bagian('[12] Egress & lingkup Step 2A')
   const SERVICE = 'communication.service.ts'
   const APPROVAL = 'communication-approval.service.ts'
   const SEND = 'communication-send.service.ts'
-  cek('modul komunikasi = berkas murni (2A + penyedia FAKE 2E) + service Prepare (2C) + approval (2D) + Send (2E)', berkas.join() === [...MURNI, SERVICE, APPROVAL, SEND].sort().join(), berkas.join())
+  const CANCEL = 'communication-cancel.service.ts'
+  cek('modul komunikasi = berkas murni (2A + penyedia FAKE 2E) + service Prepare (2C) + approval (2D) + Send (2E) + Cancel (2F)', berkas.join() === [...MURNI, SERVICE, APPROVAL, SEND, CANCEL].sort().join(), berkas.join())
   const tanpaKomentar = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
   const POLA_JARINGAN = /\bfetch\b|https?:|node:(http|https|net|tls|dns|dgram|http2|child_process)|['"](http|https|net|tls|dns|ws|undici|axios|node-fetch)['"]|WebSocket|XMLHttpRequest/
   const POLA_META = /wa\.me|graph\.facebook|whatsapp-web|baileys|twilio|@whiskeysockets|whatsapp-cloud/i
@@ -542,8 +543,9 @@ bagian('[12] Egress & lingkup Step 2A')
   const IZIN_IMPOR = {
     [SERVICE]: ['@prisma/client', '../context', '../errors', '../tenant-db', '../finance/audit', '../automation/access', '../master/voyage-dates', '../tah/tah-policy', './comm-policy', './comm-template', './comm-fixture', './comm-hash'],
     [APPROVAL]: ['@prisma/client', '../context', '../errors', '../tenant-db', '../automation/gate', '../tah/registry', '../tah/tah-policy', './comm-policy', './comm-hash', './communication.service'],
+    [CANCEL]: ['../context', '../errors', '../tenant-db', '../tah/tah-policy', './comm-policy', './communication.service', './communication-approval.service'],
   }
-  for (const f of [SERVICE, APPROVAL]) {
+  for (const f of [SERVICE, APPROVAL, CANCEL]) {
     const kode = tanpaKomentar(readFileSync(join(dir, f), 'utf8'))
     const imp = sumberImpor(kode)
     cek(`${f}: impor hanya dari daftar izin (tanpa @/lib/prisma, lib/ai, route, UI)`, imp.length > 0 && imp.every((x) => IZIN_IMPOR[f].includes(x)), imp.join(' | '))
@@ -557,6 +559,13 @@ bagian('[12] Egress & lingkup Step 2A')
     const kode = tanpaKomentar(readFileSync(join(dir, SERVICE), 'utf8'))
     cek(`${SERVICE}: process.env HANYA untuk gerbang WA`, [...kode.matchAll(/process\.env/g)].length === 1 && /bacaKonfigurasiKomunikasi\(process\.env\)/.test(kode))
     cek(`${SERVICE}: TIDAK membuat approval & tak memuat registry (hanya menghentikan approval tertaut)`, !/tahApprovalRequest\.create|tah\/registry|JENIS_APPROVAL_TAH/.test(kode) && /tahApprovalRequest\.updateMany/.test(kode))
+  }
+  {
+    const kode = tanpaKomentar(readFileSync(join(dir, CANCEL), 'utf8'))
+    cek(`${CANCEL}: tanpa process.env (gerbang lewat gerbang() service 2C)`, !/process\.env/.test(kode) && /gerbang\(ctx\)/.test(kode))
+    cek(`${CANCEL}: tak menulis approval sendiri (hanya hentikanApprovalTertaut) & tak memuat registry`, !/tahApprovalRequest\.|tah\/registry|JENIS_APPROVAL/.test(kode) && /hentikanApprovalTertaut\(/.test(kode))
+    cek(`${CANCEL}: memegang kunciCandidate sebelum membaca ulang pesan (AC-18)`, kode.indexOf('kunciCandidate(tx, c)') > 0 && kode.indexOf('kunciCandidate(tx, c)') < kode.indexOf('select: PILIH_PESAN_BATAL'))
+    cek(`${CANCEL}: satu-satunya state tujuan = CANCELED dengan reasonCode CANCELED_BY_USER`, [...kode.matchAll(/state: '([A-Z_]+)'/g)].every((x) => x[1] === 'CANCELED') && /const ALASAN_BATAL: KodeAlasan = 'CANCELED_BY_USER'/.test(kode))
   }
   {
     const kode = tanpaKomentar(readFileSync(join(dir, APPROVAL), 'utf8'))
