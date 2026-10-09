@@ -6,7 +6,7 @@
 
 import { Prisma } from '@prisma/client'
 import { requireTenant, type TenantContext } from './context'
-import { ServiceError, conflict, notFound, validation } from './errors'
+import { ServiceError, conflict, forbidden, notFound, validation } from './errors'
 
 export type ApiError = { error: { code: string; message: string; details?: unknown } }
 
@@ -80,14 +80,43 @@ export async function jsonBody(req: Request): Promise<Record<string, unknown>> {
 export const MAKS_BYTE_BODY = 16_384
 
 /**
- * Baca body JSON secara KETAT (WA-1 Step 2H), berbeda dari jsonBody yang memaafkan:
+ * Pagar CSRF (WA-1 Step 2H) untuk permintaan yang MENGUBAH data. Gagal tertutup:
+ *   • `Sec-Fetch-Site`, bila dikirim peramban, wajib `same-origin` — `same-site` (subdomain lain di
+ *     domain yang sama) dan `cross-site` ditolak;
+ *   • header `Origin` WAJIB ada dan SAMA PERSIS dengan origin aplikasi (dari NEXTAUTH_URL).
+ *     Origin hilang / `null` / subdomain lain → ditolak. Peramban selalu mengirim Origin pada POST
+ *     fetch, jadi UI sendiri tak terpengaruh;
+ *   • origin aplikasi tak terkonfigurasi / tak sah → semua ditolak.
+ * Tidak bergantung pada SameSite cookie maupun Content-Type saja.
+ */
+export function pastikanAsalSah(req: Request): void {
+  let asalAplikasi: string
+  try {
+    asalAplikasi = new URL(process.env.NEXTAUTH_URL ?? '').origin
+  } catch {
+    throw forbidden('Asal permintaan tidak dapat diverifikasi.')
+  }
+  const situs = req.headers.get('sec-fetch-site')
+  if (situs !== null && situs !== 'same-origin') throw forbidden('Asal permintaan tidak sah.')
+  const asal = req.headers.get('origin')
+  if (!asal || asal === 'null' || asal !== asalAplikasi) throw forbidden('Asal permintaan tidak sah.')
+}
+
+/**
+ * Baca body JSON secara KETAT (WA-1 Step 2H) untuk route yang MENGUBAH data — berbeda dari jsonBody
+ * yang memaafkan:
+ *   • pagar CSRF lebih dulu (pastikanAsalSah: Sec-Fetch-Site + Origin);
+ *   • `Content-Type: application/json` WAJIB, termasuk untuk body kosong (formulir HTML tak bisa
+ *     mengirimnya tanpa preflight CORS);
  *   • ukuran dibatasi `maksByte` — dihitung saat membaca aliran, jadi tetap berlaku tanpa
  *     Content-Length (chunked); melebihi → VALIDATION, sisa aliran tak dibaca;
- *   • body tak kosong wajib `Content-Type: application/json` dan JSON sah;
- *   • hasilnya wajib objek (bukan array / null / primitif);
- *   • body kosong → objek kosong (service yang memutuskan medan wajib).
+ *   • JSON sah dan berupa objek (bukan array / null / primitif); body kosong → objek kosong.
  */
 export async function jsonBodyKetat(req: Request, maksByte = MAKS_BYTE_BODY): Promise<Record<string, unknown>> {
+  pastikanAsalSah(req)
+  if (!/^application\/json\b/i.test((req.headers.get('content-type') ?? '').trim())) {
+    throw validation('Content-Type harus application/json.')
+  }
   const panjang = Number(req.headers.get('content-length') ?? '')
   if (Number.isFinite(panjang) && panjang > maksByte) throw validation(`Body terlalu besar (maks ${maksByte} byte).`)
   const potongan: Uint8Array[] = []
@@ -107,9 +136,6 @@ export async function jsonBodyKetat(req: Request, maksByte = MAKS_BYTE_BODY): Pr
   }
   const teks = Buffer.concat(potongan).toString('utf8')
   if (teks.trim() === '') return {}
-  if (!/^application\/json\b/i.test((req.headers.get('content-type') ?? '').trim())) {
-    throw validation('Content-Type harus application/json.')
-  }
   let nilai: unknown
   try {
     nilai = JSON.parse(teks)

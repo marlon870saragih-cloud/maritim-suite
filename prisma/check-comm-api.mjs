@@ -52,6 +52,8 @@ if (tolak.length) {
   process.exit(1)
 }
 const adm = new PrismaClient({ datasources: { db: { url: URL_DB } } })
+// Origin aplikasi yang sah = origin NEXTAUTH_URL server (bawaan sesuai perintah jalan di atas).
+const ASAL = process.env.COMM_API_APP_ORIGIN ?? 'http://localhost:3100'
 
 // Id tetap — server dijalankan dengan AUTOMATION_TENANT_IDS = A,B (C sengaja di luar allowlist).
 const ID_A = 'wa1s2hapitenantaaaaaaa01'
@@ -100,12 +102,18 @@ async function login(email) {
   return s
 }
 const P = '/api/automation/communications'
-/** body: undefined = tanpa body; string = mentah; objek = JSON. */
+/**
+ * body: undefined = tanpa body; string = mentah; objek = JSON. Permintaan SAH meniru UI di peramban:
+ * header Origin = origin aplikasi, dan POST selalu `Content-Type: application/json` (juga tanpa body).
+ * `headers` menimpa bawaan; nilai null = header itu TIDAK dikirim.
+ */
 async function api(sesi, metode, path, body, headers = {}) {
   const mentah = typeof body === 'string'
+  const dasar = { origin: ASAL, ...(metode === 'POST' || body !== undefined ? { 'content-type': 'application/json' } : {}) }
+  const gabung = Object.fromEntries(Object.entries({ ...dasar, ...headers }).filter(([, v]) => v !== null))
   const init = {
     method: metode,
-    headers: body === undefined ? headers : { 'content-type': 'application/json', ...headers },
+    headers: gabung,
     body: body === undefined ? undefined : mentah ? body : JSON.stringify(body),
   }
   const res = sesi ? await sesi.ambil(path, init) : await fetch(`${BASE}${path}`, { ...init, redirect: 'manual' })
@@ -281,12 +289,40 @@ try {
         c.close()
       },
     })
-    const ch = await sA.ambil(`${P}/candidates`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: aliran, duplex: 'half' })
+    const ch = await sA.ambil(`${P}/candidates`, { method: 'POST', headers: { 'content-type': 'application/json', origin: ASAL }, body: aliran, duplex: 'half' })
     const chJson = await ch.json().catch(() => null)
     cek('13. body chunked tanpa Content-Length > 16 KB → 400 VALIDATION (batas saat membaca aliran)', ch.status === 400 && chJson?.error?.code === 'VALIDATION', `${ch.status}`)
     const metode = await Promise.all([api(sA, 'GET', `${P}/messages/${ref.messageId}/send`), api(sA, 'DELETE', `${P}/candidates`), api(sA, 'PUT', `${P}/messages/${ref.messageId}`, {})])
     cek('14. metode tak didukung → 405', metode.every((x) => x.status === 405), metode.map((x) => x.status).join(','))
     cek('15. semua input tak sah: 0 mutasi & 0 audit', (await potretTenant(ID_A)) === awalA)
+  }
+
+  // ============================================================== CSRF
+  bagian('[3b] Pagar CSRF — Origin, Sec-Fetch-Site, Content-Type wajib (8 handler POST)')
+  {
+    const csrf = await alur(sA, A, 'pratinjau')
+    const awalA = await potretTenant(ID_A)
+    const post = rute(csrf).filter(([m]) => m === 'POST')
+    const tanpaOrigin = await Promise.all(post.map(([m, p, b]) => api(sA, m, p, b, { origin: null })))
+    cek('35. sesi ADMIN sah TANPA header Origin → 403 di 8 handler POST', post.length === 8 && tanpaOrigin.every((r) => galat(r, 403, 'FORBIDDEN')), tanpaOrigin.map((r) => r.status).join(','))
+    const asing = ['http://evil.localhost:3100', 'https://galangan.tribuanagency.com', 'http://localhost:3101', 'https://localhost:3100', 'null']
+    const hAsing = await Promise.all(asing.flatMap((o) => post.map(([m, p, b]) => api(sA, m, p, b, { origin: o }))))
+    cek('36. Origin lain (subdomain, port, skema, "null") → 403 di 8 handler × 5 origin', hAsing.length === 40 && hAsing.every((r) => galat(r, 403, 'FORBIDDEN')))
+    const hSitus = await Promise.all(['same-site', 'cross-site', 'none'].flatMap((v) => post.map(([m, p, b]) => api(sA, m, p, b, { 'sec-fetch-site': v }))))
+    cek('37. Sec-Fetch-Site same-site / cross-site / none (meski Origin benar) → 403 di 8 handler', hSitus.every((r) => galat(r, 403, 'FORBIDDEN')))
+    const tanpaCt = await Promise.all([
+      api(sA, 'POST', `${P}/messages/${csrf.messageId}/approval-request`, undefined, { 'content-type': null }),
+      api(sA, 'POST', `${P}/approvals/${ref.approvalId}/approve`, undefined, { 'content-type': null }),
+      api(sA, 'POST', `${P}/messages/${csrf.messageId}/approval-request`, '', { 'content-type': 'application/x-www-form-urlencoded' }),
+      api(sA, 'POST', `${P}/messages/${csrf.messageId}/approval-request`, '', { 'content-type': 'text/plain' }),
+      api(sA, 'POST', `${P}/messages/${csrf.messageId}/cancel`, 'cancelNote=batal', { 'content-type': 'application/x-www-form-urlencoded' }),
+    ])
+    cek('38. POST tanpa body / bertipe formulir / text/plain (approval-request, approve, cancel) → 400 VALIDATION, bukan dieksekusi', tanpaCt.every((r) => galat(r, 400, 'VALIDATION')), tanpaCt.map((r) => r.status).join(','))
+    cek('39. semua permintaan CSRF di atas: 0 mutasi & 0 audit di tenant A', (await potretTenant(ID_A)) === awalA)
+    const sah = await api(sA, 'POST', `${P}/messages/${csrf.messageId}/approval-request`, undefined, { 'sec-fetch-site': 'same-origin' })
+    cek('40. permintaan sah (Origin aplikasi + Sec-Fetch-Site same-origin + JSON, tanpa body) tetap berjalan → 200 APPROVAL_DIMINTA', ok200(sah, 'APPROVAL_DIMINTA'))
+    const getTanpaOrigin = await api(sA, 'GET', `${P}/messages/${csrf.messageId}`, undefined, { origin: null })
+    cek('41. GET (read-only) tak memerlukan Origin → 200', ok200(getTanpaOrigin))
   }
 
   // ============================================================== alur & hasil bisnis

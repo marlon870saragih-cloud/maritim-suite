@@ -654,6 +654,12 @@ bagian('[12] Egress & lingkup Step 2A')
     'approvals/[id]/reject/route.ts': ['POST'],
   }
   const harapRute = Object.keys(RUTE).map((r) => `${API}/${r}`).sort()
+  {
+    const http = tanpaKomentar(baca('src/services/http.ts'))
+    const isiKetat = http.slice(http.indexOf('export async function jsonBodyKetat'))
+    cek('Step 2H CSRF: jsonBodyKetat memanggil pastikanAsalSah PERTAMA, lalu mewajibkan application/json SEBELUM membaca body', /^export async function jsonBodyKetat[^{]*\{\s*pastikanAsalSah\(req\)\s*if \(!\/\^application\\\/json/.test(isiKetat) && isiKetat.indexOf('application') < isiKetat.indexOf('getReader'))
+    cek('Step 2H CSRF: pastikanAsalSah menolak Sec-Fetch-Site selain same-origin dan Origin selain origin NEXTAUTH_URL (gagal tertutup)', /situs !== null && situs !== 'same-origin'/.test(http) && /!asal \|\| asal === 'null' \|\| asal !== asalAplikasi/.test(http) && /new URL\(process\.env\.NEXTAUTH_URL \?\? ''\)\.origin/.test(http))
+  }
   cek('Step 2H: perujuk modul komunikasi di luar foldernya = PERSIS 11 route API (tanpa UI / service lain)', perujuk.sort().join() === harapRute.join(), perujuk.join(', '))
   const semuaBerkasApi = existsSync(join(AKAR, API)) ? jelajah(API) : []
   cek('Step 2H: folder API komunikasi hanya berisi 11 route.ts tersebut', semuaBerkasApi.sort().join() === harapRute.join(), semuaBerkasApi.join(', '))
