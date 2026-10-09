@@ -526,7 +526,8 @@ bagian('[12] Egress & lingkup Step 2A')
   const APPROVAL = 'communication-approval.service.ts'
   const SEND = 'communication-send.service.ts'
   const CANCEL = 'communication-cancel.service.ts'
-  cek('modul komunikasi = berkas murni (2A + penyedia FAKE 2E) + service Prepare (2C) + approval (2D) + Send (2E) + Cancel (2F)', berkas.join() === [...MURNI, SERVICE, APPROVAL, SEND, CANCEL].sort().join(), berkas.join())
+  const READ = 'communication-read.service.ts'
+  cek('modul komunikasi = berkas murni (2A + penyedia FAKE 2E) + service Prepare (2C) + approval (2D) + Send (2E) + Cancel (2F) + baca (2G)', berkas.join() === [...MURNI, SERVICE, APPROVAL, SEND, CANCEL, READ].sort().join(), berkas.join())
   const tanpaKomentar = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
   const POLA_JARINGAN = /\bfetch\b|https?:|node:(http|https|net|tls|dns|dgram|http2|child_process)|['"](http|https|net|tls|dns|ws|undici|axios|node-fetch)['"]|WebSocket|XMLHttpRequest/
   const POLA_META = /wa\.me|graph\.facebook|whatsapp-web|baileys|twilio|@whiskeysockets|whatsapp-cloud/i
@@ -544,6 +545,7 @@ bagian('[12] Egress & lingkup Step 2A')
     [SERVICE]: ['@prisma/client', '../context', '../errors', '../tenant-db', '../finance/audit', '../automation/access', '../master/voyage-dates', '../tah/tah-policy', './comm-policy', './comm-template', './comm-fixture', './comm-hash'],
     [APPROVAL]: ['@prisma/client', '../context', '../errors', '../tenant-db', '../automation/gate', '../tah/registry', '../tah/tah-policy', './comm-policy', './comm-hash', './communication.service'],
     [CANCEL]: ['../context', '../errors', '../tenant-db', '../tah/tah-policy', './comm-policy', './communication.service', './communication-approval.service'],
+    [READ]: ['@prisma/client', '../context', '../errors', '../tenant-db', './comm-policy', './communication.service'],
   }
   for (const f of [SERVICE, APPROVAL, CANCEL]) {
     const kode = tanpaKomentar(readFileSync(join(dir, f), 'utf8'))
@@ -566,6 +568,15 @@ bagian('[12] Egress & lingkup Step 2A')
     cek(`${CANCEL}: tak menulis approval sendiri (hanya hentikanApprovalTertaut) & tak memuat registry`, !/tahApprovalRequest\.|tah\/registry|JENIS_APPROVAL/.test(kode) && /hentikanApprovalTertaut\(/.test(kode))
     cek(`${CANCEL}: memegang kunciCandidate sebelum membaca ulang pesan (AC-18)`, kode.indexOf('kunciCandidate(tx, c)') > 0 && kode.indexOf('kunciCandidate(tx, c)') < kode.indexOf('select: PILIH_PESAN_BATAL'))
     cek(`${CANCEL}: satu-satunya state tujuan = CANCELED dengan reasonCode CANCELED_BY_USER`, [...kode.matchAll(/state: '([A-Z_]+)'/g)].every((x) => x[1] === 'CANCELED') && /const ALASAN_BATAL: KodeAlasan = 'CANCELED_BY_USER'/.test(kode))
+  }
+  {
+    const kode = tanpaKomentar(readFileSync(join(dir, READ), 'utf8'))
+    const imp = sumberImpor(kode)
+    cek(`${READ}: impor hanya dari daftar izin (tanpa lib/ai, route, UI, registry, penyedia)`, imp.length > 0 && imp.every((x) => IZIN_IMPOR[READ].includes(x)), imp.join(' | '))
+    cek(`${READ}: READ-ONLY — tanpa create/update/delete/upsert/raw SQL/audit`, !/\.(create|createMany|update|updateMany|delete|deleteMany|upsert)\(|\$executeRaw|\$queryRaw|catatAudit|auditKomunikasi|kunciCandidate|hentikanApprovalTertaut/.test(kode))
+    cek(`${READ}: tanpa fetch/http/https/net/tls/dns/WebSocket/XMLHttpRequest, Meta/WA SDK, process.env, LLM`, !POLA_JARINGAN.test(kode) && !POLA_META.test(kode) && !/process\.env|openrouter|lib\/ai|anthropic/i.test(kode))
+    cek(`${READ}: setiap fungsi publik melewati gerbang(ctx) dan membaca lewat forTenant(ctx) REPEATABLE READ`, [...kode.matchAll(/export async function (\w+)/g)].length === 4 && [...kode.matchAll(/^  gerbang\(ctx\)$/gm)].length === 4 && /forTenant\(ctx\)\.\$transaction\(fn, \{ isolationLevel: Prisma\.TransactionIsolationLevel\.RepeatableRead \}\)/.test(kode))
+    cek(`${READ}: daftar memakai samarkanPengenal; tak mengembalikan proposal / idempotencyKey / ipAddress`, /penerima: samarkanPengenal\(m\.recipientIdentifier\)/.test(kode) && !/proposal: true|idempotencyKey: true|ipAddress: true|logicalMessageKey: true/.test(kode))
   }
   {
     const kode = tanpaKomentar(readFileSync(join(dir, APPROVAL), 'utf8'))
