@@ -699,3 +699,15 @@ export function gerbangApprovalSend(a: {
   if (!teksIsi(a.snapshotFingerprint) || a.approval.proposalHash !== a.snapshotFingerprint) return tolak('APPROVAL_STALE')
   return lolos(null)
 }
+
+// ======================================================= samaran pengenal (2G)
+
+/**
+ * Step 2G / PRD §14 — pengenal penerima di tampilan DAFTAR disamarkan; detail (pengguna
+ * berwenang) boleh menampilkan utuh. Panjang samaran tetap supaya panjang asli tak bocor.
+ * Pengenal pendek (< 8) disamarkan seluruhnya.
+ */
+export function samarkanPengenal(v: unknown): string {
+  if (typeof v !== 'string' || v.length < 8) return '•••'
+  return `${v.slice(0, 4)}•••${v.slice(-2)}`
+}

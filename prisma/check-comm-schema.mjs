@@ -109,7 +109,7 @@ cek('tanpa GRANT / RLS (portal default-deny, K147)', !/\bGRANT\b|ROW LEVEL SECUR
 cek('tak menyebut tabel TAH (termasuk komentar — kunci check-tah-policy)', !/AgentRun|AgentModelCall|TahApprovalRequest/.test(sqlMentah))
 
 // ===================================================================== S3
-bagian('[S3] Lingkup Step 2B/2C/2D/2E/2F')
+bagian('[S3] Lingkup Step 2B/2C/2D/2E/2F/2G')
 cek('TENANT_MODELS memuat ketiga model', MODEL.every((m) => TENANT_MODELS.has(m)))
 cek('Step 2D R1: definisi WA_INTERNAL_FAKE_TEST terpisah; registry TAH lama tanpa WA / CLIENT_WA_UPDATE', JENIS_APPROVAL_WA_FAKE.kind === 'WA_INTERNAL_FAKE_TEST' && !JENIS_APPROVAL_TAH.some((j) => ['WA_INTERNAL_FAKE_TEST', 'CLIENT_WA_UPDATE'].includes(j.kind)))
 const jelajah = (rel, hasil = []) => {
@@ -121,8 +121,8 @@ const jelajah = (rel, hasil = []) => {
   return hasil
 }
 const pemakai = jelajah('src').filter((p) => /communicationCandidate|communicationMessage|communicationAttempt/.test(baca(p)))
-cek('Step 2F: HANYA service Prepare (2C), approval (2D), Send (2E), dan Cancel (2F) yang membaca/menulis tabel komunikasi', pemakai.sort().join() === 'src/services/communication/communication-approval.service.ts,src/services/communication/communication-cancel.service.ts,src/services/communication/communication-send.service.ts,src/services/communication/communication.service.ts', pemakai.join(', '))
-cek('Step 2E/2F: HANYA service Send yang menyentuh CommunicationAttempt (Prepare/approval/Cancel tidak)', ['communication.service.ts', 'communication-approval.service.ts', 'communication-cancel.service.ts'].every((f) => !/communicationAttempt/.test(baca(`src/services/communication/${f}`))) && /communicationAttempt\.create\(/.test(baca('src/services/communication/communication-send.service.ts')))
+cek('Step 2G: HANYA service Prepare (2C), approval (2D), Send (2E), Cancel (2F), dan baca (2G) yang menyentuh tabel komunikasi', pemakai.sort().join() === 'src/services/communication/communication-approval.service.ts,src/services/communication/communication-cancel.service.ts,src/services/communication/communication-read.service.ts,src/services/communication/communication-send.service.ts,src/services/communication/communication.service.ts', pemakai.join(', '))
+cek('Step 2E/2F/2G: HANYA service Send yang menyentuh CommunicationAttempt untuk menulis; service baca (2G) hanya findMany', /communicationAttempt\.findMany\(/.test(baca('src/services/communication/communication-read.service.ts')) && !/communicationAttempt\.(create|update|delete|upsert)/.test(baca('src/services/communication/communication-read.service.ts')) && ['communication.service.ts', 'communication-approval.service.ts', 'communication-cancel.service.ts'].every((f) => !/communicationAttempt/.test(baca(`src/services/communication/${f}`))) && /communicationAttempt\.create\(/.test(baca('src/services/communication/communication-send.service.ts')))
 
 // ===================================================================== DB
 const URL_DB = process.env.COMM_SCHEMA_DB_URL
