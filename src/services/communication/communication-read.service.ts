@@ -183,6 +183,18 @@ function takeSah(v: unknown): number {
   return v
 }
 
+/**
+ * Step 2H (least privilege) — mode pengenal penerima untuk fungsi DETAIL. Bawaan 'UTUH' menjaga kontrak
+ * 2G; lapisan API memakai 'SAMAR' kecuali pemanggil berwenang meminta pengenal utuh secara eksplisit.
+ */
+export type ModePengenal = 'UTUH' | 'SAMAR'
+function modePengenalSah(v: unknown): ModePengenal {
+  if (v === undefined || v === null) return 'UTUH'
+  if (v !== 'UTUH' && v !== 'SAMAR') throw validation('pengenal harus UTUH atau SAMAR.')
+  return v
+}
+const pengenalMenurut = (mode: ModePengenal, v: string): string => (mode === 'SAMAR' ? samarkanPengenal(v) : v)
+
 /** Satu transaksi REPEATABLE READ per pembacaan — rantai konsisten, tanpa tulisan apa pun. */
 const baca = <T>(ctx: TenantContext, fn: (tx: Tx) => Promise<T>): Promise<T> =>
   forTenant(ctx).$transaction(fn, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead })
@@ -286,7 +298,7 @@ async function bacaPembatalan(tx: Tx, messageIds: string[]): Promise<Map<string,
   return hasil
 }
 
-async function rakitDetailPesan(tx: Tx, pesan: PesanBaca[]): Promise<DetailPesan[]> {
+async function rakitDetailPesan(tx: Tx, pesan: PesanBaca[], mode: ModePengenal): Promise<DetailPesan[]> {
   if (pesan.length === 0) return []
   const ids = pesan.map((m) => m.id)
   const approvalIds = pesan.map((m) => m.approvalRequestId).filter((x): x is string => x !== null)
@@ -307,7 +319,7 @@ async function rakitDetailPesan(tx: Tx, pesan: PesanBaca[]): Promise<DetailPesan
       state: m.state,
       reasonCode: m.reasonCode,
       recipientFixtureId: m.recipientFixtureId,
-      recipientIdentifier: m.recipientIdentifier,
+      recipientIdentifier: pengenalMenurut(mode, m.recipientIdentifier),
       language: m.language,
       templateId: m.templateId,
       templateVersion: m.templateVersion,
@@ -331,7 +343,7 @@ async function rakitDetailPesan(tx: Tx, pesan: PesanBaca[]): Promise<DetailPesan
   })
 }
 
-async function rakitDetailCandidate(tx: Tx, c: CandidateBaca, pesan: PesanBaca[]): Promise<DetailCandidate> {
+async function rakitDetailCandidate(tx: Tx, c: CandidateBaca, pesan: PesanBaca[], mode: ModePengenal): Promise<DetailCandidate> {
   const [voyage, sinyal] = await Promise.all([
     nomorVoyage(tx, [c.voyageId]),
     c.signalIds.length
@@ -375,7 +387,7 @@ async function rakitDetailCandidate(tx: Tx, c: CandidateBaca, pesan: PesanBaca[]
       templateId: m.templateId,
       updatedAt: m.updatedAt.toISOString(),
       recipientFixtureId: m.recipientFixtureId,
-      recipientIdentifier: m.recipientIdentifier,
+      recipientIdentifier: pengenalMenurut(mode, m.recipientIdentifier),
       approvalRequestId: m.approvalRequestId,
     })),
   }
@@ -444,25 +456,27 @@ export async function daftarCandidate(
 }
 
 /** Detail satu candidate: sinyal asal + semua revisi pesan (pengenal utuh). Milik tenant lain → NOT_FOUND. */
-export async function detailCandidate(ctx: TenantContext, input: { candidateId: unknown }): Promise<DetailCandidate> {
+export async function detailCandidate(ctx: TenantContext, input: { candidateId: unknown; pengenal?: unknown }): Promise<DetailCandidate> {
   gerbang(ctx)
   const candidateId = idSah(input?.candidateId, 'candidateId')
+  const mode = modePengenalSah(input?.pengenal)
   return baca(ctx, async (tx) => {
     const c = await tx.communicationCandidate.findFirst({ where: { id: candidateId }, select: PILIH_CANDIDATE_BACA })
     if (!c) throw notFound('Kandidat komunikasi')
     const pesan = await tx.communicationMessage.findMany({ where: { candidateId: c.id }, select: PILIH_PESAN_BACA, orderBy: { revision: 'asc' } })
-    return rakitDetailCandidate(tx, c, pesan)
+    return rakitDetailCandidate(tx, c, pesan, mode)
   })
 }
 
 /** Detail satu revisi pesan + approval + attempt + alasan Cancel. Milik tenant lain → NOT_FOUND. */
-export async function detailPesan(ctx: TenantContext, input: { messageId: unknown }): Promise<DetailPesan> {
+export async function detailPesan(ctx: TenantContext, input: { messageId: unknown; pengenal?: unknown }): Promise<DetailPesan> {
   gerbang(ctx)
   const messageId = idSah(input?.messageId, 'messageId')
+  const mode = modePengenalSah(input?.pengenal)
   return baca(ctx, async (tx) => {
     const m = await tx.communicationMessage.findFirst({ where: { id: messageId }, select: PILIH_PESAN_BACA })
     if (!m) throw notFound('Pesan')
-    const [d] = await rakitDetailPesan(tx, [m])
+    const [d] = await rakitDetailPesan(tx, [m], mode)
     return d
   })
 }
@@ -471,14 +485,15 @@ export async function detailPesan(ctx: TenantContext, input: { messageId: unknow
  * Communication History (AC-17): rantai signal → candidate → snapshot (revisi) → approval → attempt →
  * hasil, plus jejak AuditLog semua baris di rantai itu (urut waktu, append-only, tak ditimpa).
  */
-export async function riwayatKomunikasi(ctx: TenantContext, input: { candidateId: unknown }): Promise<RiwayatKomunikasi> {
+export async function riwayatKomunikasi(ctx: TenantContext, input: { candidateId: unknown; pengenal?: unknown }): Promise<RiwayatKomunikasi> {
   gerbang(ctx)
   const candidateId = idSah(input?.candidateId, 'candidateId')
+  const mode = modePengenalSah(input?.pengenal)
   return baca(ctx, async (tx) => {
     const c = await tx.communicationCandidate.findFirst({ where: { id: candidateId }, select: PILIH_CANDIDATE_BACA })
     if (!c) throw notFound('Kandidat komunikasi')
     const pesan = await tx.communicationMessage.findMany({ where: { candidateId: c.id }, select: PILIH_PESAN_BACA, orderBy: { revision: 'asc' } })
-    const [candidate, detail] = await Promise.all([rakitDetailCandidate(tx, c, pesan), rakitDetailPesan(tx, pesan)])
+    const [candidate, detail] = await Promise.all([rakitDetailCandidate(tx, c, pesan, mode), rakitDetailPesan(tx, pesan, mode)])
     const messageIds = pesan.map((m) => m.id)
     const approvalIds = detail.map((d) => d.approval?.id).filter((x): x is string => typeof x === 'string')
     const attemptIds = detail.flatMap((d) => d.attempts.map((a) => a.id))
