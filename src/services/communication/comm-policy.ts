@@ -49,7 +49,8 @@ export function periksaModeFake(a: { mode: unknown; penyedia: unknown }): Hasil<
 /**
  * PRD §13.3 (minimum) + Q4 (SIGNAL_DISMISSED, SIGNAL_EXPIRED) + SIGNAL_STATE_INVALID (gagal tertutup)
  * + REVISED (D-2B-03: revisi lama → CANCELED saat revisi baru dibuat)
- * + APPROVAL_REJECTED (D-2D-03: approval ditolak manusia → pesan CANCELED).
+ * + APPROVAL_REJECTED (D-2D-03: approval ditolak manusia → pesan CANCELED)
+ * + CANCELED_BY_USER (Step 2F, FR-20: pembatalan eksplisit oleh pengguna berhak, alasan wajib).
  */
 export const KODE_ALASAN = [
   'EVENT_NOT_ALLOWED',
@@ -82,6 +83,7 @@ export const KODE_ALASAN = [
   'SIGNAL_STATE_INVALID',
   'REVISED',
   'APPROVAL_REJECTED',
+  'CANCELED_BY_USER',
 ] as const
 export type KodeAlasan = (typeof KODE_ALASAN)[number]
 
