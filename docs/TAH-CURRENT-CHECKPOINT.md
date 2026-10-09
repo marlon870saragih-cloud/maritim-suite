@@ -24,7 +24,7 @@
 > This checkpoint is the canonical handoff between the owner, ChatGPT, Claude Code, and future sessions.
 
 **Checkpoint resmi:** 2026-10-05 — TAH / Maritim Suite → WhatsApp Automation handoff.
-**Pembaruan terakhir:** 2026-10-05 — PRD WA-1 v0.2 OWNER APPROVED + FROZEN (PR #4 merged, `main` @ `1e81bd8`). NEXT EXACT STEP = WA-1 STEP 1 (read-only implementation plan).
+**Pembaruan terakhir:** 2026-10-09 — WA-1 Step 2A–2D MERGED (PR #6–#9, `main` @ `03a1dc9`). **Step 2E (FAKE Send + retry manual): implementasi lokal selesai & teruji, PR PENDING (belum merged).** SG-05 (fixture ↔ tenant) masih TERBUKA. NEXT EXACT STEP = review owner atas PR Step 2E (§L).
 **Status pekerjaan:** TAH / PRD-005 **CLOSED**. Pekerjaan produk berikutnya: **Client Communication / WhatsApp Automation**.
 **Dokumen pendamping:** `docs/whatsapp/PRD-WA-1.md` (**baseline WA-1 v0.2 — source of truth WhatsApp Automation**), `docs/PRD-005-CLOSURE.md`, `docs/PRODUCTION-STATE-2026-09-30.md`, `docs/TAH-TECH-DEBT.md`,
 `docs/TAH-GAP-ANALYSIS-2026-09-30.md` (saat ini hanya di branch `docs/tah-gap-analysis-20260930`, belum di `main`).
@@ -62,7 +62,9 @@ Repo ini PUBLIK: jangan mencatat credential, nilai env rahasia, ID proyek GCP, I
 | Item | Nilai |
 |---|---|
 | Repository | `marlon870saragih-cloud/maritim-suite` (public) |
-| `origin/main` | `1e81bd8b79d6382029441dfb552455450be6451d` — merge commit PR #4 (PRD WA-1 v0.2), 2026-10-05 |
+| `origin/main` | `03a1dc97fdce16b59c380ae8cb4f0eb15d23801c` — merge commit PR #9 (WA-1 Step 2D), 2026-10-05 — VERIFIED 2026-10-09 |
+| PR #5–#9 | MERGED 2026-10-05: #5 checkpoint (`ebe86eb`), #6 Step 2A (`5a0673f`), #7 Step 2B (`334052f`), #8 Step 2C (`a1692e0`), #9 Step 2D R1 (`03a1dc9`) — VERIFIED 2026-10-09 (merge commit ada di `main`) |
+| Step 2E | Branch `claude/funny-pascal-tpn1rf`; PR ke `main` **PENDING** (belum merged, belum dideploy) |
 | PR #3 | MERGED 2026-10-05 (`dd1b330`) — canonical checkpoint ini |
 | PR #4 | MERGED 2026-10-05 (`1e81bd8`; parent `dd1b330` + `c041350`) — `docs/whatsapp/PRD-WA-1.md` baseline v0.2; documentation only |
 | PR #2 | CLOSED tanpa merge (branch `docs/tah-gap-analysis-20260930` dipertahankan sebagai referensi historis) |
@@ -70,7 +72,8 @@ Repo ini PUBLIK: jangan mencatat credential, nilai env rahasia, ID proyek GCP, I
 | `feat/prd002-step2-domain-foundation` | `7127d991f8487bfc9f096d22182f4c1c578a9e87`, sepenuhnya termasuk di `main`; belum dihapus |
 | `docs/tah-gap-analysis-20260930` | `139006d` — hanya dokumen, belum di-merge. File ini menggantikan versi checkpoint di branch tersebut; gap analysis-nya tetap rujukan perencanaan |
 | CI | Tidak ada (0 workflow). Tidak ada integrasi deploy otomatis di GitHub (webhook & deploy key kosong; GitHub App terpasang hanya Claude) |
-| Test terakhir yang benar-benar dijalankan | 2026-09-30 pada `f7635a2` (kode identik dengan `main`): tsc/lint/build hijau; 21/21 migrasi dari nol (PostgreSQL 16); suite offline & DB hijau. Merah yang diharapkan: `check-eval8-runner` E1c, `check-validator-remediasi` 61/70 |
+| Test WA-1 terakhir yang benar-benar dijalankan | 2026-10-09, PostgreSQL 16 loopback sekali pakai (23 migrasi), basis `03a1dc9` + perubahan Step 2E: comm-send-db 104–106/0 gagal (4× stabil), comm-policy 269, comm-schema 85, comm-prepare-db 98, comm-approval-db 95, tah-policy 322, tah-ledger 98, eval8-runner 62 (A1 sidik V3 lulus), validator-v3 226, automation-policy 124, intake-policy 417, tenant-guard lulus; tsc bersih; next lint hanya warning lama `ReceiptForm.tsx`. Rincian di PR Step 2E |
+| Test penuh terakhir (seluruh repo) | 2026-09-30 pada `f7635a2` (kode identik dengan `main`): tsc/lint/build hijau; 21/21 migrasi dari nol (PostgreSQL 16); suite offline & DB hijau. Merah yang diharapkan: `check-eval8-runner` E1c, `check-validator-remediasi` 61/70 |
 | Checkout lain milik owner | Checkout laptop lama (HEAD `28b0ef9`, enam file untracked termasuk `_wipe.mjs`) — HISTORICAL 2026-09-30. Jangan dijadikan basis kerja; jangan jalankan script untracked tanpa dibaca |
 
 ## C. PRODUCTION / GCP REALITY — OWNER-VERIFIED 2026-10-05
@@ -175,6 +178,7 @@ Catatan: voyage uji `VYG-2026-000003` beserta sinyalnya **masih ada di database 
 - **Voyage Monitoring production E2E VERIFIED (2026-10-05)** — lihat §D.
 - **WA-0 architecture / read-only audit: COMPLETE (2026-10-05).**
 - **PRD WA-1 v0.2: OWNER APPROVED + FROZEN (2026-10-05)** — `docs/whatsapp/PRD-WA-1.md`, PR #4 merged.
+- **WA-1 Step 2A–2D MERGED (2026-10-05)** — 2A kebijakan murni + 8 template + fixture TEST_FIXTURE (PR #6); 2B schema `CommunicationCandidate/Message/Attempt` (PR #7); 2C Prepare/candidate/preview (PR #8); 2D approval `WA_INTERNAL_FAKE_TEST` via definisi terpisah, `tah-policy.ts` beku utuh (keputusan R1, PR #9). Migrasi 2B & Q8 **belum pernah** dijalankan di produksi.
 
 ## G. NOT COMPLETED / NEXT GAP
 
@@ -202,6 +206,7 @@ Gap lain yang tetap terbuka (rujukan: gap analysis 2026-09-30):
 |---|---|
 | Belum ada approval TAH yang bisa dieksekusi | Aksi eksternal (termasuk WhatsApp ke klien) belum boleh diotomatisasi tanpa desain gerbang approval |
 | Belum ada provider/akun WhatsApp, mapping penerima, dan kebijakan pengiriman | Pengiriman WA tidak bisa diuji end-to-end |
+| SG-05 terbuka (fixture penerima tak terikat tenant) | Integrasi WhatsApp nyata tidak boleh dimulai sebelum SG-05 ditutup |
 | Promosi Sonnet 5 terkunci aturan PRD-005 (plafon V3 + larangan Blind-C/Eval-9) | Sonnet 5 tetap `PENDING_SPIKE` di `main` tanpa keputusan owner baru (lihat §I) |
 | `SPIKE_OPENROUTER_API_KEY` kedaluwarsa 2026-10-05 | Evaluasi LIVE apa pun butuh kunci baru + saldo terverifikasi |
 | Produksi menjalankan rilis lama `ac922f6` | Registri produksi berbeda dari `main` (Sonnet 5 `VERIFIED` vs `PENDING_SPIKE`) |
@@ -227,7 +232,10 @@ Syarat minimum mengubah status dari `PENDING_SPIKE` (butuh keputusan owner; PRD-
 |---|---|
 | WA-0 architecture / read-only audit | **COMPLETE** |
 | PRD WA-1 v0.2 | **OWNER APPROVED + FROZEN** — baseline `docs/whatsapp/PRD-WA-1.md` (PR #4 merged) |
-| WA-1 implementation (proof-of-flow `INTERNAL_FAKE_TEST`) | **NOT STARTED** |
+| WA-1 Step 2A–2D | **MERGED** ke `main` (PR #6–#9); tidak dideploy |
+| WA-1 Step 2E — FAKE Send + retry manual | **Implementasi lokal selesai & teruji; PR PENDING (belum merged)**. Satu transaksi REPEATABLE READ; revalidasi #2; approval basi → `NEEDS_REVIEW` (K1); requestKey terikat tenant+pesan+snapshot (K3); zero egress (trap runtime + scan impor, K4); tanpa migrasi; `tah-policy.ts` & berkas beku V3 tak berubah |
+| Di luar Step 2E (tahap berikutnya) | Cancel, API, UI, Communication History — **NOT STARTED** |
+| **SG-05 fixture ↔ tenant** | **TERBUKA.** Fixture penerima = konstanta kode tanpa relasi tenant. Pembatas yang wajib dipertahankan: FAKE-only, non-produksi, allowlist tenant Automation, zero egress. **Wajib diselesaikan sebelum integrasi pengiriman WhatsApp nyata** (keputusan owner 2026-10-09). |
 | Production WhatsApp integration | **NOT STARTED** |
 | Meta/WhatsApp production egress | **Tidak ada** |
 | Perubahan produksi/deployment dari pekerjaan WA | **Tidak ada** |
@@ -248,17 +256,13 @@ Perilaku yang diinginkan:
 
 ## L. NEXT EXACT STEP
 
-**WA-1 STEP 1 — READ-ONLY IMPLEMENTATION PLAN / CONTRACT-TO-CODE MAPPING.**
+**Review owner atas PR WA-1 Step 2E (FAKE Send + retry manual) → keputusan merge.**
 
-Tujuan (nanti, setelah owner memulai sesi ini): memetakan PRD WA-1 v0.2 (`docs/whatsapp/PRD-WA-1.md`) ke kode existing dan menentukan perubahan minimum untuk proof-of-flow:
+- Merge ≠ izin deploy. Migrasi 2B & Q8 belum pernah dijalankan di produksi; `INTERNAL_FAKE_TEST` ditolak di `NODE_ENV=production` (D-12).
+- Sesudah merge: perbarui checkpoint ini (SHA merge, status 2E = MERGED).
+- Tahap berikutnya (butuh izin owner terpisah): Cancel, API, UI, Communication History; lalu demo internal proof-of-flow non-produksi (PRD §18). SG-05 wajib ditutup sebelum WA-3 (WhatsApp nyata).
 
-MonitoringSignal → Communication Candidate → Prepare → Approval → FAKE Send → Delivery/Audit state
-
-Batas STEP 1: READ-ONLY. Tanpa coding, tanpa schema/migration, tanpa service baru, tanpa adapter WhatsApp, tanpa Meta/WhatsApp API, tanpa pengiriman, tanpa deploy, tanpa perubahan produksi. Output: rencana implementasi + pemetaan kontrak ke kode untuk direview owner.
-
-**STEP 1 BELUM DIMULAI.** Checkpoint ini hanya mencatat bahwa itulah pekerjaan berikutnya; memulai STEP 1 dan setiap implementasi WA-1 sesudahnya butuh persetujuan owner.
-
-Riwayat: WA-0 (read-only architecture audit) — COMPLETE 2026-10-05; PRD WA-1 v0.2 — OWNER APPROVED + FROZEN 2026-10-05.
+Riwayat: WA-0 COMPLETE 2026-10-05; PRD WA-1 v0.2 FROZEN 2026-10-05; Step 2A–2D MERGED 2026-10-05; Step 2E implementasi lokal 2026-10-09 (PR pending).
 
 ## M. HARD STOP / OWNER APPROVAL REQUIRED
 

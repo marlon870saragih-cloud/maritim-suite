@@ -124,7 +124,7 @@ export class KonflikKonkurensi extends Error {
  * kadang dilaporkan Prisma sebagai galat tak dikenal. Urutan kunci baris tetap dijaga
  * (candidate → approval → pesan) supaya deadlock tak terjadi sejak awal.
  */
-const bisaDiulang = (e: unknown): boolean =>
+export const bisaDiulang = (e: unknown): boolean =>
   e instanceof KonflikKonkurensi ||
   (e instanceof Prisma.PrismaClientKnownRequestError && (e.code === 'P2002' || e.code === 'P2034')) ||
   (e instanceof Prisma.PrismaClientUnknownRequestError && /\b(40P01|40001)\b|deadlock detected|could not serialize/.test(e.message))
@@ -294,6 +294,23 @@ export const PILIH_CANDIDATE = {
 } as const
 
 // ===================================================== mutasi candidate (+audit)
+
+/**
+ * Kunci baris candidate dengan UPDATE tanpa perubahan nilai — titik serialisasi antara revisi
+ * Prepare (2C) dan Send (2E) atas pesan logis yang sama. Tanpa ini, Send yang commit di antara
+ * pemeriksaan successKey dan pemeriksaan revisi aktif (READ COMMITTED) membuat Prepare melihat
+ * keduanya kosong lalu membuat revisi aktif baru untuk pesan yang sudah FAKE_SENT. Dengan kunci
+ * ini: pemegang kedua menunggu; di READ COMMITTED bacaan berikutnya melihat hasil commit, di
+ * REPEATABLE READ (Send) baris yang diubah sesudah snapshot → 40001 → transaksi diulang utuh.
+ * Urutan kunci tetap candidate → approval → pesan.
+ */
+export async function kunciCandidate(tx: Tx, c: CandidateBaris): Promise<void> {
+  const n = await tx.communicationCandidate.updateMany({
+    where: { id: c.id, state: 'ACTIVE', version: c.version },
+    data: { version: c.version },
+  })
+  if (n.count === 0) throw new KonflikKonkurensi()
+}
 
 async function buatCandidate(
   ctx: TenantContext,
@@ -629,6 +646,9 @@ async function revisiDalamTx(ctx: TenantContext, tx: Tx, candidateId: string, fi
     mode: MODE_KOMUNIKASI,
   })
 
+  // Kunci baris candidate SEBELUM memeriksa sukses & revisi aktif: Send (2E) memegang kunci yang sama,
+  // jadi Send tak bisa commit di antara dua bacaan di bawah (review PR #10, temuan 1).
+  await kunciCandidate(tx, c)
   const sukses = await tx.communicationMessage.findFirst({ where: { successKey: logicalMessageKey }, select: { id: true } })
   if (sukses) {
     const tolak: Penolakan = { alasan: 'ALREADY_FAKE_SENT' }
