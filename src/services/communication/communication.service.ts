@@ -124,7 +124,7 @@ export class KonflikKonkurensi extends Error {
  * kadang dilaporkan Prisma sebagai galat tak dikenal. Urutan kunci baris tetap dijaga
  * (candidate → approval → pesan) supaya deadlock tak terjadi sejak awal.
  */
-const bisaDiulang = (e: unknown): boolean =>
+export const bisaDiulang = (e: unknown): boolean =>
   e instanceof KonflikKonkurensi ||
   (e instanceof Prisma.PrismaClientKnownRequestError && (e.code === 'P2002' || e.code === 'P2034')) ||
   (e instanceof Prisma.PrismaClientUnknownRequestError && /\b(40P01|40001)\b|deadlock detected|could not serialize/.test(e.message))

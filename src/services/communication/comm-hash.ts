@@ -35,7 +35,7 @@ export function jsonKanonikKomunikasi(v: unknown): string {
 }
 
 /** sha256 hex atas JSON kanonik, berawalan domain supaya sidik antarjenis tak bisa tertukar. */
-export function sidikJariKomunikasi(domain: 'WA1_SOURCE' | 'WA1_SNAPSHOT', v: unknown): string {
+export function sidikJariKomunikasi(domain: 'WA1_SOURCE' | 'WA1_SNAPSHOT' | 'WA1_SEND' | 'WA1_FAKE_RECEIPT', v: unknown): string {
   return createHash('sha256').update(`${domain}\n`).update(jsonKanonikKomunikasi(v), 'utf8').digest('hex')
 }
 
@@ -78,4 +78,18 @@ export type IsiSidikSnapshot = {
 /** WA-1 Step 2C — sidik SNAPSHOT: tepat isi yang kelak disetujui (= proposalHash di 2D). */
 export function sidikSnapshot(s: IsiSidikSnapshot): string {
   return sidikJariKomunikasi('WA1_SNAPSHOT', { v: 1, ...s })
+}
+
+/**
+ * WA-1 Step 2E (K3) — kunci idempotensi Send. requestKey disuplai pemanggil, tetapi yang
+ * disimpan adalah sidik yang MENGIKATnya ke tenant, pesan, dan snapshot: requestKey yang sama
+ * pada pesan/tenant/snapshot lain menghasilkan kunci lain (tak bisa di-replay lintas konteks).
+ */
+export function kunciIdempotensiSend(a: { tenantId: string; messageId: string; snapshotFingerprint: string; requestKey: string }): string {
+  return sidikJariKomunikasi('WA1_SEND', { v: 1, tenantId: a.tenantId, messageId: a.messageId, snapshotFingerprint: a.snapshotFingerprint, requestKey: a.requestKey })
+}
+
+/** WA-1 Step 2E — dasar receipt `fake_…` yang deterministik (tanpa acak) per attempt. */
+export function dasarReceiptFake(a: { idempotencyKey: string; attemptNo: number }): string {
+  return sidikJariKomunikasi('WA1_FAKE_RECEIPT', { v: 1, idempotencyKey: a.idempotencyKey, attemptNo: a.attemptNo })
 }

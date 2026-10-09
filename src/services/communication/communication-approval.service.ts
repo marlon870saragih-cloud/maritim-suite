@@ -91,7 +91,7 @@ export type HasilKeputusan =
  * disunting, tanpa TTL, dan kind tak bertabrakan dengan registry TAH lama (yang juga tetap
  * divalidasi validasiRegistry beku). Lingkungan produksi ditolak (kunci kedua di samping gerbang WA).
  */
-function jenisWa(): DefinisiApprovalWaFake {
+export function jenisWa(): DefinisiApprovalWaFake {
   const galat = validasiRegistry(AGEN_TAH, JENIS_APPROVAL_TAH, PERAN_AUTOMATION)
   if (galat.length > 0) throw new Error(`[komunikasi] registry TAH tidak sah: ${galat.join('; ')}`)
   const j = JENIS_APPROVAL_WA_FAKE
@@ -118,7 +118,7 @@ function jenisWa(): DefinisiApprovalWaFake {
 
 const samaHimpunan = (a: readonly string[], b: readonly string[]) => [...a].sort().join() === [...b].sort().join()
 
-type ApprovalBaris = {
+export type ApprovalBaris = {
   id: string
   kind: string
   actionRisk: string
@@ -134,13 +134,13 @@ type ApprovalBaris = {
   expiresAt: Date | null
 }
 
-const PILIH_APPROVAL = {
+export const PILIH_APPROVAL = {
   id: true, kind: true, actionRisk: true, subjectType: true, subjectId: true, proposalHash: true, basisFingerprint: true,
   status: true, executionStatus: true, version: true, originatorUserId: true, requiredRoles: true, expiresAt: true,
 } as const
 
 /** Baris approval harus PERSIS turunan definisi WA; menyimpang (mis. disunting langsung di DB) → FORBIDDEN. */
-function cekKebijakanApproval(a: ApprovalBaris, j: DefinisiApprovalWaFake): void {
+export function cekKebijakanApproval(a: ApprovalBaris, j: DefinisiApprovalWaFake): void {
   if (a.kind !== j.kind) throw forbidden('Approval ini bukan approval WA-1.')
   if (a.actionRisk !== j.risiko || !samaHimpunan(a.requiredRoles, j.peranWajib) || a.subjectType !== SUBJEK_APPROVAL || !a.subjectId || a.expiresAt !== null) {
     throw forbidden('Kebijakan approval tidak cocok dengan registry (POLICY_MISMATCH).')
@@ -160,13 +160,13 @@ function otorisasiPemutus(ctx: TenantContext, a: ApprovalBaris, j: DefinisiAppro
 
 // ================================================================ pesan
 
-const PILIH_PESAN = {
+export const PILIH_PESAN = {
   id: true, candidateId: true, revision: true, state: true, version: true, activeKey: true, logicalMessageKey: true, approvalRequestId: true,
   recipientFixtureId: true, recipientIdentifier: true, language: true, templateId: true, templateVersion: true, body: true, fields: true,
   sourceFingerprint: true, snapshotFingerprint: true, mode: true,
 } as const
 
-type PesanBaris = {
+export type PesanBaris = {
   id: string
   candidateId: string
   revision: number
@@ -195,7 +195,7 @@ const kunciDari = (ctx: TenantContext, c: CandidateBaris): KunciCandidate => ({
 })
 
 /** Pesan masih revisi aktif yang sah DAN snapshot tersimpan utuh (sidik dihitung ulang dari kolom). */
-function pesanTerkiniUtuh(ctx: TenantContext, m: PesanBaris, c: CandidateBaris): Penolakan | null {
+export function pesanTerkiniUtuh(ctx: TenantContext, m: PesanBaris, c: CandidateBaris): Penolakan | null {
   const kunci = kunciDari(ctx, c)
   if (m.activeKey === null || m.activeKey !== m.logicalMessageKey) return { alasan: 'APPROVAL_STALE', medan: 'activeKey' }
   if (teksKunciPesanLogis(kunci, m.recipientIdentifier) !== m.logicalMessageKey) return { alasan: 'APPROVAL_STALE', medan: 'logicalMessageKey' }
@@ -247,7 +247,7 @@ async function batalkanBasi(ctx: TenantContext, tx: Tx, m: PesanBaris, tolak: Pe
 }
 
 /** Candidate sudah BLOCKED tapi pesan masih aktif (tak konsisten) → pesan BLOCKED + approval dihentikan. */
-async function selaraskanBlokir(ctx: TenantContext, tx: Tx, m: PesanBaris, c: CandidateBaris): Promise<Penolakan> {
+export async function selaraskanBlokir(ctx: TenantContext, tx: Tx, m: PesanBaris, c: CandidateBaris): Promise<Penolakan> {
   const alasan = (c.blockReason ?? 'SOURCE_NOT_FOUND') as KodeAlasan
   await hentikanApprovalTertaut(ctx, tx, m.approvalRequestId, 'CANCELLED', alasan)
   if (m.activeKey !== null && transisiPesanSah(m.state, 'BLOCKED')) {

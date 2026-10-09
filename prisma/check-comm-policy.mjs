@@ -72,6 +72,7 @@ const P = await import('../src/services/communication/comm-policy.ts')
 const T = await import('../src/services/communication/comm-template.ts')
 const F = await import('../src/services/communication/comm-fixture.ts')
 const H = await import('../src/services/communication/comm-hash.ts')
+const FK = await import('../src/services/communication/comm-fake-provider.ts')
 const TAH = await import('../src/services/tah/tah-policy.ts')
 const { JENIS_APPROVAL_TAH, JENIS_APPROVAL_WA_FAKE } = await import('../src/services/tah/registry.ts')
 const { TENANT_MODELS } = await import('../src/services/tenant-guard.ts')
@@ -520,10 +521,11 @@ bagian('[12] Egress & lingkup Step 2A')
   cek('NOL panggilan jaringan selama seluruh uji (fetch/http/https/net/tls/dns/WebSocket)', egress.length === 0, egress.join(','))
   const dir = join(AKAR, 'src/services/communication')
   const berkas = readdirSync(dir).filter((f) => f.endsWith('.ts')).sort()
-  const MURNI = ['comm-fixture.ts', 'comm-hash.ts', 'comm-policy.ts', 'comm-template.ts']
+  const MURNI = ['comm-fake-provider.ts', 'comm-fixture.ts', 'comm-hash.ts', 'comm-policy.ts', 'comm-template.ts']
   const SERVICE = 'communication.service.ts'
   const APPROVAL = 'communication-approval.service.ts'
-  cek('modul komunikasi = empat berkas murni (2A) + service Prepare (2C) + service approval (2D)', berkas.join() === [...MURNI, SERVICE, APPROVAL].sort().join(), berkas.join())
+  const SEND = 'communication-send.service.ts'
+  cek('modul komunikasi = berkas murni (2A + penyedia FAKE 2E) + service Prepare (2C) + approval (2D) + Send (2E)', berkas.join() === [...MURNI, SERVICE, APPROVAL, SEND].sort().join(), berkas.join())
   const tanpaKomentar = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
   const POLA_JARINGAN = /\bfetch\b|https?:|node:(http|https|net|tls|dns|dgram|http2|child_process)|['"](http|https|net|tls|dns|ws|undici|axios|node-fetch)['"]|WebSocket|XMLHttpRequest/
   const POLA_META = /wa\.me|graph\.facebook|whatsapp-web|baileys|twilio|@whiskeysockets|whatsapp-cloud/i
@@ -563,6 +565,27 @@ bagian('[12] Egress & lingkup Step 2A')
     cek(`${APPROVAL}: proposalHash = snapshotFingerprint, basisFingerprint = sourceFingerprint (tanpa hash alternatif)`, /proposalHash: m\.snapshotFingerprint/.test(kode) && /basisFingerprint: m\.sourceFingerprint/.test(kode) && !/createHash|sidikJariKomunikasi\(/.test(kode))
     cek(`${APPROVAL}: idempotencyKey = WA1:<messageId>`, /`WA1:\$\{messageId\}`/.test(kode))
   }
+  {
+    // Step 2E — service Send: satu-satunya penulis CommunicationAttempt / successKey / fakeReceipt.
+    const kode = tanpaKomentar(readFileSync(join(dir, SEND), 'utf8'))
+    const izin = ['@prisma/client', '../context', '../errors', '../tenant-db', '../tah/registry', '../tah/tah-policy', './comm-policy', './comm-template', './comm-fixture', './comm-hash', './comm-fake-provider', './communication.service', './communication-approval.service']
+    const imp = sumberImpor(kode)
+    cek(`${SEND}: impor hanya dari daftar izin (tanpa @/lib/prisma, lib/ai, route, UI)`, imp.length > 0 && imp.every((x) => izin.includes(x)), imp.join(' | '))
+    cek(`${SEND}: registry hanya diimpor sebagai TIPE (definisi WA lewat jenisWa 2D)`, /import type \{ DefinisiApprovalWaFake \} from '\.\.\/tah\/registry'/.test(kode) && !/JENIS_APPROVAL_TAH|JENIS_APPROVAL_WA_FAKE/.test(kode))
+    cek(`${SEND}: tanpa fetch/http/https/net/tls/dns/WebSocket/XMLHttpRequest`, !POLA_JARINGAN.test(kode))
+    cek(`${SEND}: tanpa Meta/WhatsApp SDK atau wa.me`, !POLA_META.test(kode))
+    cek(`${SEND}: DB hanya lewat forTenant (tanpa raw SQL / LLM) dan TANPA process.env (gerbang lewat 2C/2D)`, /forTenant\(ctx\)/.test(kode) && !/\$queryRaw|\$executeRaw|openrouter|lib\/ai|anthropic|process\.env/i.test(kode))
+    cek(`${SEND}: transaksi Send REPEATABLE READ (K2) + denganUlang`, /isolationLevel: Prisma\.TransactionIsolationLevel\.RepeatableRead/.test(kode) && /denganUlang\(/.test(kode))
+    cek(`${SEND}: TIDAK membuat approval & TIDAK mengubah keputusan approval (hanya execution*)`, !/tahApprovalRequest\.create/.test(kode) && !/data:\s*\{[^}]*\b(status|decidedByUserId|decidedAt|proposalHash|basisFingerprint)\s*:/.test(kode))
+    cek(`${SEND}: eksekusi approval hanya lewat transisiEksekusiSah beku`, /transisiEksekusiSah\(a\.executionStatus, 'RUNNING', 'APPROVED'\)/.test(kode) && /transisiEksekusiSah\('RUNNING', 'SUCCEEDED', 'APPROVED'\)/.test(kode) && /transisiEksekusiSah\('RUNNING', 'FAILED', 'APPROVED'\)/.test(kode))
+    cek(`${SEND}: penyedia HANYA FAKE murni (tanpa pemilihan penyedia dari input)`, /kirimLewatPenyediaFake\(/.test(kode) && !/input\??\.(provider|penyedia|scenario|skenario|mode|idempotencyKey|tenantId)/.test(kode))
+    cek(`${SEND}: kunci idempotensi diturunkan server (kunciIdempotensiSend dengan tenant dari ctx)`, /kunciIdempotensiSend\(\{ tenantId: ctx\.tenantId, messageId: m\.id, snapshotFingerprint: m\.snapshotFingerprint, requestKey \}\)/.test(kode))
+  }
+  {
+    // Step 2E — penyedia FAKE: deterministik (tanpa jam/acak/env/crypto) — syarat aman transaksi diulang.
+    const kode = tanpaKomentar(readFileSync(join(dir, 'comm-fake-provider.ts'), 'utf8'))
+    cek('comm-fake-provider.ts: tanpa jam, acak, timer, crypto, atau impor saat jalan', !/\bDate\b|Math\.random|performance|setTimeout|setInterval|crypto|require\(|import\(/.test(kode) && [...kode.matchAll(/^import\s+(?!type\b)/gm)].length === 0)
+  }
   // Batas lingkup — diamandemen secara sengaja pada slice yang memperluasnya. Step 2B
   // (persistensi) mengganti tiga kunci "tanpa schema/migrasi/TENANT_MODELS" menjadi bentuk 2B PERSIS;
   // rincian schema & DB diuji prisma/check-comm-schema.mjs.
@@ -594,6 +617,28 @@ bagian('[12] Egress & lingkup Step 2A')
   }
   const perujuk = jelajah('src').filter((p) => rujuk.test(baca(p)))
   cek('Step 2C: belum ada kode aplikasi (route/UI/service lain) yang memakai modul komunikasi', perujuk.length === 0, perujuk.join(', '))
+}
+
+// =========================================================================== 13
+bagian('[13] Penyedia FAKE (Step 2E) — deterministik, tanpa egress')
+{
+  const DASAR = 'a'.repeat(64)
+  const kirim = (skenario, attemptNo, dasarReceipt = DASAR) => FK.kirimLewatPenyediaFake({ skenario, attemptNo, dasarReceipt })
+  const s1 = kirim('SUCCESS', 1)
+  cek('SUCCESS → diterima, receipt fake_ + 32 hex dari dasar', s1.diterima === true && s1.receipt === `fake_${DASAR.slice(0, 32)}`)
+  cek('setiap hasil: provider=FAKE, simulation=true, externalDelivery=false', [kirim('SUCCESS', 1), kirim('FAIL_BEFORE_ACCEPT', 1), kirim('FAIL_ONCE_THEN_SUCCESS', 1), kirim('FAIL_ONCE_THEN_SUCCESS', 2)].every((h) => h.provider === 'FAKE' && h.simulation === true && h.externalDelivery === false))
+  cek('FAIL_BEFORE_ACCEPT → gagal FAKE_SIMULATED_FAILURE di setiap attempt', [1, 2, 3, 7].every((n) => kirim('FAIL_BEFORE_ACCEPT', n).diterima === false && kirim('FAIL_BEFORE_ACCEPT', n).alasan === 'FAKE_SIMULATED_FAILURE'))
+  cek('FAIL_ONCE_THEN_SUCCESS → attempt 1 gagal, attempt ≥2 diterima', kirim('FAIL_ONCE_THEN_SUCCESS', 1).diterima === false && kirim('FAIL_ONCE_THEN_SUCCESS', 2).diterima === true && kirim('FAIL_ONCE_THEN_SUCCESS', 5).diterima === true)
+  cek('deterministik: input sama → keluaran identik (100×)', Array.from({ length: 100 }, () => JSON.stringify(kirim('FAIL_ONCE_THEN_SUCCESS', 2))).every((x, _, a) => x === a[0]))
+  cek('dasar receipt beda → receipt beda', kirim('SUCCESS', 1, 'b'.repeat(64)).receipt !== s1.receipt)
+  cek('skenario tak dikenal / attemptNo tak sah / dasar receipt tak sah → melempar', melempar(() => kirim('LIVE', 1)) && melempar(() => kirim('SUCCESS', 0)) && melempar(() => kirim('SUCCESS', 1.5)) && melempar(() => kirim('SUCCESS', 1, 'xyz')))
+  cek('kunciIdempotensiSend: requestKey sama, konteks beda (tenant/pesan/snapshot) → kunci beda', (() => {
+    const dasar = { tenantId: 't1', messageId: 'm1', snapshotFingerprint: 'f1', requestKey: 'rk-00000001' }
+    const k = H.kunciIdempotensiSend(dasar)
+    return /^[0-9a-f]{64}$/.test(k) && k === H.kunciIdempotensiSend({ ...dasar }) && [{ tenantId: 't2' }, { messageId: 'm2' }, { snapshotFingerprint: 'f2' }, { requestKey: 'rk-00000002' }].every((u) => H.kunciIdempotensiSend({ ...dasar, ...u }) !== k)
+  })())
+  cek('dasarReceiptFake: deterministik per (kunci, attemptNo)', H.dasarReceiptFake({ idempotencyKey: 'k', attemptNo: 1 }) === H.dasarReceiptFake({ idempotencyKey: 'k', attemptNo: 1 }) && H.dasarReceiptFake({ idempotencyKey: 'k', attemptNo: 1 }) !== H.dasarReceiptFake({ idempotencyKey: 'k', attemptNo: 2 }))
+  cek('NOL panggilan jaringan selama uji penyedia FAKE', egress.length === 0, egress.join(','))
 }
 
 console.log(`\nHasil: ${lulus} lulus, ${gagal} gagal`)
