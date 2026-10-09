@@ -21,7 +21,10 @@
 //     BLOCKED + eksekusi CANCELLED (blokirCandidate 2C).
 //   • Eksekusi approval HANYA lewat transisi beku tah-policy.ts: NOT_STARTED|FAILED → RUNNING →
 //     SUCCEEDED|FAILED, dan NOT_STARTED|FAILED → CANCELLED. Keputusan approval (status) tak disentuh.
-//   • Urutan tulis baris seragam: candidate → approval → pesan → attempt (mencegah deadlock).
+//   • Urutan tulis baris seragam: candidate → approval → pesan → attempt (mencegah deadlock). Klaim
+//     mengunci baris candidate (kunciCandidate) — sama dengan revisi Prepare 2C — sehingga Send dan
+//     pembuatan revisi baru atas pesan logis yang sama saling berurutan (review PR #10, temuan 1).
+//   • Retry manual dibatasi MAKS_PERCOBAAN_EKSEKUSI lewat bolehUlangiEksekusi beku (temuan 2).
 //
 // SG-05 / tenant uji (didokumentasikan, bukan diterima diam-diam): fixture penerima adalah
 // konstanta kode (keputusan Q3, OD-2A-05) tanpa relasi tenant. Pembatasnya: gerbang WA hanya
@@ -34,7 +37,7 @@ import type { TenantContext } from '../context'
 import { notFound, validation } from '../errors'
 import { forTenant } from '../tenant-db'
 import type { DefinisiApprovalWaFake } from '../tah/registry'
-import { transisiEksekusiSah } from '../tah/tah-policy'
+import { MAKS_PERCOBAAN_EKSEKUSI, bolehUlangiEksekusi, transisiEksekusiSah } from '../tah/tah-policy'
 import {
   KODE_ALASAN,
   PENYEDIA_KOMUNIKASI,
@@ -56,6 +59,7 @@ import {
   auditKomunikasi,
   bisaDiulang,
   blokirCandidate,
+  kunciCandidate,
   denganUlang,
   gerbang,
   hentikanApprovalTertaut,
@@ -95,6 +99,8 @@ export type HasilKirimFake =
   | ({ hasil: 'PERLU_TINJAUAN'; messageId: string } & Penolakan)
   | ({ hasil: 'DITOLAK_PULIH'; messageId: string; candidateId: string } & Penolakan)
   | ({ hasil: 'DITOLAK'; messageId: string; state: string } & Penolakan)
+  /** Retry manual ditolak kebijakan beku: percobaan ≥ MAKS_PERCOBAAN_EKSEKUSI (5). Tanpa perubahan state. */
+  | { hasil: 'PERCOBAAN_HABIS'; messageId: string; kode: 'EXECUTION_ATTEMPTS_EXHAUSTED'; percobaan: number; maks: number }
 
 /** SG-09 — audit Send gagal ditulis → seluruh transaksi batal; tak pernah ada klaim sukses. */
 export class GalatAuditKirim extends Error {
@@ -266,7 +272,7 @@ async function kirimDalamTx(ctx: TenantContext, tx: Tx, jenis: DefinisiApprovalW
 
   // SG-07 (bagian 1) — approval ada, sesuai kebijakan WA, keputusan APPROVED, eksekusi konsisten.
   const a = m.approvalRequestId
-    ? ((await tx.tahApprovalRequest.findFirst({ where: { id: m.approvalRequestId }, select: PILIH_APPROVAL })) as ApprovalBaris | null)
+    ? ((await tx.tahApprovalRequest.findFirst({ where: { id: m.approvalRequestId }, select: { ...PILIH_APPROVAL, executionAttempts: true } })) as (ApprovalBaris & { executionAttempts: number }) | null)
     : null
   if (!a) return tolakTetap({ alasan: 'APPROVAL_REQUIRED', medan: 'approvalRequestId' })
   cekKebijakanApproval(a, jenis)
@@ -303,7 +309,30 @@ async function kirimDalamTx(ctx: TenantContext, tx: Tx, jenis: DefinisiApprovalW
   if (f.nilai.pengenal !== m.recipientIdentifier) return perluTinjauan(ctx, tx, m, { alasan: 'CONTACT_INELIGIBLE', medan: 'recipientIdentifier' })
   const fixture = f.nilai
 
-  // Klaim: approval RUNNING → pesan QUEUED_FAKE → attempt QUEUED_FAKE (urutan tulis seragam).
+  // Batas percobaan (schema CommunicationAttempt: ≤ MAKS_PERCOBAAN_EKSEKUSI, ditegakkan service) —
+  // keputusan diserahkan ke bolehUlangiEksekusi BEKU. Dihitung dari executionAttempts approval dan
+  // nomor attempt tertinggi (yang lebih besar — gagal tertutup). Atomik: klaim di bawah memakai
+  // guard version approval + unique (messageId, attemptNo); retry bersamaan yang kalah diulang lalu
+  // melihat hitungan baru. Replay kunci lama sudah dijawab di atas sebelum sampai sini.
+  const maks = await tx.communicationAttempt.aggregate({ where: { messageId: m.id }, _max: { attemptNo: true } })
+  const percobaan = Math.max(a.executionAttempts, maks._max.attemptNo ?? 0)
+  if (m.state === 'FAKE_FAILED') {
+    const u = bolehUlangiEksekusi(a.executionStatus, percobaan)
+    if (!u.boleh) {
+      if (u.kode !== 'EXECUTION_ATTEMPTS_EXHAUSTED') throw new Error('[komunikasi] status eksekusi approval tidak konsisten dengan retry.')
+      await audit(ctx, tx, {
+        tableName: TABEL_PESAN,
+        recordId: m.id,
+        action: 'UPDATE',
+        newValue: { peristiwa: 'WA1_SEND_DITOLAK', kode: u.kode, percobaan, maks: MAKS_PERCOBAAN_EKSEKUSI, state: m.state, candidateId: m.candidateId, approvalRequestId: a.id },
+      })
+      return { hasil: 'PERCOBAAN_HABIS', messageId: m.id, kode: u.kode, percobaan, maks: MAKS_PERCOBAAN_EKSEKUSI }
+    }
+  } else if (percobaan !== 0) {
+    throw new Error('[komunikasi] pesan APPROVED sudah memiliki attempt.')
+  }
+
+  // Klaim: kunci candidate → approval RUNNING → pesan QUEUED_FAKE → attempt QUEUED_FAKE (urutan tulis seragam).
   if (
     !transisiEksekusiSah(a.executionStatus, 'RUNNING', 'APPROVED') ||
     !transisiEksekusiSah('RUNNING', 'SUCCEEDED', 'APPROVED') ||
@@ -314,6 +343,7 @@ async function kirimDalamTx(ctx: TenantContext, tx: Tx, jenis: DefinisiApprovalW
   ) {
     throw new Error('[komunikasi] transisi kirim tidak sah.')
   }
+  await kunciCandidate(tx, c)
   const sekarang = new Date()
   const na = await tx.tahApprovalRequest.updateMany({
     where: { id: a.id, status: 'APPROVED', executionStatus: a.executionStatus, version: a.version },
@@ -325,7 +355,6 @@ async function kirimDalamTx(ctx: TenantContext, tx: Tx, jenis: DefinisiApprovalW
     data: { state: 'QUEUED_FAKE', reasonCode: null, version: { increment: 1 } },
   })
   if (nm.count === 0) throw new KonflikKonkurensi()
-  const maks = await tx.communicationAttempt.aggregate({ where: { messageId: m.id }, _max: { attemptNo: true } })
   const attemptNo = (maks._max.attemptNo ?? 0) + 1
   const at = await tx.communicationAttempt.create({
     data: {

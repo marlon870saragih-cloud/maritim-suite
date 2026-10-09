@@ -579,6 +579,8 @@ bagian('[12] Egress & lingkup Step 2A')
     cek(`${SEND}: TIDAK membuat approval & TIDAK mengubah keputusan approval (hanya execution*)`, !/tahApprovalRequest\.create/.test(kode) && !/data:\s*\{[^}]*\b(status|decidedByUserId|decidedAt|proposalHash|basisFingerprint)\s*:/.test(kode))
     cek(`${SEND}: eksekusi approval hanya lewat transisiEksekusiSah beku`, /transisiEksekusiSah\(a\.executionStatus, 'RUNNING', 'APPROVED'\)/.test(kode) && /transisiEksekusiSah\('RUNNING', 'SUCCEEDED', 'APPROVED'\)/.test(kode) && /transisiEksekusiSah\('RUNNING', 'FAILED', 'APPROVED'\)/.test(kode))
     cek(`${SEND}: penyedia HANYA FAKE murni (tanpa pemilihan penyedia dari input)`, /kirimLewatPenyediaFake\(/.test(kode) && !/input\??\.(provider|penyedia|scenario|skenario|mode|idempotencyKey|tenantId)/.test(kode))
+    cek(`${SEND}: review PR #10 — batas percobaan lewat bolehUlangiEksekusi BEKU (tanpa angka batas sendiri) & klaim mengunci candidate`, /bolehUlangiEksekusi\(a\.executionStatus, percobaan\)/.test(kode) && /MAKS_PERCOBAAN_EKSEKUSI/.test(kode) && !/percobaan\s*[<>]=?\s*\d/.test(kode) && /await kunciCandidate\(tx, c\)\s*\n\s*const sekarang = new Date\(\)\s*\n\s*const na = await tx\.tahApprovalRequest\.updateMany/.test(kode))
+    cek(`${SERVICE}: review PR #10 — revisi Prepare mengunci candidate SEBELUM memeriksa successKey/revisi aktif`, /await kunciCandidate\(tx, c\)\s*\n\s*const sukses = await tx\.communicationMessage\.findFirst/.test(tanpaKomentar(readFileSync(join(dir, SERVICE), 'utf8'))))
     cek(`${SEND}: kunci idempotensi diturunkan server (kunciIdempotensiSend dengan tenant dari ctx)`, /kunciIdempotensiSend\(\{ tenantId: ctx\.tenantId, messageId: m\.id, snapshotFingerprint: m\.snapshotFingerprint, requestKey \}\)/.test(kode))
   }
   {

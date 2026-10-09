@@ -92,6 +92,63 @@ const TAH = jiti('../src/services/tah/tah-policy.ts')
 const { PrismaClient } = await import('@prisma/client')
 const adm = new PrismaClient({ datasources: { db: { url: URL_DB } } })
 
+// ---------------------------------------------- titik jeda deterministik (khusus uji)
+// Service memanggil forTenant lewat binding modul tenant-db saat jalan; uji membungkusnya supaya
+// SATU kueri tertentu di dalam transaksi service bisa ditahan sampai uji melepasnya. Dengan ini
+// urutan balapan (mis. Send commit DI ANTARA dua bacaan Prepare) dipaksa, bukan kebetulan.
+// Kode produksi tidak tahu apa-apa soal ini.
+const TD = jiti('../src/services/tenant-db.ts')
+const forTenantAsli = TD.forTenant
+const titikJeda = []
+function pasangJeda(model, op, cocok) {
+  let tiba
+  let lepas
+  const sampai = new Promise((r) => (tiba = r))
+  const pLepas = new Promise((r) => (lepas = r))
+  titikJeda.push({ model, op, cocok, tiba, pLepas })
+  return { sampai, lepas }
+}
+const bungkusDelegasi = (model, d) =>
+  new Proxy(d, {
+    get(t, op) {
+      const f = t[op]
+      if (typeof f !== 'function') return f
+      return async (args) => {
+        const i = titikJeda.findIndex((j) => j.model === model && j.op === op && j.cocok(args ?? {}))
+        if (i >= 0) {
+          const [j] = titikJeda.splice(i, 1)
+          j.tiba()
+          await j.pLepas
+        }
+        return f.call(t, args)
+      }
+    },
+  })
+const bungkusTx = (tx) =>
+  new Proxy(tx, {
+    get(t, p) {
+      const v = t[p]
+      return typeof p === 'string' && /^[a-z]/.test(p) && v && typeof v === 'object' ? bungkusDelegasi(p, v) : v
+    },
+  })
+TD.forTenant = (ctx) => {
+  const db = forTenantAsli(ctx)
+  return new Proxy(db, { get: (t, p) => (p === '$transaction' ? (fn, opts) => t.$transaction((tx) => fn(bungkusTx(tx)), opts) : t[p]) })
+}
+/** Tunggu sampai `janji` selesai ATAU ada sesi DB yang menunggu kunci baris (maks `ms`). */
+async function tungguBlokirAtauSelesai(janji, ms = 3000) {
+  let selesai = false
+  janji.then(() => (selesai = true), () => (selesai = true))
+  const t0 = Date.now()
+  while (Date.now() - t0 < ms) {
+    if (selesai) return 'SELESAI'
+    const [{ n }] = await adm.$queryRawUnsafe("select count(*)::int as n from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'")
+    if (n > 0) return 'TERBLOKIR'
+    await new Promise((r) => setTimeout(r, 20))
+  }
+  return 'TIMEOUT'
+}
+
 const TAG = 'WA1S2E-'
 let seq = 0
 const uid = () => `${TAG}${++seq}`
@@ -495,7 +552,7 @@ try {
 
   // ============================================================== balapan
   bagian('[7] Balapan (AC-12, TS-12) — maksimal satu FAKE_SENT; yang kalah terkendali')
-  const terkendali = (r) => (r.ok && ['FAKE_SENT', 'DITOLAK', 'DIBLOKIR', 'PERLU_TINJAUAN', 'FAKE_FAILED'].includes(r.nilai.hasil)) || (!r.ok && r.kode === 'CONFLICT')
+  const terkendali = (r) => (r.ok && ['FAKE_SENT', 'DITOLAK', 'DIBLOKIR', 'PERLU_TINJAUAN', 'FAKE_FAILED', 'PERCOBAAN_HABIS'].includes(r.nilai.hasil)) || (!r.ok && r.kode === 'CONFLICT')
   for (let n = 1; n <= ULANG; n++) {
     const p = await disetujui(A)
     const hs = await Promise.all([coba(() => kirim(A, p.messageId)), coba(() => kirim(A, p.messageId))])
@@ -567,6 +624,80 @@ try {
     await hapusTrigger()
     const h = await kirim(A, q.messageId)
     cek('56. setelah audit pulih → Send berhasil normal (attempt #1)', h.hasil === 'FAKE_SENT' && h.attemptNo === 1)
+  }
+
+  // ============================================================== review PR #10 — temuan 1
+  bagian('[10] Temuan review 1 — balapan Send vs Prepare (revisi baru), dua urutan dipaksa deterministik')
+  const ringkas = (r) => (r.ok ? r.nilai.hasil + (r.nilai.alasan ? ':' + r.nilai.alasan : '') : r.kode)
+  /** Setelah satu sukses: TAK BOLEH ada revisi aktif (DRAFT dsb.) untuk pesan logis yang sama. */
+  const pascaSukses = async (logicalMessageKey) => ({
+    sukses: await adm.communicationMessage.count({ where: { logicalMessageKey, successKey: { not: null } } }),
+    aktif: await adm.communicationMessage.count({ where: { logicalMessageKey, activeKey: { not: null } } }),
+  })
+  for (let n = 1; n <= 3; n++) {
+    // Urutan A (skenario reviewer): Prepare sudah membaca successKey (kosong), lalu DITAHAN tepat
+    // sebelum membaca revisi aktif; Send dijalankan pada celah itu; Prepare dilepas.
+    const p = await disetujui(A)
+    const m0 = await pesan(p.messageId)
+    const jeda = pasangJeda('communicationMessage', 'findFirst', (a) => a?.where?.activeKey !== undefined)
+    const rev = coba(() => S.buatRevisiPesan(A.ctx, { candidateId: p.candidateId, recipientFixtureId: FX, language: 'EN' }))
+    await jeda.sampai
+    const snd = coba(() => kirim(A, p.messageId))
+    const statusSend = await tungguBlokirAtauSelesai(snd)
+    jeda.lepas()
+    const [hr, hs] = await Promise.all([rev, snd])
+    const ps = await pascaSukses(m0.logicalMessageKey)
+    const iA = await invarian(p.messageId)
+    cek(`63. [${n}] urutan A (Send di antara dua bacaan Prepare): Send TIDAK bisa selesai selagi Prepare berjalan; tak ada revisi aktif sesudah FAKE_SENT; maks 1 sukses`, statusSend === 'TERBLOKIR' && ps.sukses <= 1 && !(ps.sukses === 1 && ps.aktif > 0) && iA.ok && terkendali(hs), `send=${statusSend} rev=${ringkas(hr)} send=${ringkas(hs)} sukses=${ps.sukses} aktif=${ps.aktif} pesan=${iA.m.state}`)
+
+    // Urutan B: Send sudah mengklaim (memegang kunci) lalu DITAHAN sebelum membuat attempt;
+    // Prepare dijalankan; Send dilepas.
+    const q = await disetujui(A)
+    const q0 = await pesan(q.messageId)
+    const jedaB = pasangJeda('communicationAttempt', 'create', () => true)
+    const sndB = coba(() => kirim(A, q.messageId))
+    await jedaB.sampai
+    const revB = coba(() => S.buatRevisiPesan(A.ctx, { candidateId: q.candidateId, recipientFixtureId: FX, language: 'EN' }))
+    const statusRev = await tungguBlokirAtauSelesai(revB)
+    jedaB.lepas()
+    const [hsB, hrB] = await Promise.all([sndB, revB])
+    const psB = await pascaSukses(q0.logicalMessageKey)
+    cek(`64. [${n}] urutan B (Send klaim dulu, Prepare menyusul): Prepare menunggu; Send FAKE_SENT; revisi ditolak ALREADY_FAKE_SENT; tak ada revisi aktif`, statusRev === 'TERBLOKIR' && hsB.ok && hsB.nilai.hasil === 'FAKE_SENT' && ((hrB.ok && hrB.nilai.hasil === 'DITOLAK' && hrB.nilai.alasan === 'ALREADY_FAKE_SENT') || (!hrB.ok && hrB.kode === 'CONFLICT')) && psB.sukses === 1 && psB.aktif === 0 && (await invarian(q.messageId)).ok, `rev=${statusRev} send=${ringkas(hsB)} rev=${ringkas(hrB)} sukses=${psB.sukses} aktif=${psB.aktif}`)
+  }
+  cek('65. semua titik jeda terpakai (tak ada jeda menggantung)', titikJeda.length === 0)
+
+  // ============================================================== review PR #10 — temuan 2
+  bagian('[11] Temuan review 2 — batas MAKS_PERCOBAAN_EKSEKUSI (tah-policy beku = 5)')
+  {
+    const p = await disetujui(A, { fx: FX_GAGAL })
+    const kunci = []
+    for (let i = 0; i < 5; i++) {
+      const k = rk()
+      kunci.push(k)
+      await kirim(A, p.messageId, k)
+    }
+    const i5 = await invarian(p.messageId)
+    cek('66. attempt #1..#5 (1 kirim + 4 retry manual) tercatat FAKE_FAILED; executionAttempts = 5', i5.ok && i5.at.map((x) => x.attemptNo).join() === '1,2,3,4,5' && i5.at.every((x) => x.state === 'FAKE_FAILED') && i5.a.executionAttempts === 5)
+    const awal = await potret(p)
+    const h6 = await coba(() => kirim(A, p.messageId))
+    cek('67. retry ke-6 dengan kunci BARU → PERCOBAAN_HABIS EXECUTION_ATTEMPTS_EXHAUSTED, tanpa attempt baru, tanpa perubahan state', h6.ok && h6.nilai.hasil === 'PERCOBAAN_HABIS' && h6.nilai.kode === 'EXECUTION_ATTEMPTS_EXHAUSTED' && h6.nilai.maks === 5 && (await potret(p)) === awal, h6.ok ? JSON.stringify(h6.nilai) : h6.kode)
+    cek('68. penolakan batas teraudit (WA1_SEND_DITOLAK, kode EXECUTION_ATTEMPTS_EXHAUSTED)', (await adm.auditLog.count({ where: { recordId: p.messageId, newValue: { path: ['kode'], equals: 'EXECUTION_ATTEMPTS_EXHAUSTED' } } })) >= 1)
+    const r3 = await kirim(A, p.messageId, kunci[2])
+    cek('69. replay kunci attempt #3 sesudah batas habis → hasil attempt #3 (idempoten), tanpa attempt baru', r3.hasil === 'FAKE_FAILED' && r3.ulangan === true && r3.attemptNo === 3 && (await attempts(p.messageId)).length === 5)
+
+    for (let n = 1; n <= 3; n++) {
+      const q = await disetujui(A, { fx: FX_GAGAL })
+      for (let i = 0; i < 4; i++) await kirim(A, q.messageId)
+      const hs = await Promise.all(Array.from({ length: 4 }, () => coba(() => kirim(A, q.messageId))))
+      const iq = await invarian(q.messageId)
+      const baru = hs.filter((r) => r.ok && r.nilai.hasil === 'FAKE_FAILED' && !r.nilai.ulangan).length
+      cek(`70. [${n}] pada attempt #4, empat retry bersamaan → tepat satu attempt #5; sisanya PERCOBAAN_HABIS/CONFLICT; tak pernah > 5`, baru === 1 && iq.ok && iq.at.length === 5 && iq.a.executionAttempts === 5 && hs.every((r) => (r.ok && ['FAKE_FAILED', 'PERCOBAAN_HABIS'].includes(r.nilai.hasil)) || (!r.ok && r.kode === 'CONFLICT')), JSON.stringify(hs.map(ringkas)))
+    }
+
+    const u = await disetujui(A, { fx: FX_ULANG })
+    const u1 = await kirim(A, u.messageId)
+    const u2 = await kirim(A, u.messageId)
+    cek('71. batas tak mengganggu jalur normal: FAIL_ONCE_THEN_SUCCESS sukses di attempt #2', u1.hasil === 'FAKE_FAILED' && u2.hasil === 'FAKE_SENT' && u2.attemptNo === 2)
   }
 
   // ============================================================== egress & invarian global
