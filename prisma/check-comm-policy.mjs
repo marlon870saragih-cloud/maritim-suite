@@ -627,7 +627,7 @@ bagian('[12] Egress & lingkup Step 2A')
   cek('Step 2D R1: SATU-SATUNYA pembuat TahApprovalRequest = service approval WA (tanpa jalur NULL-TTL umum)', pembuatApproval.join() === 'src/services/communication/communication-approval.service.ts', pembuatApproval.join())
   const kodeAp = baca('src/services/communication/communication-approval.service.ts')
   cek('Step 2D R1: kind & expiresAt diturunkan dari definisi WA, bukan dari input', /kind: jenis\.kind,/.test(kodeAp) && /expiresAt: jenis\.kedaluwarsaJam,/.test(kodeAp) && /const j = JENIS_APPROVAL_WA_FAKE/.test(kodeAp) && !/input\??\.(kind|expiresAt|proposalHash|requiredRoles|actionRisk)/.test(kodeAp))
-  cek('Step 2A: belum ada route/halaman komunikasi', !existsSync(join(AKAR, 'src/app/api/automation/communications')) && !existsSync(join(AKAR, 'src/app/(app)/automation/communications')))
+  cek('Step 2H: belum ada halaman/UI komunikasi (UI = Step 2I)', !existsSync(join(AKAR, 'src/app/(app)/automation/communications')))
   const rujuk = /services\/communication/
   const jelajah = (rel, hasil = []) => {
     for (const d of readdirSync(join(AKAR, rel), { withFileTypes: true })) {
@@ -638,7 +638,42 @@ bagian('[12] Egress & lingkup Step 2A')
     return hasil
   }
   const perujuk = jelajah('src').filter((p) => rujuk.test(baca(p)))
-  cek('Step 2C: belum ada kode aplikasi (route/UI/service lain) yang memakai modul komunikasi', perujuk.length === 0, perujuk.join(', '))
+  // Step 2H — SATU-SATUNYA perujuk modul komunikasi di luar foldernya = 11 route API tipis berikut.
+  const API = 'src/app/api/automation/communications'
+  const RUTE = {
+    'candidates/route.ts': ['GET', 'POST'],
+    'candidates/[id]/route.ts': ['GET'],
+    'candidates/[id]/history/route.ts': ['GET'],
+    'candidates/[id]/revisions/route.ts': ['POST'],
+    'messages/[id]/route.ts': ['GET'],
+    'messages/[id]/preview/route.ts': ['POST'],
+    'messages/[id]/approval-request/route.ts': ['POST'],
+    'messages/[id]/send/route.ts': ['POST'],
+    'messages/[id]/cancel/route.ts': ['POST'],
+    'approvals/[id]/approve/route.ts': ['POST'],
+    'approvals/[id]/reject/route.ts': ['POST'],
+  }
+  const harapRute = Object.keys(RUTE).map((r) => `${API}/${r}`).sort()
+  cek('Step 2H: perujuk modul komunikasi di luar foldernya = PERSIS 11 route API (tanpa UI / service lain)', perujuk.sort().join() === harapRute.join(), perujuk.join(', '))
+  const semuaBerkasApi = existsSync(join(AKAR, API)) ? jelajah(API) : []
+  cek('Step 2H: folder API komunikasi hanya berisi 11 route.ts tersebut', semuaBerkasApi.sort().join() === harapRute.join(), semuaBerkasApi.join(', '))
+  const IZIN_RUTE = ['@/services/http', '@/services/communication/communication.service', '@/services/communication/communication-read.service', '@/services/communication/communication-approval.service', '@/services/communication/communication-send.service', '@/services/communication/communication-cancel.service']
+  for (const [r, metode] of Object.entries(RUTE)) {
+    const f = `${API}/${r}`
+    const kode = tanpaKomentar(baca(f))
+    const imp = [...kode.matchAll(/^import\b[\s\S]*?from '([^']+)'/gm)].map((x) => x[1])
+    const ekspor = [...kode.matchAll(/^export const (GET|POST|PUT|PATCH|DELETE) = withTenant\(/gm)].map((x) => x[1])
+    const tulis = metode.includes('POST')
+    cek(`${r}: tipis — impor hanya http + service komunikasi; metode ${metode.join('/')} lewat withTenant; tanpa prisma/fetch/env/LLM/console`,
+      imp.every((x) => IZIN_RUTE.includes(x)) && ekspor.sort().join() === [...metode].sort().join() && !/prisma|forTenant|\bfetch\(|process\.env|lib\/ai|openrouter|anthropic|console\.|catatAudit/.test(kode),
+      `${imp.join(' | ')} :: ${ekspor.join(',')}`)
+    if (tulis) {
+      cek(`${r}: POST memanggil gerbang(ctx) SEBELUM membaca body (jsonBodyKetat, bukan jsonBody)`, kode.indexOf('gerbang(ctx)') > 0 && kode.indexOf('gerbang(ctx)') < kode.indexOf('jsonBodyKetat(req)') && !/\bjsonBody\(/.test(kode))
+    }
+    if (/\[id\]\/(route|history\/route)\.ts$/.test(r) && metode.includes('GET')) {
+      cek(`${r}: GET detail menyamarkan pengenal secara bawaan (recipient=full eksplisit untuk utuh)`, /r === null \|\| r === 'masked' \? 'SAMAR' : r === 'full' \? 'UTUH' : r/.test(kode))
+    }
+  }
 }
 
 // =========================================================================== 13

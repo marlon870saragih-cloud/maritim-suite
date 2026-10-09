@@ -6,7 +6,7 @@
 
 import { Prisma } from '@prisma/client'
 import { requireTenant, type TenantContext } from './context'
-import { ServiceError, conflict, notFound } from './errors'
+import { ServiceError, conflict, notFound, validation } from './errors'
 
 export type ApiError = { error: { code: string; message: string; details?: unknown } }
 
@@ -74,4 +74,48 @@ export function jejakDari(req: Request): { ipAddress: string | null } {
 export async function jsonBody(req: Request): Promise<Record<string, unknown>> {
   const b = await req.json().catch(() => ({}))
   return b && typeof b === 'object' ? (b as Record<string, unknown>) : {}
+}
+
+/** Batas bawaan body JSON route yang memakai jsonBodyKetat (WA-1 Step 2H). */
+export const MAKS_BYTE_BODY = 16_384
+
+/**
+ * Baca body JSON secara KETAT (WA-1 Step 2H), berbeda dari jsonBody yang memaafkan:
+ *   • ukuran dibatasi `maksByte` — dihitung saat membaca aliran, jadi tetap berlaku tanpa
+ *     Content-Length (chunked); melebihi → VALIDATION, sisa aliran tak dibaca;
+ *   • body tak kosong wajib `Content-Type: application/json` dan JSON sah;
+ *   • hasilnya wajib objek (bukan array / null / primitif);
+ *   • body kosong → objek kosong (service yang memutuskan medan wajib).
+ */
+export async function jsonBodyKetat(req: Request, maksByte = MAKS_BYTE_BODY): Promise<Record<string, unknown>> {
+  const panjang = Number(req.headers.get('content-length') ?? '')
+  if (Number.isFinite(panjang) && panjang > maksByte) throw validation(`Body terlalu besar (maks ${maksByte} byte).`)
+  const potongan: Uint8Array[] = []
+  let total = 0
+  if (req.body) {
+    const pembaca = req.body.getReader()
+    for (;;) {
+      const { done, value } = await pembaca.read()
+      if (done) break
+      total += value.byteLength
+      if (total > maksByte) {
+        await pembaca.cancel().catch(() => undefined)
+        throw validation(`Body terlalu besar (maks ${maksByte} byte).`)
+      }
+      potongan.push(value)
+    }
+  }
+  const teks = Buffer.concat(potongan).toString('utf8')
+  if (teks.trim() === '') return {}
+  if (!/^application\/json\b/i.test((req.headers.get('content-type') ?? '').trim())) {
+    throw validation('Content-Type harus application/json.')
+  }
+  let nilai: unknown
+  try {
+    nilai = JSON.parse(teks)
+  } catch {
+    throw validation('Body bukan JSON yang sah.')
+  }
+  if (nilai === null || typeof nilai !== 'object' || Array.isArray(nilai)) throw validation('Body harus objek JSON.')
+  return nilai as Record<string, unknown>
 }
