@@ -110,6 +110,23 @@ export type RingkasAttempt = {
   finishedAt: string | null
 }
 
+/**
+ * Step 2I / PRD §8 butir 3 — fakta preview dari SNAPSHOT tersimpan (CommunicationMessage.fields), BUKAN
+ * fakta terbaru: yang ditampilkan = yang disetujui. Allowlist ketat; medan lain di snapshot (mis. occurredAt
+ * mentah) tak dikembalikan. Medan yang tak berbentuk benar → null (gagal tertutup, tanpa mengarang).
+ */
+export type FaktaPreview = {
+  keluarga: string | null
+  vesselName: string | null
+  voyageNumber: string | null
+  portName: string | null
+  /** Jadwal (SCHEDULE_CHANGE): tanggal kalender saja (K-1). */
+  perubahan: Array<{ medan: 'eta' | 'etd'; lama: string; baru: string }> | null
+  /** Milestone: waktu lokal terformat + zona IANA (FR-07). */
+  eventLocalTime: string | null
+  timezone: string | null
+}
+
 export type Pembatalan = { catatan: string | null; olehUserId: string | null; pada: string; stateSebelum: string | null }
 
 export type DetailPesan = {
@@ -135,6 +152,7 @@ export type DetailPesan = {
   approvedAt: string | null
   approvedByUserId: string | null
   fakeReceipt: string | null
+  fakta: FaktaPreview
   /** Label simulasi eksplisit: WA-1 tak pernah mengirim ke luar. */
   simulasi: { provider: 'FAKE'; simulation: true; externalDelivery: false }
   approval: RingkasApproval | null
@@ -208,7 +226,7 @@ const PILIH_PESAN_BACA = {
   id: true, candidateId: true, revision: true, state: true, reasonCode: true, recipientFixtureId: true, recipientIdentifier: true,
   language: true, templateId: true, templateVersion: true, body: true, mode: true, sourceFingerprint: true, snapshotFingerprint: true,
   createdByUserId: true, createdAt: true, updatedAt: true, previewedAt: true, previewedByUserId: true, approvedAt: true,
-  approvedByUserId: true, fakeReceipt: true, approvalRequestId: true,
+  approvedByUserId: true, fakeReceipt: true, approvalRequestId: true, fields: true,
 } as const
 
 const PILIH_APPROVAL_BACA = {
@@ -270,6 +288,29 @@ const keRingkasDaftar = (m: PesanBaca): RingkasPesanDaftar => ({
 
 const objek = (v: Prisma.JsonValue): Record<string, unknown> | null =>
   v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null
+
+const teksAtauNull = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null)
+
+function faktaPreview(fields: Prisma.JsonValue): FaktaPreview {
+  const f = objek(fields)
+  const perubahan = Array.isArray(f?.perubahan)
+    ? (f.perubahan as unknown[]).flatMap((x) => {
+        const o = x !== null && typeof x === 'object' && !Array.isArray(x) ? (x as Record<string, unknown>) : null
+        return o && (o.medan === 'eta' || o.medan === 'etd') && typeof o.lama === 'string' && typeof o.baru === 'string'
+          ? [{ medan: o.medan as 'eta' | 'etd', lama: o.lama, baru: o.baru }]
+          : []
+      })
+    : null
+  return {
+    keluarga: teksAtauNull(f?.keluarga),
+    vesselName: teksAtauNull(f?.vesselName),
+    voyageNumber: teksAtauNull(f?.voyageNumber),
+    portName: teksAtauNull(f?.portName),
+    perubahan,
+    eventLocalTime: teksAtauNull(f?.eventLocalTime),
+    timezone: teksAtauNull(f?.timezone),
+  }
+}
 
 async function nomorVoyage(tx: Tx, voyageIds: string[]): Promise<Map<string, string>> {
   if (voyageIds.length === 0) return new Map()
@@ -334,6 +375,7 @@ async function rakitDetailPesan(tx: Tx, pesan: PesanBaca[], mode: ModePengenal):
       approvedAt: iso(m.approvedAt),
       approvedByUserId: m.approvedByUserId,
       fakeReceipt: m.fakeReceipt,
+      fakta: faktaPreview(m.fields),
       simulasi: { provider: 'FAKE', simulation: true, externalDelivery: false },
       // Approval yang subjeknya bukan pesan ini tak ditampilkan sebagai miliknya (gagal tertutup).
       approval: a && a.subjectId === m.id ? keRingkasApproval(a) : null,

@@ -527,8 +527,14 @@ bagian('[12] Egress & lingkup Step 2A')
   const SEND = 'communication-send.service.ts'
   const CANCEL = 'communication-cancel.service.ts'
   const READ = 'communication-read.service.ts'
-  cek('modul komunikasi = berkas murni (2A + penyedia FAKE 2E) + service Prepare (2C) + approval (2D) + Send (2E) + Cancel (2F) + baca (2G)', berkas.join() === [...MURNI, SERVICE, APPROVAL, SEND, CANCEL, READ].sort().join(), berkas.join())
+  const ACCESS = 'comm-access.ts'
+  cek('modul komunikasi = berkas murni (2A + penyedia FAKE 2E) + service Prepare (2C) + approval (2D) + Send (2E) + Cancel (2F) + baca (2G) + akses UI (2I)', berkas.join() === [...MURNI, SERVICE, APPROVAL, SEND, CANCEL, READ, ACCESS].sort().join(), berkas.join())
   const tanpaKomentar = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+  {
+    const kode = tanpaKomentar(readFileSync(join(dir, ACCESS), 'utf8'))
+    const imp = [...kode.matchAll(/^import\b[\s\S]*?from '([^']+)'/gm)].map((x) => x[1])
+    cek(`${ACCESS}: hanya pagar Hub + gerbang WA-1 (impor automation/access & comm-policy; tanpa DB/jaringan; env hanya untuk bacaKonfigurasiKomunikasi)`, imp.sort().join() === ['../automation/access', './comm-policy'].join() && !/prisma|forTenant|fetch\(|\$queryRaw/.test(kode) && [...kode.matchAll(/process\.env/g)].length === 1 && /bolehAksesAutomation\(pengguna\) && bacaKonfigurasiKomunikasi\(process\.env\)\.aktif/.test(kode))
+  }
   const POLA_JARINGAN = /\bfetch\b|https?:|node:(http|https|net|tls|dns|dgram|http2|child_process)|['"](http|https|net|tls|dns|ws|undici|axios|node-fetch)['"]|WebSocket|XMLHttpRequest/
   const POLA_META = /wa\.me|graph\.facebook|whatsapp-web|baileys|twilio|@whiskeysockets|whatsapp-cloud/i
   for (const f of MURNI) {
@@ -627,7 +633,6 @@ bagian('[12] Egress & lingkup Step 2A')
   cek('Step 2D R1: SATU-SATUNYA pembuat TahApprovalRequest = service approval WA (tanpa jalur NULL-TTL umum)', pembuatApproval.join() === 'src/services/communication/communication-approval.service.ts', pembuatApproval.join())
   const kodeAp = baca('src/services/communication/communication-approval.service.ts')
   cek('Step 2D R1: kind & expiresAt diturunkan dari definisi WA, bukan dari input', /kind: jenis\.kind,/.test(kodeAp) && /expiresAt: jenis\.kedaluwarsaJam,/.test(kodeAp) && /const j = JENIS_APPROVAL_WA_FAKE/.test(kodeAp) && !/input\??\.(kind|expiresAt|proposalHash|requiredRoles|actionRisk)/.test(kodeAp))
-  cek('Step 2H: belum ada halaman/UI komunikasi (UI = Step 2I)', !existsSync(join(AKAR, 'src/app/(app)/automation/communications')))
   const rujuk = /services\/communication/
   const jelajah = (rel, hasil = []) => {
     for (const d of readdirSync(join(AKAR, rel), { withFileTypes: true })) {
@@ -660,7 +665,36 @@ bagian('[12] Egress & lingkup Step 2A')
     cek('Step 2H CSRF: jsonBodyKetat memanggil pastikanAsalSah PERTAMA, lalu mewajibkan application/json SEBELUM membaca body', /^export async function jsonBodyKetat[^{]*\{\s*pastikanAsalSah\(req\)\s*if \(!\/\^application\\\/json/.test(isiKetat) && isiKetat.indexOf('application') < isiKetat.indexOf('getReader'))
     cek('Step 2H CSRF: pastikanAsalSah menolak Sec-Fetch-Site selain same-origin dan Origin selain origin NEXTAUTH_URL (gagal tertutup)', /situs !== null && situs !== 'same-origin'/.test(http) && /!asal \|\| asal === 'null' \|\| asal !== asalAplikasi/.test(http) && /new URL\(process\.env\.NEXTAUTH_URL \?\? ''\)\.origin/.test(http))
   }
-  cek('Step 2H: perujuk modul komunikasi di luar foldernya = PERSIS 11 route API (tanpa UI / service lain)', perujuk.sort().join() === harapRute.join(), perujuk.join(', '))
+  // Step 2I — UI: halaman server (pagar bolehAksesKomunikasi) + komponen client (impor `type` saja).
+  const UI_SERVER = ['src/app/(app)/automation/alerts/page.tsx', 'src/app/(app)/automation/communications/[id]/page.tsx', 'src/app/(app)/automation/communications/page.tsx', 'src/app/(app)/layout.tsx', 'src/app/(app)/voyages/[id]/page.tsx']
+  const UI_CLIENT = ['src/components/automation/CommunicationList.tsx', 'src/components/automation/CommunicationWorkspace.tsx']
+  cek('Step 2I: perujuk modul komunikasi di luar foldernya = PERSIS 11 route API + 5 berkas server UI + 2 komponen client', perujuk.sort().join() === [...harapRute, ...UI_SERVER, ...UI_CLIENT].sort().join(), perujuk.join(', '))
+  for (const f of UI_SERVER) {
+    const kode = tanpaKomentar(baca(f))
+    const impKom = [...kode.matchAll(/^import\b[\s\S]*?from '(@\/services\/communication\/[^']+)'/gm)].map((x) => x[1])
+    cek(`${f}: server UI hanya memakai comm-access (+ fixture & samaran untuk halaman detail), tanpa service bisnis`, impKom.every((x) => ['@/services/communication/comm-access', '@/services/communication/comm-fixture', '@/services/communication/comm-policy'].includes(x)) && /bolehAksesKomunikasi\(/.test(kode), impKom.join(' | '))
+  }
+  for (const f of ['src/app/(app)/automation/communications/page.tsx', 'src/app/(app)/automation/communications/[id]/page.tsx']) {
+    cek(`${f}: halaman → notFound() bila bukan ADMIN/MANAJER_OPERASI + allowlist + flag WA-1 + non-produksi`, /if \(!bolehAksesKomunikasi\(ctx\)\) notFound\(\)/.test(baca(f)))
+  }
+  {
+    const det = tanpaKomentar(baca('src/app/(app)/automation/communications/[id]/page.tsx'))
+    cek('Step 2I: halaman detail meneruskan fixture dengan pengenal TERSAMAR saja (bukan pengenal utuh)', /samaran: samarkanPengenal\(f\.pengenal\)/.test(det) && !/pengenal: f\.pengenal|f\.pengenal \}/.test(det))
+  }
+  const KLIEN = [...UI_CLIENT, 'src/components/automation/comm-shared.tsx', 'src/components/automation/SignalList.tsx']
+  for (const f of KLIEN) {
+    const kode = tanpaKomentar(baca(f))
+    const impServis = [...kode.matchAll(/^import\s+(type\s+)?[^'"]*?from '([^']+)'/gm)].filter((x) => x[2].startsWith('@/services/'))
+    const fetchLain = [...kode.matchAll(/fetch\(([^)]*)/g)].map((x) => x[1]).filter((a) => !/^`\$\{API_KOMUNIKASI\}|^`\/api\/automation\/signals/.test(a.trim()))
+    cek(`${f}: client — impor service HANYA \`import type\`; fetch hanya ke API (komunikasi/sinyal); tanpa prisma/forTenant/process.env`, /^'use client'/.test(baca(f)) && impServis.every((x) => x[1]) && fetchLain.length === 0 && !/prisma|forTenant|process\.env/.test(kode), fetchLain.join(' | '))
+  }
+  {
+    const ws = tanpaKomentar(baca('src/components/automation/CommunicationWorkspace.tsx'))
+    const sh = tanpaKomentar(baca('src/components/automation/comm-shared.tsx'))
+    cek('Step 2I: label "SIMULASI — TIDAK DIKIRIM KE WHATSAPP" (PRD §8) ada & dipakai di daftar dan ruang kerja', /id: 'SIMULASI — TIDAK DIKIRIM KE WHATSAPP'/.test(sh) && /<SimulasiBanner/.test(ws) && /<SimulasiBanner/.test(tanpaKomentar(baca('src/components/automation/CommunicationList.tsx'))))
+    cek('Step 2I: tanpa input nomor bebas / editor body (P-02) — penerima hanya <select> fixture; textarea hanya untuk catatan', !/type="tel"|contentEditable|setBody|recipientIdentifier:\s*[a-z]/.test(ws) && /recipientFixtureId: fixture/.test(ws) && [...ws.matchAll(/<textarea/g)].length === 1 && /dialog\.catatan/.test(ws))
+    cek('Step 2I: pengenal utuh hanya lewat tombol eksplisit (?recipient=full); FAKE Send memakai requestKey baru per klik + kunci sinkron', /\?recipient=full`/.test(ws) && /requestKey: kunciPermintaan\(\)/.test(ws) && /if \(kunci\.current\) return/.test(ws) && /'content-type': 'application\/json'/.test(sh))
+  }
   const semuaBerkasApi = existsSync(join(AKAR, API)) ? jelajah(API) : []
   cek('Step 2H: folder API komunikasi hanya berisi 11 route.ts tersebut', semuaBerkasApi.sort().join() === harapRute.join(), semuaBerkasApi.join(', '))
   const IZIN_RUTE = ['@/services/http', '@/services/communication/communication.service', '@/services/communication/communication-read.service', '@/services/communication/communication-approval.service', '@/services/communication/communication-send.service', '@/services/communication/communication-cancel.service']

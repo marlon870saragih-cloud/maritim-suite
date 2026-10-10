@@ -8,6 +8,7 @@ import { AppShell } from '@/components/layout/AppShell'
 import { tenantAccess } from '@/lib/billing/access'
 import { bolehAksesAutomation } from '@/services/automation/access'
 import { bolehAksesIntake } from '@/services/intake/intake-access'
+import { bolehAksesKomunikasi } from '@/services/communication/comm-access'
 
 const ROLE_LABEL: Record<string, string> = {
   ADMIN: 'Administrator',
@@ -68,6 +69,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const showAutomation = bolehAksesAutomation({ tenantId: session.user.tenantId, role: session.user.role })
   // PRD-004 Step 3 — Vessel Call Intake: pagar Hub + flag VESSEL_CALL_INTAKE_ENABLED.
   const showIntake = bolehAksesIntake({ tenantId: session.user.tenantId, role: session.user.role })
+  // WA-1 Step 2I — Komunikasi (Simulasi): pagar Hub + flag WA-1 + non-produksi.
+  const showKomunikasi = bolehAksesKomunikasi({ tenantId: session.user.tenantId, role: session.user.role })
 
   const lockedBanner = access.locked ? (
     <div className="bg-status-danger/12 border-b border-status-danger/30 px-margin-page py-2.5">
@@ -95,6 +98,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       principalCount={principalCount}
       showAutomation={showAutomation}
       showIntake={showIntake}
+      showKomunikasi={showKomunikasi}
       banner={lockedBanner}
     >
       {children}
