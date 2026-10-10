@@ -117,3 +117,46 @@ export const KODE_ALASAN_WA2C = [
   'CONCURRENCY_CONFLICT',
 ] as const
 export type KodeAlasanWa2c = (typeof KODE_ALASAN_WA2C)[number]
+
+// ===================================================================== WA-2a Step 2E
+// Akses principal & resolver otorisasi (keputusan owner E-1..E-6).
+
+/** E-3 — masa berlaku grant maksimum, dihitung sejak PERSETUJUAN (bulan kalender). */
+export const MAKS_BULAN_GRANT = 12
+/** Batas jumlah voyage per pengajuan grant (cakupan eksplisit, bukan per kapal). */
+export const MAKS_VOYAGE_PER_GRANT = 50
+/** E-2 — hanya data operasional NYATA yang boleh menjadi informasi pelanggan. */
+export const ASAL_DATA_SAH = 'NYATA' as const
+/** E-5 — tak pernah dapat diakses lewat resolver. */
+export const STATUS_VOYAGE_TERTUTUP_UNTUK_SEMUA = ['CANCELLED'] as const
+/** E-5 — mengakhiri grant principal (customer tetap melihat CLOSED sesuai aturan portal). */
+export const STATUS_VOYAGE_TERTUTUP_UNTUK_PRINCIPAL = ['CLOSED', 'CANCELLED'] as const
+/** Kode milestone yang boleh dibaca kategori MILESTONE (sama dengan pilot WA-1). */
+export const MILESTONE_TERBACA = ['EOSP', 'ALL_FAST', 'SAILED'] as const
+
+/**
+ * E-1 — allowlist kolom per kategori. Identitas (nomor voyage, nama kapal, pelabuhan & zona)
+ * ikut bila ada SATU kategori apa pun (setara portal). Tidak ada kolom biaya/catatan/pihak lain.
+ */
+export const KOLOM_PER_KATEGORI = {
+  STATUS: ['status'],
+  SCHEDULE_ESTIMATE: ['eta', 'etb', 'etd'],
+  SCHEDULE_ACTUAL: ['ata', 'atb', 'atd'],
+  MILESTONE: ['milestoneTerakhir'],
+} as const
+export const KOLOM_IDENTITAS = ['voyageId', 'voyageNumber', 'namaKapal', 'namaPelabuhan', 'zonaWaktu'] as const
+
+export const KODE_ALASAN_WA2E = [
+  'CONTACT_INELIGIBLE',
+  'CONTACT_NOT_PRINCIPAL',
+  'GRANT_EVIDENCE_REQUIRED',
+  'GRANT_EXPIRY_INVALID',
+  'GRANT_SCOPE_INVALID',
+  'VOYAGE_NOT_AUTHORIZED',
+  'GRANT_SELF_DECISION_FORBIDDEN',
+  'GRANT_NOT_PENDING',
+  'GRANT_NOT_ACTIVE',
+  'GRANT_SCOPE_STALE',
+  'ACCESS_REVOKED',
+  'ACCESS_DENIED',
+] as const
