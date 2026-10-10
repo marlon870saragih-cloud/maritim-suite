@@ -122,6 +122,11 @@ async function sinyal(w, v, penanda, { kind = 'OPERATIONAL_EVENT_RECORDED', even
 // ------------------------------------------------------------------ peramban
 const browser = await chromium.launch({ executablePath: process.env.COMM_UI_CHROMIUM || undefined, headless: true })
 const halaman = [] // untuk diagnosis saat pengecualian
+// Paket demo Step 2J: COMM_UI_SCREENSHOT_DIR=<folder> → tangkapan layar halaman penuh di langkah kunci (opsional).
+const DIR_FOTO = process.env.COMM_UI_SCREENSHOT_DIR
+async function foto(p, nama) {
+  if (DIR_FOTO) await p.screenshot({ path: join(DIR_FOTO, `${nama}.png`), fullPage: true }).catch((e) => console.log(`  ⚠ foto ${nama} gagal: ${e?.message}`))
+}
 const rekamanApi = [] // { url, status, body } semua respons API komunikasi (untuk pemeriksaan data sensitif)
 async function konteks() {
   const ctx = await browser.newContext({ baseURL: BASE, locale: 'id-ID' })
@@ -212,6 +217,7 @@ try {
   for (const pn of ['UJI-UI-EOSP-UTAMA', 'UJI-UI-ETA', 'UJI-UI-ALLFAST', 'UJI-UI-SAILED']) cek(`pilot ${pn}: tombol tampil`, (await tombolSiap(pn)) === 1)
   for (const pn of ['UJI-UI-NONPILOT-COMMENCED', 'UJI-UI-NONPILOT-ACTUALMISSING', 'UJI-UI-NONPILOT-STATUS']) cek(`non-pilot ${pn}: TANPA tombol`, (await tombolSiap(pn)) === 0)
   cek('sidebar ADMIN: menu "Komunikasi (Simulasi)" ada', (await pAdmin.locator('a[href="/automation/communications"]', { hasText: 'Komunikasi (Simulasi)' }).count()) >= 1)
+  await foto(pAdmin, '01-alerts-tombol-siapkan-update')
 
   // ---------------------------------------------------------------- 2
   bagian('2. Prepare → Revise → Preview (snapshot tersimpan, penerima tersamar)')
@@ -221,6 +227,7 @@ try {
   cek('Prepare dari UI → candidate tersimpan untuk sinyal itu (tenant A)', cDb?.tenantId === ID_A && cDb?.voyageId === v1.id && cDb?.sourceRef === sEosp.sourceRef, cid)
   await pAdmin.locator('[data-testid="label-simulasi"]').first().waitFor()
   cek('ruang kerja: label "SIMULASI — TIDAK DIKIRIM KE WHATSAPP" tampil', (await pAdmin.locator('[data-testid="label-simulasi"]').first().innerText()).includes('SIMULASI — TIDAK DIKIRIM KE WHATSAPP'))
+  await foto(pAdmin, '02-ruang-kerja-label-simulasi')
   const opsi = await pAdmin.locator('[data-testid="pilih-fixture"] option').allInnerTexts()
   cek('pilihan penerima = fixture saja, tersamar (tanpa pengenal utuh)', opsi.length >= 1 && opsi.every((o) => o.includes('TEST_FIXTURE') && o.includes('•••') && !PENGENAL_UTUH.test(o)), opsi.join(' | '))
   cek('tanpa input nomor bebas / editor body (tak ada input teks/tel/textarea di ruang kerja)', (await pAdmin.locator('input[type="tel"], input[type="text"], input:not([type]), textarea, [contenteditable="true"]').count()) === 0)
@@ -249,6 +256,7 @@ try {
   await tombol(pAdmin, 'Tandai sudah dipratinjau').click()
   await tungguState(pAdmin, 'PREVIEWED')
   cek('Preview → PREVIEWED', true)
+  await foto(pAdmin, '03-pratinjau-snapshot-tersamar')
 
   // ---------------------------------------------------------------- 3
   bagian('3. Approval (fakta berubah → stale; disetujui MANAJER_OPERASI)')
@@ -265,6 +273,7 @@ try {
   await tombol(pAdmin, 'Minta approval').click()
   await pAdmin.locator('[data-testid="info-approval"]', { hasText: 'PENDING' }).waitFor({ timeout: 30000 })
   cek('Minta approval → PENDING', true)
+  await foto(pAdmin, '04-menunggu-approval')
   const pMo = await cxMo.newPage()
   await pMo.goto(`/automation/communications/${cid}`)
   await tungguState(pMo, 'PREVIEWED')
@@ -275,6 +284,7 @@ try {
   const apr = await adm.tahApprovalRequest.findFirst({ where: { tenantId: ID_A, status: 'APPROVED' }, orderBy: { createdAt: 'desc' } })
   const mo = await adm.user.findFirst({ where: { email: A.email.MANAJER_OPERASI } })
   cek('MANAJER_OPERASI menyetujui → APPROVED; pemutus & catatan tercatat', apr?.decidedByUserId === mo?.id && apr?.decisionNote === 'Disetujui uji UI')
+  await foto(pMo, '05-disetujui-manajer-operasi')
 
   // ---------------------------------------------------------------- 4
   bagian('4. FAKE Send — klik ganda tetap SATU kiriman')
@@ -297,6 +307,7 @@ try {
   cek('DB: FAKE_SENT dengan TEPAT 1 attempt, simulation=true, externalDelivery=false', mAkhir?.state === 'FAKE_SENT' && mAkhir.attempts.length === 1 && mAkhir.attempts[0].simulation === true && mAkhir.attempts[0].externalDelivery === false, `${mAkhir?.state} / ${mAkhir?.attempts.length}`)
   cek('panel FAKE_SENT: label SIMULASI tampil', (await pAdmin.locator(`${PANEL} [data-testid="label-simulasi"]`).innerText()).includes('SIMULASI — TIDAK DIKIRIM KE WHATSAPP'))
   cek('daftar attempt: simulation=true · externalDelivery=false', (await pAdmin.locator('[data-testid="daftar-attempt"]').innerText()).includes('simulation=true · externalDelivery=false'))
+  await foto(pAdmin, '06-fake-sent-attempt')
   cek('setelah FAKE_SENT: tanpa tombol FAKE Send, revisi, atau Batalkan', (await pAdmin.locator('[data-testid="tombol-fake-send"]').count()) === 0 && (await tombol(pAdmin, 'Buat revisi').count()) === 0 && (await tombol(pAdmin, 'Batalkan pesan').count()) === 0)
   // Klik ganda lewat API dengan requestKey berbeda → server tetap menolak kiriman kedua.
   const ulang = await postApi(cxAdmin, `/messages/${mAkhir.id}/send`, { requestKey: 'ui-uji-kirim-ulang-0001' })
@@ -307,11 +318,13 @@ try {
   bagian('5. History')
   const riwayat = await pAdmin.locator('[data-testid="riwayat"] li').allInnerTexts()
   cek('riwayat audit tampil (≥ 5 entri: prepare, revisi, preview, approval, send)', riwayat.length >= 5, `${riwayat.length} entri`)
+  await foto(pAdmin, '07-riwayat-audit')
   cek('riwayat tanpa pengenal utuh', !riwayat.some((r) => PENGENAL_UTUH.test(r)))
   // Penerima utuh HANYA atas permintaan eksplisit.
   await tombol(pAdmin, 'Tampilkan penerima utuh').click()
   await pAdmin.locator('[data-testid="penerima"]', { hasText: 'TEST_FIXTURE_WA_001' }).waitFor({ timeout: 15000 })
   cek('tombol "Tampilkan penerima utuh" → pengenal utuh tampil (permintaan eksplisit)', true)
+  await foto(pAdmin, '08-penerima-utuh-eksplisit')
 
   // ---------------------------------------------------------------- 6
   bagian('6. Daftar komunikasi')
@@ -321,6 +334,7 @@ try {
   cek('daftar: label SIMULASI tampil', (await pAdmin.locator('[data-testid="label-simulasi"]').innerText()).includes('SIMULASI — TIDAK DIKIRIM KE WHATSAPP'))
   cek('daftar: penerima tersamar, tanpa pengenal utuh', daftar.includes(SAMARAN_SUKSES) && !PENGENAL_UTUH.test(await pAdmin.content()))
   cek('daftar: tautan ke kandidat yang dibuat', (await pAdmin.locator(`a[href="/automation/communications/${cid}"]`).count()) === 1)
+  await foto(pAdmin, '09-daftar-komunikasi')
 
   // ---------------------------------------------------------------- 7
   bagian('7. Cancel (alasan wajib) dan FAKE gagal → tombol retry')
@@ -341,6 +355,7 @@ try {
   cek('riwayat memuat alasan pembatalan', (await pAdmin.locator('[data-testid="riwayat"]').innerText()).includes('Uji batal dari UI'))
   const mBatal = await adm.communicationMessage.findFirst({ where: { candidateId: cidBatal } })
   cek('DB: CANCELED / CANCELED_BY_USER', mBatal?.state === 'CANCELED' && mBatal?.reasonCode === 'CANCELED_BY_USER')
+  await foto(pAdmin, '10-dibatalkan-dengan-alasan')
 
   await pAdmin.goto('/automation/alerts')
   await pAdmin.locator('li', { hasText: 'UJI-UI-EOSP-GAGAL' }).locator('[data-testid="siapkan-update"]').click()
@@ -363,6 +378,7 @@ try {
   const mGagal = await adm.communicationMessage.findFirst({ where: { candidateId: cidGagal }, include: { attempts: true } })
   cek('DB: FAKE_FAILED dengan 1 attempt FAKE (simulation=true, externalDelivery=false)', mGagal?.state === 'FAKE_FAILED' && mGagal.attempts.length === 1 && mGagal.attempts[0].externalDelivery === false)
   cek('fixture FAIL → FAKE_FAILED; tombol berubah jadi "Ulangi FAKE Send"', (await pAdmin.locator('[data-testid="tombol-fake-send"]').innerText()).includes('Ulangi FAKE Send'))
+  await foto(pAdmin, '11-fake-failed-tombol-retry')
 
   // ---------------------------------------------------------------- 8
   bagian('8. Akses: role tak berwenang, tenant di luar allowlist, isolasi tenant')
@@ -371,6 +387,7 @@ try {
     const r = await pOp.goto(path)
     cek(`OPERATOR ${path.replace(cid, ':id')} → 404`, r?.status() === 404)
   }
+  await foto(pOp, '12-operator-404')
   await pOp.goto('/dashboard')
   cek('OPERATOR: menu Komunikasi tidak ada di sidebar', (await pOp.locator('a[href="/automation/communications"]').count()) === 0)
   const opPost = await postApi(cxOp, `/messages/${mAkhir.id}/cancel`, { cancelNote: 'coba' })
