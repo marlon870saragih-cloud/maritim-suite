@@ -142,6 +142,15 @@ model Tenant {
   communicationCandidates CommunicationCandidate[]
   communicationMessages   CommunicationMessage[]
   communicationAttempts   CommunicationAttempt[]
+
+  // --- WA-2a Step 2B (fondasi kontak/consent/akses principal — tanpa pengiriman nyata) ---
+  waContacts                    WaContact[]
+  waConsentStates               WaConsentState[]
+  waConsentEvents               WaConsentEvent[]
+  waPrincipalAccessGrants       WaPrincipalAccessGrant[]
+  waPrincipalAccessGrantVoyages WaPrincipalAccessGrantVoyage[]
+  waClientMessages              WaClientMessage[]
+  voyageScheduleConfirmations   VoyageScheduleConfirmation[]
 }
 
 model Payment {
@@ -264,6 +273,10 @@ model Principal {
   portCalls PortCall[]
   documents MaritimeDocument[]
   voyages   Voyage[]
+
+  // WA-2a Step 2B — hanya rujukan balik (FK NO ACTION di sisi WA-2a — menolak hapus pihak yang masih punya kontak/grant); tak ada kolom principal yang berubah.
+  waContacts              WaContact[]
+  waPrincipalAccessGrants WaPrincipalAccessGrant[]
 
   @@index([tenantId])
 }
@@ -505,6 +518,9 @@ model Customer {
 
   // --- Fase 8 ---
   portalAccesses PortalAccess[]
+
+  // WA-2a Step 2B — hanya rujukan balik (FK NO ACTION di sisi WA-2a — menolak hapus pihak yang masih punya kontak/grant); tak ada kolom customer yang berubah.
+  waContacts WaContact[]
 
   @@index([tenantId])
 }
@@ -780,6 +796,10 @@ model Voyage {
 
   // WA-1 Step 2B — kandidat update klien (FAKE). Hanya rujukan balik; tak ada kolom voyage yang berubah.
   communicationCandidates CommunicationCandidate[]
+
+  // WA-2a Step 2B — cakupan grant principal & konfirmasi jadwal. Hanya rujukan balik.
+  waPrincipalAccessGrantVoyages WaPrincipalAccessGrantVoyage[]
+  voyageScheduleConfirmations   VoyageScheduleConfirmation[]
 
   @@unique([tenantId, voyageNumber])
   @@unique([tenantId, sourceIntakeId])
@@ -2256,6 +2276,7 @@ model VesselCallIntake {
   @@index([tenantId, inputHash])
   @@index([voyageId])
 }
+
 // ============================================================================
 // PRD-005 Step 3A — TAH Core: buku besar eksekusi agen + gerbang persetujuan.
 //
@@ -2597,4 +2618,268 @@ model CommunicationAttempt {
 
   @@unique([messageId, attemptNo])
   @@unique([tenantId, idempotencyKey])
+}
+
+// ============================================================================
+// WA-2a Step 2B — fondasi kontak WhatsApp, consent, akses principal, pesan klien,
+// konfirmasi jadwal (docs/whatsapp/WA-2a-B-EVIDENCE.md; desain WA-2a-A rev2).
+// SCHEMA SAJA: tanpa service/API/UI, tanpa pengiriman nyata, tanpa Meta/LLM.
+// Status/kode = String (pola K55); daftar sahnya di src/services/whatsapp/wa2-policy.ts.
+// Kolom pengguna = String polos (pola AuditLog.userId).
+//
+// Penegakan DATABASE (bukan hanya service) — lihat migrasi 20261010180000_wa2a_contact_consent_access:
+//   • 5 CHECK (satu baris): pihak tepat-satu, kunci nomor aktif, pemutus ≠ pengaju,
+//     kategori data grant, field konfirmasi jadwal.
+//   • FK komposit (tenantId, …) antar-tabel BARU → tak bisa tercampur tenant.
+//   • Trigger (aturan lintas tabel yang melibatkan tabel LAMA, tanpa mengubah tabel lama):
+//     tenant pihak = tenant kontak; voyage cakupan grant = tenant & principal grant
+//     (hanya saat grant PENDING); kandidat (tanpa FK) & voyage = tenant baris; identitas kontak,
+//     identitas grant, status terminal, event consent, dan konfirmasi jadwal tak dapat
+//     diubah balik.
+// FK ke tabel lama: Tenant CASCADE (pola WA-1); Customer/Principal NO ACTION — menolak
+// penghapusan pihak yang masih punya kontak/grant (diperiksa di akhir statement, tidak
+// bergantung urutan cascade saat hapus TENANT).
+// ============================================================================
+
+/// PIC WhatsApp milik TEPAT SATU pihak (Customer ATAU Principal) dalam satu tenant.
+model WaContact {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  /// CUSTOMER | PRINCIPAL — tepat satu FK pihak terisi (CHECK WaContact_party_xor).
+  partyType   String
+  customerId  String?
+  customer    Customer?  @relation(fields: [customerId], references: [id], onDelete: NoAction)
+  principalId String?
+  principal   Principal? @relation(fields: [principalId], references: [id], onDelete: NoAction)
+
+  /// E.164 ter-normalisasi (validasi format di service). Tak pernah dicetak utuh di log/daftar.
+  e164          String
+  /// = e164 saat status ACTIVE, NULL selain itu (CHECK WaContact_active_key) → satu nomor
+  /// AKTIF per tenant (DB-3), pola activeKey WA-1.
+  activeE164Key String?
+
+  displayName String
+  /// ID | EN
+  language    String
+  /// ACTIVE | INACTIVE — INACTIVE terminal (trigger).
+  status      String @default("ACTIVE")
+
+  /// UNVERIFIED | VERIFIED
+  verificationStatus    String    @default("UNVERIFIED")
+  verifiedAt            DateTime?
+  verifiedByUserId      String?
+  verificationMethod    String?
+  verificationEvidence  String?
+  verificationExpiresAt DateTime?
+
+  deactivatedAt       DateTime?
+  deactivatedByUserId String?
+  deactivationReason  String?
+
+  createdByUserId String
+  version         Int      @default(1)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  consentStates  WaConsentState[]
+  consentEvents  WaConsentEvent[]
+  accessGrants   WaPrincipalAccessGrant[]
+  clientMessages WaClientMessage[]
+
+  @@unique([tenantId, activeE164Key])
+  /// Target FK komposit tabel anak (tenant-konsisten).
+  @@unique([tenantId, id])
+  /// Target FK komposit grant (grant.principalId = kontak.principalId).
+  @@unique([tenantId, id, principalId])
+  @@index([tenantId, partyType, customerId])
+  @@index([tenantId, partyType, principalId])
+}
+
+/// Status consent TERKINI per (kontak, tujuan) — baris yang dikunci saat diperiksa/diubah.
+model WaConsentState {
+  id        String    @id @default(cuid())
+  tenantId  String
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contactId String
+  contact   WaContact @relation(fields: [tenantId, contactId], references: [tenantId, id], onDelete: NoAction)
+
+  /// PROACTIVE_OPERATIONAL_UPDATE
+  purpose     String
+  /// NONE | OPT_IN | OPT_OUT
+  status      String  @default("NONE")
+  /// WaConsentEvent.id terakhir — SENGAJA tanpa FK (pola approvalRequestId WA-1).
+  lastEventId String?
+
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([contactId, purpose])
+}
+
+/// Bukti consent APPEND-ONLY (UPDATE ditolak trigger).
+model WaConsentEvent {
+  id        String    @id @default(cuid())
+  tenantId  String
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contactId String
+  contact   WaContact @relation(fields: [tenantId, contactId], references: [tenantId, id], onDelete: NoAction)
+
+  purpose     String
+  /// OPT_IN | OPT_OUT
+  action      String
+  /// WHATSAPP | EMAIL | FORM | CONTRACT | STAFF_RECORDED
+  channel     String
+  evidence    String
+  /// STAFF | SYSTEM (SYSTEM baru dipakai WA-2c)
+  actorType   String
+  actorUserId String?
+  occurredAt  DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, contactId, occurredAt])
+}
+
+/// Pemberian akses principal EKSPLISIT (K-05/K-05b). Default: tanpa grant = tanpa akses.
+model WaPrincipalAccessGrant {
+  id          String    @id @default(cuid())
+  tenantId    String
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contactId   String
+  /// FK komposit → kontak harus milik tenant & principal yang SAMA.
+  contact     WaContact @relation(fields: [tenantId, contactId, principalId], references: [tenantId, id, principalId], onDelete: NoAction)
+  principalId String
+  principal   Principal @relation(fields: [principalId], references: [id], onDelete: NoAction)
+
+  /// Subset STATUS | SCHEDULE_ESTIMATE | SCHEDULE_ACTUAL | MILESTONE (CHECK WaGrant_categories_allowed).
+  dataCategories       String[]
+  identityEvidence     String
+  relationshipEvidence String
+  authorityEvidence    String
+
+  /// PENDING | ACTIVE | REJECTED | REVOKED | EXPIRED — REJECTED/REVOKED/EXPIRED terminal (trigger).
+  status            String    @default("PENDING")
+  requestedByUserId String
+  /// ≠ requestedByUserId (CHECK WaGrant_maker_checker). Peran pemutus dicek service.
+  decidedByUserId   String?
+  decidedAt         DateTime?
+  decisionNote      String?
+  validUntil        DateTime?
+  revokedAt         DateTime?
+  revokedByUserId   String?
+  revokeReason      String?
+
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  voyages WaPrincipalAccessGrantVoyage[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, contactId, status])
+}
+
+/// Cakupan voyage satu grant. Trigger: voyage = tenant grant, Voyage.principalId = grant.principalId,
+/// dan hanya boleh ditambah selama grant PENDING (perluasan = grant baru).
+model WaPrincipalAccessGrantVoyage {
+  id       String                 @id @default(cuid())
+  tenantId String
+  tenant   Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  grantId  String
+  grant    WaPrincipalAccessGrant @relation(fields: [tenantId, grantId], references: [tenantId, id], onDelete: Cascade)
+  voyageId String
+  voyage   Voyage                 @relation(fields: [voyageId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([grantId, voyageId])
+  @@index([tenantId, voyageId])
+}
+
+/// Satu REVISI pesan proaktif ke KONTAK NYATA (pola CommunicationMessage WA-1). WA-2a: paling
+/// jauh APPROVED — tidak ada penyedia/pengiriman. Snapshot ditulis sekali saat INSERT.
+model WaClientMessage {
+  id          String                 @id @default(cuid())
+  tenantId    String
+  tenant      Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  /// CommunicationCandidate.id (D-T1, kandidat sumber WA-1 dipakai ulang) — SENGAJA tanpa FK/relasi Prisma
+  /// (pola approvalRequestId WA-1): model WA-1 tidak disentuh sama sekali (check-comm-schema beku melarang
+  /// medan baru di CommunicationCandidate). Trigger wa2a_client_message_guard memastikan kandidat ADA dan
+  /// milik tenant yang sama saat INSERT; riwayat pesan tetap utuh bila kandidat kelak terhapus.
+  candidateId String
+  revision    Int
+
+  contactId             String
+  contact               WaContact @relation(fields: [tenantId, contactId], references: [tenantId, id], onDelete: NoAction)
+  recipientE164Snapshot String
+  partyTypeSnapshot     String
+  partyIdSnapshot       String
+  grantIdSnapshot       String?
+  consentStateVersion   Int
+
+  logicalMessageKey String
+  /// = logicalMessageKey selama revisi belum terminal (pola WA-1 D-2B-02).
+  activeKey         String?
+  /// = logicalMessageKey hanya saat terkirim (WA-2b) → maksimal satu sukses.
+  successKey        String?
+
+  /// ID | EN
+  language            String
+  templateId          String
+  templateVersion     Int
+  body                String
+  fields              Json
+  sourceFingerprint   String
+  snapshotFingerprint String
+  freshnessVerdict    Json
+  /// CLIENT_REAL
+  mode                String
+
+  /// DRAFT | PREVIEWED | PENDING_APPROVAL | APPROVED | NEEDS_REVIEW | EXPIRED | REJECTED | BLOCKED | CANCELED
+  state             String    @default("DRAFT")
+  reasonCode        String?
+  previewedAt       DateTime?
+  previewedByUserId String?
+  /// TahApprovalRequest.id — SENGAJA tanpa FK (pola D-2B-01 WA-1).
+  approvalRequestId String?
+  approvedByUserId  String?
+  approvedAt        DateTime?
+  finalizedAt       DateTime?
+
+  createdByUserId String
+  version         Int      @default(1)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([candidateId, revision])
+  @@unique([tenantId, activeKey])
+  @@unique([tenantId, successKey])
+  @@index([tenantId, contactId, state])
+}
+
+/// B-3 — konfirmasi staf "jadwal masih berlaku". APPEND-ONLY kecuali satu kali invalidasi (trigger).
+/// BUKAN jaminan kebenaran ETA/ETD; berlaku hanya bila nilainya masih sama (dihitung saat dibaca).
+model VoyageScheduleConfirmation {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  voyageId String
+  voyage   Voyage @relation(fields: [voyageId], references: [id], onDelete: Cascade)
+
+  /// eta | etb | etd (CHECK VoyageScheduleConfirmation_field)
+  field             String
+  confirmedValue    DateTime
+  confirmedAt       DateTime @default(now())
+  confirmedByUserId String
+  /// MASTER_OR_SHIP | PRINCIPAL_OR_OWNER | PORT_OR_TERMINAL | AGENT_INTERNAL | OTHER
+  sourceKind        String
+  sourceNote        String
+
+  invalidatedAt       DateTime?
+  invalidatedByUserId String?
+  invalidatedReason   String?
+
+  @@index([tenantId, voyageId, field, confirmedAt])
 }
