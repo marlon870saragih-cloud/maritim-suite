@@ -71,3 +71,49 @@ export const KODE_GALAT_DB_WA2A = [
   'WA2A_CONFIRMATION_INVALID_AT_INSERT',
   'WA2A_CONFIRMATION_APPEND_ONLY',
 ] as const
+
+// ===================================================================== WA-2a Step 2C
+// Kontak & consent (desain historis 2a-C "kontak" + 2a-D "consent", digabung — keputusan owner C-1).
+
+/** Flag fitur WA-2a (harus PERSIS "true"; default mati). Produksi selalu ditolak di WA-2a. */
+export const FLAG_WA2 = 'WA2_CLIENT_FOUNDATION_ENABLED'
+
+/** C-2 — masa berlaku verifikasi kontak maksimum (bulan kalender). */
+export const MAKS_BULAN_VERIFIKASI = 12
+
+/** C-2 — alasan pembatalan verifikasi lebih cepat. Selalu mencabut grant ACTIVE kontak itu. */
+export const ALASAN_CABUT_VERIFIKASI = [
+  'PIC_CHANGED_COMPANY',
+  'RELATIONSHIP_ENDED',
+  'AUTHORITY_CHANGED',
+  'REVOKED_BY_AUTHORIZED_PARTY',
+  'EVIDENCE_INVALID',
+] as const
+
+/** Kanal yang sah sebagai bukti re-opt-in SETELAH OPT_OUT: pernyataan pelanggan, bukan catatan staf saja. */
+export const KANAL_REOPTIN_SAH = ['WHATSAPP', 'EMAIL', 'FORM', 'CONTRACT'] as const
+
+/** Status pesan klien yang masih bisa dibatalkan → NEEDS_REVIEW saat consent/kontak/akses dicabut. */
+export const STATUS_PESAN_DAPAT_DITAHAN = ['DRAFT', 'PREVIEWED', 'PENDING_APPROVAL', 'APPROVED'] as const
+
+/** Kode alasan service 2a-C (dipakai di `details.code` ServiceError & AuditLog). */
+export const KODE_ALASAN_WA2C = [
+  'WA2_DISABLED',
+  'WA2_ENV_NOT_ALLOWED',
+  'WA2_SYSTEM_CONTEXT_FORBIDDEN',
+  'PHONE_INVALID',
+  'PARTY_NOT_ELIGIBLE',
+  'CONTACT_NUMBER_IN_USE',
+  'CONTACT_INACTIVE',
+  'CONTACT_NOT_VERIFIED',
+  'VERIFICATION_EVIDENCE_REQUIRED',
+  'VERIFICATION_EXPIRY_INVALID',
+  'CONSENT_EVIDENCE_REQUIRED',
+  'CONSENT_REOPTIN_EVIDENCE_REQUIRED',
+  'CONSENT_NOT_GRANTED',
+  'CONTACT_INELIGIBLE',
+  'CONTACT_DEACTIVATED',
+  'VERIFICATION_REVOKED',
+  'CONCURRENCY_CONFLICT',
+] as const
+export type KodeAlasanWa2c = (typeof KODE_ALASAN_WA2C)[number]
