@@ -102,6 +102,15 @@ export const TENANT_MODELS: ReadonlySet<string> = new Set([
   'CommunicationCandidate',
   'CommunicationMessage',
   'CommunicationAttempt',
+
+  // --- WA-2a Step 2B — fondasi kontak WhatsApp/consent/akses principal (schema saja) ---
+  'WaContact',
+  'WaConsentState',
+  'WaConsentEvent',
+  'WaPrincipalAccessGrant',
+  'WaPrincipalAccessGrantVoyage',
+  'WaClientMessage',
+  'VoyageScheduleConfirmation',
 ])
 
 /** Operasi yang aman disaring lewat `where`. */
