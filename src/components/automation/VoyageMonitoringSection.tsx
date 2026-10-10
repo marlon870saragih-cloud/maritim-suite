@@ -19,7 +19,7 @@ const STR: Record<Lang, { title: string; desc: string }> = {
   },
 }
 
-export function VoyageMonitoringSection({ voyageId }: { voyageId: string }) {
+export function VoyageMonitoringSection({ voyageId, bisaSiapkanUpdate = false }: { voyageId: string; bisaSiapkanUpdate?: boolean }) {
   const t = useT(STR)
   return (
     <section className="bg-card-bg border border-dashed border-accent-blue/40 rounded-lg p-4 sm:p-5 space-y-4" aria-labelledby="ah-voyage-signals">
@@ -30,7 +30,7 @@ export function VoyageMonitoringSection({ voyageId }: { voyageId: string }) {
         <p className="mt-1 text-xs text-text-secondary">{t.desc}</p>
       </div>
       <VoyageAisPosition voyageId={voyageId} />
-      <SignalList voyageId={voyageId} showVoyage={false} />
+      <SignalList voyageId={voyageId} showVoyage={false} bisaSiapkanUpdate={bisaSiapkanUpdate} />
     </section>
   )
 }

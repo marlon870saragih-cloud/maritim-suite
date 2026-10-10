@@ -10,6 +10,7 @@ export function AppShell({
   principalCount,
   showAutomation = false,
   showIntake = false,
+  showKomunikasi = false,
   banner,
   children,
 }: {
@@ -21,6 +22,8 @@ export function AppShell({
   showAutomation?: boolean
   /** PRD-004 Step 3 — menu Vessel Call Intake (pagar Hub + flag intake, diputus server). */
   showIntake?: boolean
+  /** WA-1 Step 2I — menu Komunikasi (Simulasi) (pagar Hub + flag WA-1 + non-produksi, diputus server). */
+  showKomunikasi?: boolean
   banner?: ReactNode
   children: ReactNode
 }) {
@@ -34,6 +37,7 @@ export function AppShell({
           principalCount={principalCount}
           showAutomation={showAutomation}
           showIntake={showIntake}
+          showKomunikasi={showKomunikasi}
         />
         <div className="md:ml-[240px] print:ml-0 min-h-screen flex flex-col">
           <TopBar user={user} />

@@ -101,6 +101,13 @@ bagian('1. KUNCI SUMBER — yang tak boleh berubah di Step 3B')
     // Lalu PRD-005 Eval-4 final (DISETUJUI OWNER): jumlah perkiraan terlihat, tombol Tautkan disembunyikan untuk klasifikasi non-keagenan, pesan CLASSIFICATION_NOT_LINKABLE. Rute API tidak berubah.
     // Lalu PRD-005 GENERALIZED VALIDATOR V3 (DISETUJUI OWNER): UI muatan menampilkan label flag V3 (review/jejak/informatif). Rute API tidak berubah.
     ruteDanUiIntake: '930b347ec364004ee21ff3d3b4d9e55b44a932fc2b35fff6ae9d5b282dcc4048',
+    // ↑ HISTORIS — bukti Validator V3 FINAL FREEZE (dipasang 1799a39, berlaku s.d. f97c94e): SHA gabungan rute intake +
+    // SELURUH isi src/components/automation. Tidak dihapus/diganti; sejak WA-1 Step 2I (DISETUJUI OWNER, opsi b) tidak
+    // lagi dihitung ulang karena folder itu kini juga memuat UI Komunikasi (Simulasi).
+    // Penggantinya — cakupan beku yang sama MINUS dua komponen monitoring non-intake yang diubah Step 2I (SignalList,
+    // VoyageMonitoringSection), PLUS setiap berkas Intake*/intake-* baru. Diturunkan dari byte f97c94e, tempat SHA
+    // historis di atas terbukti cocok; byte berkas tercakup identik dengan saat freeze.
+    ruteDanUiIntakeBeku: 'a133f3522fe6354666640244adfe9644a2ee73f4ab914d4f9cf40129f7be2d4a',
   }
   const fungsi = (src, nama) => {
     const i = src.indexOf(`export async function ${nama}(`)
@@ -134,9 +141,13 @@ bagian('1. KUNCI SUMBER — yang tak boleh berubah di Step 3B')
     'src/app/api/automation/intakes/[id]/retry/route.ts',
     'src/app/api/automation/intakes/[id]/route.ts',
     'src/app/api/automation/intakes/route.ts',
-    ...readdirSync(join(AKAR, 'src/components/automation')).map((f) => `src/components/automation/${f}`),
-  ].sort()
-  cek('rute API & UI intake/automation tak berubah (alur tampak pelanggan tetap)', sha(DAFTAR_RUTE.map((f) => f + '\n' + baca(f)).join('\n')) === SIDIK.ruteDanUiIntake)
+    // Komponen yang ada saat freeze V3 dan tak disentuh WA-1 Step 2I (lihat SIDIK.ruteDanUiIntakeBeku).
+    ...['AisHealthCard.tsx', 'IntakeList.tsx', 'IntakeReview.tsx', 'MonitoringHealthCard.tsx', 'MonitoringOverview.tsx', 'VoyageAisPosition.tsx', 'intake-shared.tsx', 'shared.tsx'].map((f) => `src/components/automation/${f}`),
+    // Berkas intake BARU apa pun di folder itu ikut tercakup → mengubah sidik → gagal (perubahan intake ilegal).
+    ...readdirSync(join(AKAR, 'src/components/automation')).filter((f) => /^(Intake|intake-)/.test(f)).map((f) => `src/components/automation/${f}`),
+  ]
+  const DAFTAR_BEKU = Array.from(new Set(DAFTAR_RUTE)).sort()
+  cek('rute API & UI intake (+ komponen automation era freeze yang tak diubah) tak berubah (alur tampak pelanggan tetap)', sha(DAFTAR_BEKU.map((f) => f + '\n' + baca(f)).join('\n')) === SIDIK.ruteDanUiIntakeBeku)
 
   const i = svc.indexOf('export async function submitIntake(')
   const s = svc.slice(i, svc.indexOf('\nexport async function ', i + 10))

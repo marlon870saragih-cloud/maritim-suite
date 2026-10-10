@@ -4,13 +4,25 @@
 // Dipakai halaman Alerts (lintas voyage) dan section pemantauan di halaman voyage.
 // Peninjauan hanya mengubah status sinyal; tak pernah menyentuh data voyage.
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { Loader2, RefreshCw } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Loader2, MessageSquarePlus, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useLang, useT, type Lang } from '@/lib/i18n'
 import type { SinyalDto } from '@/services/automation/monitoring.service'
 import { LABEL_JENIS, LABEL_REVIEW, SeverityBadge, btnCls, fmtWaktu } from './shared'
+import { jelaskanAlasan, panggilApi } from './comm-shared'
+
+// WA-1 Step 2I — tombol "Siapkan Update Klien" HANYA untuk empat event pilot (ETA/ETD, EOSP, ALL_FAST, SAILED)
+// pada sinyal OPEN/ACKNOWLEDGED (P-08). Ini penyaring tampilan; server tetap memutus (EVENT_NOT_ALLOWED dsb.).
+const MILESTONE_PILOT = ['EOSP', 'ALL_FAST', 'SAILED']
+function sinyalPilot(s: SinyalDto): boolean {
+  if (s.reviewState !== 'OPEN' && s.reviewState !== 'ACKNOWLEDGED') return false
+  if (s.kind === 'ETA_CHANGED') return true
+  const after = s.after && typeof s.after === 'object' ? (s.after as Record<string, unknown>) : null
+  return s.kind === 'OPERATIONAL_EVENT_RECORDED' && typeof after?.eventCode === 'string' && MILESTONE_PILOT.includes(after.eventCode)
+}
 
 type Filter = 'OPEN' | 'ALL'
 
@@ -23,6 +35,7 @@ const STR: Record<Lang, Record<string, string>> = {
     reviewedBy: 'Ditinjau oleh', note: 'Catatan', acknowledge: 'Akui', dismiss: 'Abaikan',
     confirmAck: 'Akui sinyal ini?', confirmDismiss: 'Abaikan sinyal ini?', noteLabel: 'Catatan (opsional, maks. 500)',
     confirm: 'Konfirmasi', cancel: 'Batal', errReview: 'Gagal meninjau sinyal.', voyage: 'Voyage',
+    prepare: 'Siapkan Update Klien',
   },
   en: {
     filterState: 'State', open: 'Open', all: 'All', filterSeverity: 'Severity', anySeverity: 'Any severity',
@@ -32,6 +45,7 @@ const STR: Record<Lang, Record<string, string>> = {
     reviewedBy: 'Reviewed by', note: 'Note', acknowledge: 'Acknowledge', dismiss: 'Dismiss',
     confirmAck: 'Acknowledge this signal?', confirmDismiss: 'Dismiss this signal?', noteLabel: 'Note (optional, max 500)',
     confirm: 'Confirm', cancel: 'Cancel', errReview: 'Failed to review signal.', voyage: 'Voyage',
+    prepare: 'Prepare client update',
   },
 }
 
@@ -39,9 +53,24 @@ const selectCls =
   'bg-surface border border-border-muted rounded px-2.5 py-2 min-h-[36px] text-sm text-text-primary ' +
   'focus:border-accent-blue focus:outline-none focus:ring-1 focus:ring-accent-blue/40'
 
-export function SignalList({ voyageId, showVoyage = true }: { voyageId?: string; showVoyage?: boolean }) {
+export function SignalList({ voyageId, showVoyage = true, bisaSiapkanUpdate = false }: { voyageId?: string; showVoyage?: boolean; bisaSiapkanUpdate?: boolean }) {
   const t = useT(STR)
   const { lang } = useLang()
+  const router = useRouter()
+  const menyiapkan = useRef(false)
+  const [siapkanId, setSiapkanId] = useState<string | null>(null)
+
+  async function siapkanUpdate(signalId: string) {
+    if (menyiapkan.current) return
+    menyiapkan.current = true
+    setSiapkanId(signalId)
+    setError('')
+    const r = await panggilApi<{ hasil: string; candidateId: string | null; alasan?: string }>('/candidates', 'POST', { signalId })
+    menyiapkan.current = false
+    setSiapkanId(null)
+    if (r.ok && r.data.candidateId) router.push(`/automation/communications/${r.data.candidateId}`)
+    else setError(r.ok ? jelaskanAlasan(r.data.alasan, lang) : r.pesan)
+  }
   const [rows, setRows] = useState<SinyalDto[]>([])
   const [state, setState] = useState<Filter>('OPEN')
   const [severity, setSeverity] = useState<string>('')
@@ -180,6 +209,20 @@ export function SignalList({ voyageId, showVoyage = true }: { voyageId?: string;
                     {t.reviewedBy} {s.reviewedByName ?? '—'} · {fmtWaktu(s.reviewedAt, lang)}
                     {s.reviewNote ? ` · ${t.note}: ${s.reviewNote}` : ''}
                   </p>
+                )}
+
+                {bisaSiapkanUpdate && sinyalPilot(s) && (
+                  <div className="mt-3">
+                    <button
+                      type="button"
+                      data-testid="siapkan-update"
+                      onClick={() => void siapkanUpdate(s.id)}
+                      disabled={siapkanId !== null}
+                      className={cn(btnCls, 'border border-accent-blue/50 text-accent-blue hover:bg-accent-blue/10')}
+                    >
+                      {siapkanId === s.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" /> : <MessageSquarePlus className="w-3.5 h-3.5" aria-hidden="true" />} {t.prepare}
+                    </button>
+                  </div>
                 )}
 
                 {s.reviewState === 'OPEN' && !sedangTinjau && (

@@ -19,6 +19,7 @@ import { ServiceError } from '@/services/errors'
 import { VoyageWorkspace } from '@/components/voyage/VoyageWorkspace'
 import { bolehAksesAutomation } from '@/services/automation/access'
 import { VoyageMonitoringSection } from '@/components/automation/VoyageMonitoringSection'
+import { bolehAksesKomunikasi } from '@/services/communication/comm-access'
 import { bolehAksesIntake } from '@/services/intake/intake-access'
 
 export const dynamic = 'force-dynamic'
@@ -87,6 +88,8 @@ export default async function VoyageDetailPage({ params }: { params: { id: strin
   // Timeline/Peristiwa (sinyal otomasi ≠ fakta SOF). Hanya untuk tenant di
   // allowlist + ADMIN/MANAJER_OPERASI.
   const showMonitoring = bolehAksesAutomation(ctx)
+  // WA-1 Step 2I — tombol "Siapkan Update Klien" hanya bila komunikasi WA-1 (simulasi) aktif.
+  const showKomunikasi = bolehAksesKomunikasi(ctx)
   // PRD-004 Step 3 — asal intake hanya ditampilkan untuk pemegang akses intake.
   const asalIntake = voyage.sourceIntakeId && bolehAksesIntake(ctx) ? voyage.sourceIntakeId : null
 
@@ -122,7 +125,7 @@ export default async function VoyageDetailPage({ params }: { params: { id: strin
         voyageVessels={kapalVoyage(voyage, voyage.vessels)}
       />
 
-      {showMonitoring && <VoyageMonitoringSection voyageId={voyage.id} />}
+      {showMonitoring && <VoyageMonitoringSection voyageId={voyage.id} bisaSiapkanUpdate={showKomunikasi} />}
     </div>
   )
 }
