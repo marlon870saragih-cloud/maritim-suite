@@ -2,7 +2,7 @@
 
 | Item | Nilai |
 |---|---|
-| Status | **SELESAI DI LOKAL — menunggu review owner** (PR OPEN, belum di-merge) |
+| Status | **Perbaikan pra-merge #1 & #2 selesai — menunggu review akhir owner** (PR #27 OPEN, belum di-merge) |
 | Persetujuan | K1–K11 (preflight F4), pengecualian uji E1–E7 per baris persis, perubahan terbatas `wa-contact/wa-consent/wa-grant/wa-message.service.ts` + `ops/voyage-event.service.ts` |
 | Basis | `main` @ `0ad92516959e8b89e4f0945baccc03e8145a32d6` (PR #26 perbaikan uji 2B merged), working tree bersih sebelum mulai |
 | Cakupan | Service layer saja. Berhenti di **APPROVED** — tanpa Send, provider, route API, UI, LLM, migrasi |
@@ -64,8 +64,10 @@ Pesan APPROVED **tidak dikirim**: `successKey` tetap kosong, tak ada state kirim
 
 | Suite | Hasil |
 |---|---|
-| `check-wa2a-approval-f4` (F4 statis + murni) | **59/0** |
-| `check-wa2a-approval-f4-db` (F4 DB) | **109/0** — stabil di ≥ 4 jalan berturut-turut |
+| `check-wa2a-approval-f4` (F4 statis + murni) | **60/0** (perbaikan pra-merge; sebelumnya 59) |
+| `check-wa2a-approval-f4-db` (F4 DB) | **117/0** (perbaikan pra-merge; sebelumnya 109) |
+| `check-voyage-event-api` (HTTP route POST/DELETE, baru) | cabang **27/0**, `main` **25/0**; transkrip ternormalisasi **identik** (lihat §6) |
+| `check-automation-api` / `check-owner-guard` (HTTP, seed sah) | cabang 104/0 & 26/0; `main` 104/0 & 26/0 |
 | `check-wa2a-message-f3` / `-db` | 54/0, 72/0 |
 | `check-wa2a-message-policy` (F1) / `check-wa2a-template` (F2) | 90/0, 51/0 |
 | `check-wa2a-schema` (2B, statis + DB) | 130/0 (sebelum **dan** sesudah commit) |
@@ -82,7 +84,7 @@ Pesan APPROVED **tidak dikirim**: `successKey` tetap kosong, tak ada state kirim
 
 **Kegagalan baseline yang dicatat terpisah (bukan regresi F4):**
 - `check-validator-remediasi` **61/9** — identik di `main` sebelum F4 (dicatat sejak PR #26). Tidak diperbaiki (di luar lingkup).
-- `check-owner-guard` dan `check-automation-api` membutuhkan DB dev dengan tenant seed "Tribuana"/"Verifikasi" yang tidak ada di klaster uji sekali pakai → tidak dapat dijalankan di lingkungan ini. Artinya jalur HTTP `POST/DELETE /api/voyages/[id]/events` **tidak** diuji lewat HTTP; perilaku service-nya diuji langsung di `check-wa2a-approval-f4-db` [K1].
+- ~~`check-owner-guard` / `check-automation-api` tidak dapat dijalankan~~ — **diselesaikan pada perbaikan pra-merge #2** (§6): dijalankan dengan seed sah di klaster sekali pakai, di server kode cabang dan kode `main`.
 
 ### 3.1 Konkurensi nyata (service ∥ service, 10× tiap skenario, jeda bertingkat 0–600 ms)
 
@@ -153,4 +155,60 @@ Uji negatif: menambah satu baris tak disetujui di `wa-contact.service.ts` → `c
 2. Hold yang dipicu jalur WA-2 menghentikan approval; perubahan Voyage di service operasional **tidak** memicu hold (tidak diperluas di F4).
 3. Batas kedaluwarsa ±1 ms dibuktikan pada fungsi murni (jam disuntikkan); di DB diuji −1 ms (kedaluwarsa) dan +60 s (belum), karena jam server tidak dapat dibekukan tanpa mengubah service.
 4. `process.env.NODE_ENV` dibaca sekali di service approval (untuk definisi beku `hanyaNonProduksi`) — lapis kedua setelah gerbang WA-2.
-5. `createVoyageEvent`/`removeVoyageEvent` kini menunggu sebentar bila ada transaksi WA-2 pada voyage yang sama (milidetik). Uji HTTP operasional (`check-automation-api`) tidak dapat dijalankan di sini (butuh seed DB dev).
+5. `createVoyageEvent`/`removeVoyageEvent` kini menunggu sebentar bila ada transaksi WA-2 pada voyage yang sama (milidetik). Dibuktikan lewat HTTP pada perbaikan #2 (§6).
+6. Transaksi interaktif service memakai timeout bawaan Prisma **5000 ms**: penantian kunci > 5 s membatalkan `setujui` (rollback, approval tetap PENDING — gagal tertutup, diuji). Akibatnya di bawah antrean kunci panjang checker bisa mendapat galat dan perlu mengulang; tidak mengubah keamanan.
+
+## 6. Perbaikan pra-merge (review owner atas PR #27 @ `309ea16`)
+
+### 6.1 Perbaikan #1 — freshness pada jam keputusan
+
+**Masalah (dikonfirmasi):** `setujuiPesanKlien` mengambil `sekarang` sebelum penantian kunci (kontak/consent/grant/bukti/kandidat/approval); jam baru menjelang APPROVED hanya dipakai untuk TTL approval. Transaksi yang tertahan kunci dapat menyetujui bukti yang sudah melewati batas.
+
+**Bukti sebelum perbaikan (kode `309ea16`, uji adversarial baru):** 4 dari 5 kasus mencapai **APPROVED** dengan bukti yang sudah kedaluwarsa saat keputusan ditulis — konfirmasi ETA > 12 jam, milestone > 24 jam, verifikasi kontak lewat, grant snapshot lewat. Hanya TTL approval yang sudah tertangani (→ KEDALUWARSA).
+
+**Perbaikan (satu blok di `setujuiPesanKlien`):** sesudah `kunciCandidate` + `kunciUlang` (semua baris terkunci), `akhir = new Date()` lalu:
+1. TTL approval dengan `akhir` (sudah ada);
+2. **revalidasi penuh `revalidasiPesan(ctx, tx, s.m, akhir)`** — kontak ACTIVE/VERIFIED, consent+versi, akses/kategori, grant snapshot (`validUntil > akhir`), kandidat, sumber, freshness D6 (≤ 12 jam / ≤ 24 jam), K7;
+3. gagal → `tahanPesan` (approval dihentikan, NEEDS_REVIEW/BLOCKED) di transaksi yang sama;
+4. maker-checker K5 atas pencatat bukti snapshot ∪ evaluasi pertama ∪ evaluasi akhir;
+5. baru APPROVED dengan `decidedAt = approvedAt = akhir`; audit mencatat `dinilaiPada`.
+
+Urutan kunci tetap (semua baris sudah terkunci sebelum `akhir`; evaluasi ulang tidak menunggu kunci baru), snapshot tetap immutable, audit tetap atomik.
+
+**Uji adversarial ([T] di `check-wa2a-approval-f4-db`):** transaksi lain memegang `WaContact` FOR UPDATE → `setujui` menunggu di kunci pertamanya ~3 s; bukti dijadwalkan habis ~1,2 s sesudah `setujui` mulai. Uji memvalidasi dirinya: bukti **wajib segar saat mulai** dan **wajib lewat batas saat kunci dilepas**, dan `setujui` **wajib benar-benar menunggu**.
+
+| Kasus | Sebelum | Sesudah |
+|---|---|---|
+| konfirmasi ETA melewati 12 jam selama menunggu | APPROVED ❌ | DITAHAN `CONFIRMATION_EXPIRED`, approval CANCELLED ✅ |
+| milestone melewati 24 jam selama menunggu | APPROVED ❌ | DITAHAN `EVENT_TOO_OLD` ✅ |
+| verifikasi kontak kedaluwarsa selama menunggu | APPROVED ❌ | DITAHAN `CONTACT_INELIGIBLE` ✅ |
+| grant snapshot kedaluwarsa selama menunggu | APPROVED ❌ | DITAHAN `ACCESS_DENIED` ✅ |
+| TTL approval lewat selama menunggu | KEDALUWARSA ✅ | KEDALUWARSA ✅ |
+| batas BELUM terlewati (jadwal; milestone) walau menunggu | APPROVED | APPROVED ✅ (tidak terlalu ketat) |
+| tahanan > 5 s (timeout transaksi service) | — | setujui gagal & rollback, approval PENDING ✅ |
+
+**Mutasi:** M19 (revalidasi akhir memakai jam lama) dan M20 (revalidasi akhir dihapus, hanya TTL) → keduanya **tertangkap** (statis 2 + DB 4 masing-masing). Total mutasi F4: **19/20 tertangkap** (M16 tetap mutan ekuivalen).
+
+*Catatan:* `mintaApprovalPesanKlien` juga menilai freshness dengan jam awal transaksi; tidak diubah karena permintaan tidak menghasilkan APPROVED dan keputusan selalu menilai ulang dengan jam akhir.
+
+### 6.2 Perbaikan #2 — kompatibilitas route VoyageEvent (K1)
+
+**Temuan:** `check-automation-api` hanya mencakup **POST** `/events` (detektor pemantauan), tidak DELETE. Maka dibuat uji ekuivalen pada route sebenarnya: `prisma/check-voyage-event-api.mjs` (sesi login NextAuth → route → `withTenant` → service → DB; hanya loopback; data `VEAPI-` dihapus di akhir).
+
+**Lingkungan:** PostgreSQL 16 loopback sekali pakai (`migrate deploy`), `next dev` localhost. Seed sah untuk suite bernama: 3 tenant sintetis (`Tribuana Seed Uji A` di allowlist Automation, `Verifikasi Seed Uji B`, `Tribuana Seed Uji Kembar C`), dihapus sesudah uji. Produksi tidak disentuh.
+
+**Diferensial:** suite yang sama dijalankan terhadap server **kode `main` (`0ad9251`, git worktree)** dan **kode cabang**; transkrip (status + body, id/waktu dinormalisasi ke label) ditulis lalu dibandingkan byte-per-byte.
+
+| Suite | `main` | cabang |
+|---|---|---|
+| `check-voyage-event-api` (25 langkah: POST 401/403/201×3/400×4/404×4/403 langganan; GET urutan; 6 POST bersamaan; DELETE 401/403/404×5/200; GET sesudah hapus) | 25/0 | 25/0 + 2 K1 = **27/0** |
+| transkrip ternormalisasi | — | **IDENTIK** dengan `main` |
+| K1 lewat HTTP: POST & DELETE **menunggu** selama Voyage dipegang FOR SHARE, lalu 201/200 | (tidak berlaku) | ✅ |
+| `check-automation-api` (termasuk POST `/events` dari detektor) | 104/0 | 104/0 |
+| `check-owner-guard` | 26/0 | 26/0 |
+
+Penambahan path persis `prisma/check-voyage-event-api.mjs` ke daftar lingkup F1/F2/F3/F4 (mekanisme E4 yang sama).
+
+### 6.3 Gate ulang sesudah kedua perbaikan
+
+F4 statis 60/0 · F4 DB 117/0 · F3 54/0 & 72/0 · F1 90/0 · F2 51/0 · 2B 130/0 · 2C 29/0 & 67/0 · 2E 28/0 & 68/0 · comm-policy 326/0 · comm-schema 85/0 · comm prepare/read/approval/cancel/send 98/0, 42/0, 95/0, 73/0, 118/0 (jumlah send bervariasi 117–121, juga di `main`) · TAH 322/0 & 98/0 · V3 226/0 · tsc & eslint bersih · `migrate diff` tanpa perbedaan · `git diff main` atas WA-1/TAH/schema/migrasi/route = kosong. Baseline `check-validator-remediasi` 61/9 tetap (identik `main`). Suite HTTP WA-1 (comm-api/e2e/ui) tidak dijalankan ulang: perbaikan tidak menyentuh WA-1, route, auth, atau UI (hasil sebelumnya 43/0, 108/0, 55/0).
