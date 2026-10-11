@@ -14,7 +14,8 @@
 // Lapis:
 //   S1. schema — 7 model, tenant CASCADE, FK pihak NO ACTION, FK komposit, unik, TENANT_MODELS.
 //   S2. migrasi — murni aditif (hanya tabel baru), 5 CHECK, trigger hanya pada tabel baru.
-//   S3. lingkup — tabel baru hanya dipakai src/services/whatsapp/ (sejak 2C); berkas beku tidak tersentuh.
+//   S3. lingkup — tabel baru hanya dipakai src/services/whatsapp/ (sejak 2C); berkas beku tidak tersentuh
+//       dibanding basis merge-base(HEAD, main) — ter-commit, belum di-commit, dan untracked.
 //   D1. objek DB nyata (tabel, CHECK, trigger, aksi FK).
 //   D2. kontak: pihak tepat-satu, kunci aktif, nomor aktif unik (DB-3), identitas & INACTIVE terminal.
 //   D3. consent: FK komposit tenant, append-only, identitas state.
@@ -95,9 +96,26 @@ cek('Model lama: hanya rujukan balik (tanpa kolom skalar baru)', (() => {
   const lama = { Tenant: 'tenant', Customer: '', Principal: '', Voyage: '', CommunicationCandidate: '' }
   return Object.keys(lama).every((m) => !/^\s+(wa|voyageSchedule)\w*\s+(String|Int|DateTime|Boolean|Json)/m.test(blok(m)))
 })())
-const schemaHead = execFileSync('git', ['show', 'HEAD:prisma/schema.prisma'], { cwd: AKAR, encoding: 'utf8' })
-const blokDari = (src, m) => src.match(new RegExp(`\\nmodel ${m} \\{([\\s\\S]*?)\\n\\}`))?.[1] ?? null
-cek('model WA-1/TAH (CommunicationCandidate/Message/Attempt, TahApprovalRequest) IDENTIK dengan HEAD', ['CommunicationCandidate', 'CommunicationMessage', 'CommunicationAttempt', 'TahApprovalRequest', 'AgentRun'].every((m) => blokDari(schemaHead, m) !== null && blokDari(schemaHead, m) === blok(m)))
+// Basis pembanding (perbaikan uji 2B): BUKAN `HEAD` — pembanding HEAD buta terhadap perubahan yang sudah
+// di-commit. Basis = merge-base(HEAD, main); ref lokal `main` WAJIB ada dan SAMA dengan `origin/main`, selain itu
+// GAGAL TERTUTUP (perbarui: `git fetch origin main && git branch -f main origin/main`). Kesegaran origin/main
+// sendiri terhadap GitHub tidak diperiksa (uji tanpa jaringan). Di `main` sendiri basis = HEAD, sehingga yang
+// terjaga hanya perubahan belum di-commit — yang sudah merge telah melewati gerbang PR.
+const gitTeks = (args) => execFileSync('git', args, { cwd: AKAR, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024 })
+const gitAtauNull = (args) => {
+  try {
+    return gitTeks(args)
+  } catch {
+    return null
+  }
+}
+const shaMain = gitAtauNull(['rev-parse', '--verify', '--quiet', 'refs/heads/main^{commit}'])?.trim() || null
+const shaOrigin = gitAtauNull(['rev-parse', '--verify', '--quiet', 'refs/remotes/origin/main^{commit}'])?.trim() || null
+const BASIS = shaMain && shaOrigin && shaMain === shaOrigin ? gitAtauNull(['merge-base', 'HEAD', shaMain])?.trim() || null : null
+cek('basis lingkup: ref main ada, sama dengan origin/main, merge-base dengan HEAD ditemukan', BASIS !== null, BASIS ? `basis ${BASIS.slice(0, 12)}` : `main=${shaMain ?? 'TIDAK ADA'} origin/main=${shaOrigin ?? 'TIDAK ADA'} — GAGAL TERTUTUP`)
+const schemaBasis = BASIS ? gitAtauNull(['show', `${BASIS}:prisma/schema.prisma`]) : null
+const blokDari = (src, m) => src?.match(new RegExp(`\\nmodel ${m} \\{([\\s\\S]*?)\\n\\}`))?.[1] ?? null
+cek('model WA-1/TAH (CommunicationCandidate/Message/Attempt, TahApprovalRequest, AgentRun) IDENTIK dengan basis main', schemaBasis !== null && ['CommunicationCandidate', 'CommunicationMessage', 'CommunicationAttempt', 'TahApprovalRequest', 'AgentRun'].every((m) => blokDari(schemaBasis, m) !== null && blokDari(schemaBasis, m) === blok(m)))
 cek('WaClientMessage.candidateId TANPA relasi/FK ke CommunicationCandidate (model WA-1 tak disentuh)', /candidateId String/.test(blok('WaClientMessage')) && !/CommunicationCandidate\s+@relation/.test(blok('WaClientMessage')))
 cek('Kosakata wa2-policy selaras CHECK (kategori grant, field konfirmasi, pihak)', K.KATEGORI_DATA_GRANT.join() === 'STATUS,SCHEDULE_ESTIMATE,SCHEDULE_ACTUAL,MILESTONE' && K.FIELD_KONFIRMASI_JADWAL.join() === 'eta,etb,etd' && K.JENIS_PIHAK_KONTAK.join() === 'CUSTOMER,PRINCIPAL')
 
@@ -137,10 +155,30 @@ cek('tabel WA-2a hanya dipakai lapisan service src/services/whatsapp/ (tanpa rou
 cek('pemindai pemakai benar-benar menemukan pemakai yang sah (bukan pemeriksaan kosong)', pemakai.length >= 3 && pemakai.every((f) => f.startsWith('src/services/whatsapp/')), `${pemakai.length} berkas`)
 const policy = baca('src/services/whatsapp/wa2-policy.ts').replace(/\/\/[^\n]*|\/\*\*?[\s\S]*?\*\//g, '')
 cek('wa2-policy.ts: data saja (tanpa impor, process.env, DB, jaringan)', !/^\s*import\s/m.test(policy) && !/process\.env|prisma|fetch\(/.test(policy))
-const berubah = execFileSync('git', ['diff', '--name-only', 'HEAD'], { cwd: AKAR, encoding: 'utf8' }).trim().split('\n').filter(Boolean)
-const baru = execFileSync('git', ['ls-files', '--others', '--exclude-standard'], { cwd: AKAR, encoding: 'utf8' }).trim().split('\n').filter(Boolean)
+// Working tree vs basis = perubahan TER-COMMIT + BELUM di-commit; untracked ditambahkan; --no-renames supaya
+// berkas beku yang dipindah tetap muncul sebagai terhapus.
+const berubah = BASIS ? gitAtauNull(['diff', '--no-renames', '--name-only', BASIS])?.split('\n').filter(Boolean) ?? null : null
+const baru = gitTeks(['ls-files', '--others', '--exclude-standard']).split('\n').filter(Boolean)
 const BEKU = [/^src\/services\/communication\//, /^src\/services\/tah\//, /^src\/services\/intake\//, /^docs\/whatsapp\/PRD-WA-1\.md$/, /^prisma\/check-comm-/, /^prisma\/check-tah-/, /^prisma\/check-validator/, /^prisma\/migrations\/(?!20261010180000_)/]
-cek('tidak ada berkas WA-1 / TAH / Validator V3 / migrasi lama yang berubah', [...berubah, ...baru].every((f) => !BEKU.some((r) => r.test(f))), [...berubah, ...baru].join(', '))
+// Pengecualian per BARIS yang DISETUJUI owner — DEFAULT KOSONG. Entri: path persis (tanpa wildcard) →
+//   { hapus: ['baris lama persis', …], tambah: ['baris baru persis', …] }
+// Diff -U0 berkas terhadap basis harus SAMA PERSIS dengan entri (isi & urutan, tanpa trim). Berkas beku
+// untracked tidak pernah dikecualikan. Selain itu → ditolak.
+const BARIS_2B = {}
+const diffSesuai2B = (f) => {
+  const a = Object.hasOwn(BARIS_2B, f) ? BARIS_2B[f] : null
+  if (!a || !BASIS || baru.includes(f) || a.hapus.length + a.tambah.length === 0) return false
+  const d = gitAtauNull(['diff', '--no-renames', '-U0', BASIS, '--', f])
+  if (d === null) return false
+  const isi = d.split('\n').filter((l) => /^[-+]/.test(l) && !/^(---|\+\+\+) (a\/|b\/|\/dev\/null)/.test(l))
+  const hapus = isi.filter((l) => l.startsWith('-')).map((l) => l.slice(1))
+  const tambah = isi.filter((l) => l.startsWith('+')).map((l) => l.slice(1))
+  return hapus.join('\n') === a.hapus.join('\n') && tambah.join('\n') === a.tambah.join('\n')
+}
+const daftarBerubah = berubah === null ? null : [...new Set([...berubah, ...baru])]
+const bekuTersentuh = (daftarBerubah ?? []).filter((f) => BEKU.some((r) => r.test(f)))
+cek('tidak ada berkas WA-1 / TAH / Validator V3 / migrasi lama yang berubah terhadap basis main (ter-commit, belum di-commit, untracked) kecuali baris BARIS_2B persis', daftarBerubah !== null && bekuTersentuh.every(diffSesuai2B), daftarBerubah === null ? 'basis tidak tersedia — GAGAL TERTUTUP' : bekuTersentuh.join(', ') || `${daftarBerubah.length} berkas berubah, tanpa berkas beku`)
+cek('BARIS_2B hanya untuk berkas beku, path persis (tanpa wildcard)', Object.keys(BARIS_2B).every((f) => BEKU.some((r) => r.test(f)) && !/[*?[\]{}]/.test(f)))
 
 // ============================================================================ DB
 const urlTeks = process.env.WA2A_SCHEMA_DB_URL

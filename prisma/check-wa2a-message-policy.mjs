@@ -241,6 +241,8 @@ const BOLEH = new Set([
   'prisma/check-wa2a-message-f3.mjs',
   'prisma/check-wa2a-message-f3-db.mjs',
   'docs/whatsapp/WA-2a-F3-EVIDENCE.md',
+  // Perbaikan uji 2B (Stage A F4, PR terpisah) — path persis, tanpa wildcard.
+  'prisma/check-wa2a-schema.mjs',
 ])
 const semua = [...new Set([...berubah, ...baru])]
 cek('hanya berkas F1 (+ berkas F2/F3 yang disetujui) yang berubah/baru', semua.every((f) => BOLEH.has(f)), semua.join(', ') || '(bersih)')
