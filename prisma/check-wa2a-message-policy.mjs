@@ -216,9 +216,12 @@ const BOLEH = new Set([
   'src/services/whatsapp/wa-message-policy.ts',
   'src/services/whatsapp/wa-approval-def.ts',
   'prisma/check-wa2a-message-policy.mjs',
+  // F2 (persetujuan owner: penyesuaian lingkup minimal) — berkas template & ujinya; berkas lain tetap ditolak.
+  'src/services/whatsapp/wa-template.ts',
+  'prisma/check-wa2a-template.mjs',
 ])
 const semua = [...new Set([...berubah, ...baru])]
-cek('hanya berkas F1 yang berubah/baru', semua.every((f) => BOLEH.has(f)), semua.join(', ') || '(bersih)')
+cek('hanya berkas F1 (+ berkas F2 yang disetujui) yang berubah/baru', semua.every((f) => BOLEH.has(f)), semua.join(', ') || '(bersih)')
 const diffPolicy = execFileSync('git', ['diff', 'main', '--', 'src/services/whatsapp/wa2-policy.ts'], { cwd: AKAR, encoding: 'utf8' })
 cek('wa2-policy.ts hanya ditambah (tanpa baris dihapus)', !/^-(?!--)/m.test(diffPolicy))
 
