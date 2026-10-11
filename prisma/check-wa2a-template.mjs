@@ -207,6 +207,8 @@ const BOLEH = new Set([
   'prisma/check-wa2a-approval-f4.mjs',
   'prisma/check-wa2a-approval-f4-db.mjs',
   'docs/whatsapp/WA-2a-F4-EVIDENCE.md',
+  // F4 perbaikan pra-merge #2 — uji HTTP route VoyageEvent (path persis).
+  'prisma/check-voyage-event-api.mjs',
 ])
 const semua = [...new Set([...berubah, ...baru])]
 cek('hanya berkas F2 (+ penyesuaian lingkup F1 & berkas F3 yang disetujui) yang berubah/baru', semua.every((f) => BOLEH.has(f)), semua.join(', ') || '(bersih)')

@@ -114,10 +114,14 @@ cek('penahanan pesan: approval DIHENTIKAN dulu baru pesan diubah (approval → p
   const f = svc.slice(svc.indexOf('async function tahanPesan'), svc.indexOf('// ================================================================ permintaan'))
   return f.indexOf('hentikanApprovalPesan') > -1 && f.indexOf('hentikanApprovalPesan') < f.indexOf('waClientMessage.updateMany')
 })())
-cek('keputusan: kunci kandidat → kunci approval → tulis approval → tulis pesan', (() => {
+cek('keputusan: kunci kandidat → kunci approval → jam SESUDAH kunci → revalidasi penuh dengan jam itu → maker-checker → tulis approval → tulis pesan', (() => {
   const f = svc.slice(svc.indexOf('export async function setujuiPesanKlien'), svc.indexOf('export async function tolakPesanKlien'))
-  const i = ['await kunciCandidate(tx, rv.c)', 'await kunciUlang(ctx, tx, s)\n      if (!k.ok) return k.selesai\n      const akhir', 'tahApprovalRequest.updateMany', 'waClientMessage.updateMany'].map((x) => f.indexOf(x))
-  return i.every((x) => x > -1) && i.every((x, n) => n === 0 || x > i[n - 1])
+  const i = ['await kunciCandidate(tx, rv.c)', 'const k = await kunciUlang(ctx, tx, s)', 'const akhir = new Date()', 'const rvAkhir = await revalidasiPesan(ctx, tx, s.m, akhir)', 'otorisasiCheckerBuktiWaKlien', 'tahApprovalRequest.updateMany', 'waClientMessage.updateMany'].reduce((acc, x) => [...acc, f.indexOf(x, acc.length ? acc[acc.length - 1] + 1 : 0)], [])
+  return i.every((x) => x > -1)
+})())
+cek('perbaikan #1: SEMUA syarat waktu (TTL + revalidasi penuh) memakai jam keputusan `akhir`; APPROVED tertulis dengan jam itu', (() => {
+  const f = svc.slice(svc.indexOf('export async function setujuiPesanKlien'), svc.indexOf('export async function tolakPesanKlien'))
+  return /approvalWaKlienKedaluwarsa\(\{ status: 'PENDING', expiresAt: s\.a\.expiresAt as Date \}, akhir\)/.test(f) && /revalidasiPesan\(ctx, tx, s\.m, akhir\)/.test(f) && /decidedAt: akhir/.test(f) && /approvedAt: akhir/.test(f) && f.indexOf('revalidasiPesan(ctx, tx, s.m, akhir)') < f.indexOf('tahApprovalRequest.updateMany')
 })())
 cek('penghenti approval = hentikanApprovalTertaut WA-1 (lewat bridge), subjek diperiksa, baris dikunci FOR UPDATE', /from '\.\/wa1-bridge'/.test(stop) && /hentikanApprovalTertaut\(ctx, tx, a\.id, mode, alasan\)/.test(stop) && /a\.subjectType !== SUBJEK_APPROVAL_PESAN_KLIEN \|\| a\.subjectId !== messageId/.test(stop) && /FROM "TahApprovalRequest"\s+WHERE "id" = \$\{approvalRequestId\} AND "tenantId" = \$\{tenantId\} FOR UPDATE/.test(stop))
 const rawSemua = [...SEMUA_F4.matchAll(/\$queryRaw(?:<[^>]*>)?\(Prisma\.sql`([\s\S]*?)`\)/g)].map((m) => m[1])
@@ -163,7 +167,7 @@ const BOLEH = new Set([
   'src/services/whatsapp/wa-approval-def.ts', 'src/services/whatsapp/wa2-policy.ts', 'src/services/whatsapp/wa1-bridge.ts', 'src/services/whatsapp/wa-message.service.ts',
   'src/services/whatsapp/wa-contact.service.ts', 'src/services/whatsapp/wa-consent.service.ts', 'src/services/whatsapp/wa-grant.service.ts', 'src/services/ops/voyage-event.service.ts',
   'prisma/check-comm-policy.mjs', 'prisma/check-wa2a-contact.mjs', 'prisma/check-wa2a-access.mjs', 'prisma/check-wa2a-message-f3.mjs', 'prisma/check-wa2a-message-policy.mjs',
-  'prisma/check-wa2a-template.mjs', 'prisma/check-wa2a-schema.mjs', 'prisma/check-wa2a-approval-f4.mjs', 'prisma/check-wa2a-approval-f4-db.mjs', 'docs/whatsapp/WA-2a-F4-EVIDENCE.md',
+  'prisma/check-wa2a-template.mjs', 'prisma/check-wa2a-schema.mjs', 'prisma/check-wa2a-approval-f4.mjs', 'prisma/check-wa2a-approval-f4-db.mjs', 'docs/whatsapp/WA-2a-F4-EVIDENCE.md', 'prisma/check-voyage-event-api.mjs',
 ])
 const semua = [...new Set([...berubah, ...baru])]
 cek('hanya berkas F4 yang disetujui (path persis) yang berubah/baru', semua.every((f) => BOLEH.has(f)), semua.filter((f) => !BOLEH.has(f)).join(', ') || `${semua.length} berkas`)

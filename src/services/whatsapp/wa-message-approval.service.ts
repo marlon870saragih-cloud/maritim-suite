@@ -353,17 +353,25 @@ export async function setujuiPesanKlien(ctx: TenantContext, input: { approvalReq
         await tahanPesan(ctx, tx, s.m, s.a.id, rv.ke, rv.alasan, sekarang)
         return { hasil: rv.ke === 'BLOCKED' ? 'DIBLOKIR' : 'DITAHAN', approvalRequestId: s.a.id, messageId: s.m.id, alasan: rv.alasan }
       }
-      // K5 pada bukti hasil evaluasi ulang (∪ snapshot) — K7 menjamin keduanya sama; tetap diperiksa (gagal tertutup).
-      const oto = otorisasiCheckerBuktiWaKlien(
-        { pemutus: { userId: ctx.userId, role: ctx.role, system: ctx.system === true }, peminta: s.a.originatorUserId, pembuatDraft: s.m.createdByUserId, pencatatBukti: Array.from(new Set([...s.pencatatSnapshot, ...rv.pencatat])) },
-        j,
-      )
-      if (!oto.ok) throw terlarang(`Tidak berhak memutuskan approval ini (${oto.alasan}).`, oto.alasan)
       await kunciCandidate(tx, rv.c)
       const k = await kunciUlang(ctx, tx, s)
       if (!k.ok) return k.selesai
+      // Jam keputusan diambil SESUDAH seluruh kunci didapat (penantian kunci bisa lama). SEMUA syarat berbasis waktu
+      // dinilai ulang dengan jam ini: TTL approval, lalu revalidasi penuh (konfirmasi ≤ 12 jam, milestone ≤ 24 jam,
+      // verifikasi kontak, grant snapshot, K7). Semua baris sudah terkunci → tidak ada penantian baru setelah titik ini.
       const akhir = new Date()
       if (approvalWaKlienKedaluwarsa({ status: 'PENDING', expiresAt: s.a.expiresAt as Date }, akhir)) return kedaluwarsakan(ctx, tx, s, akhir)
+      const rvAkhir = await revalidasiPesan(ctx, tx, s.m, akhir)
+      if (!rvAkhir.ok) {
+        await tahanPesan(ctx, tx, s.m, s.a.id, rvAkhir.ke, rvAkhir.alasan, akhir)
+        return { hasil: rvAkhir.ke === 'BLOCKED' ? 'DIBLOKIR' : 'DITAHAN', approvalRequestId: s.a.id, messageId: s.m.id, alasan: rvAkhir.alasan }
+      }
+      // K5 pada bukti hasil evaluasi ulang (∪ snapshot) — K7 menjamin semuanya sama; tetap diperiksa (gagal tertutup).
+      const oto = otorisasiCheckerBuktiWaKlien(
+        { pemutus: { userId: ctx.userId, role: ctx.role, system: ctx.system === true }, peminta: s.a.originatorUserId, pembuatDraft: s.m.createdByUserId, pencatatBukti: Array.from(new Set([...s.pencatatSnapshot, ...rv.pencatat, ...rvAkhir.pencatat])) },
+        j,
+      )
+      if (!oto.ok) throw terlarang(`Tidak berhak memutuskan approval ini (${oto.alasan}).`, oto.alasan)
       if (!transisiKeputusanSah('PENDING', 'APPROVED') || !transisiEksekusiSah('NOT_APPLICABLE', 'NOT_STARTED', 'APPROVED') || !transisiPesanKlienSah('PENDING_APPROVAL', 'APPROVED')) {
         throw new Error('[wa2f4] transisi persetujuan tidak sah.')
       }
@@ -378,7 +386,7 @@ export async function setujuiPesanKlien(ctx: TenantContext, input: { approvalReq
       })
       if (nm.count !== 1) throw bentrok()
       await catatAudit(ctx, { tableName: TABEL_APPROVAL, recordId: s.a.id, action: 'APPROVE', oldValue: { status: 'PENDING', executionStatus: 'NOT_APPLICABLE' }, newValue: { peristiwa: 'WA2_APPROVAL_DISETUJUI', status: 'APPROVED', executionStatus: 'NOT_STARTED', messageId: s.m.id, proposalHash: s.a.proposalHash } }, {}, tx)
-      await catatAudit(ctx, { tableName: TABEL_PESAN, recordId: s.m.id, action: 'UPDATE', oldValue: { state: 'PENDING_APPROVAL' }, newValue: { peristiwa: 'WA2_PESAN_DISETUJUI', state: 'APPROVED', approvalRequestId: s.a.id, pencatatBukti: rv.pencatat.length } }, {}, tx)
+      await catatAudit(ctx, { tableName: TABEL_PESAN, recordId: s.m.id, action: 'UPDATE', oldValue: { state: 'PENDING_APPROVAL' }, newValue: { peristiwa: 'WA2_PESAN_DISETUJUI', state: 'APPROVED', approvalRequestId: s.a.id, pencatatBukti: rvAkhir.pencatat.length, dinilaiPada: akhir.toISOString() } }, {}, tx)
       return { hasil: 'DISETUJUI', approvalRequestId: s.a.id, messageId: s.m.id }
     }),
   )

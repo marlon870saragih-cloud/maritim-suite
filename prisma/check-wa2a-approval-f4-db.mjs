@@ -357,6 +357,81 @@ try {
   await adm.tahApprovalRequest.update({ where: { id: pk.aid }, data: { kind: 'CLIENT_WA_UPDATE' } })
 
   // ============================================================================ E
+  bagian('[T] Freshness pada jam keputusan — transaksi ditahan kunci sampai bukti melewati batas (perbaikan pra-merge #1)')
+  // Baris WaContact dipegang FOR UPDATE oleh transaksi lain → setujui MENUNGGU di kunci pertamanya (kontak SHARE).
+  // Bukti masih segar saat setujui dimulai, kedaluwarsa selama menunggu. Uji memvalidasi dirinya sendiri: bukti
+  // HARUS segar saat mulai dan HARUS lewat batas saat kunci dilepas — selain itu uji dianggap tidak sah (gagal).
+  // Tahanan < 5 s: transaksi interaktif Prisma service bertimeout bawaan 5000 ms (tahanan lebih lama → rollback, juga
+  // gagal tertutup — diuji terpisah di bawah). Bukti dijadwalkan habis ±1,2 s setelah setujui mulai menunggu.
+  const TAHAN = 3000
+  const SISA = 1200
+  const tahanLalu = async (p, batas) => {
+    let hasil
+    if (batas !== null && batas - Date.now() > SISA) await tidur(batas - Date.now() - SISA)
+    const mulai = Date.now()
+    const r = await adm.$transaction(async (tx) => {
+      await tx.$queryRawUnsafe('SELECT "id" FROM "WaContact" WHERE "id" = $1 FOR UPDATE', p.cid)
+      const jalan = setujui(A, p).then((h) => { hasil = h }, (e) => { hasil = { galat: String(e?.details?.code ?? e?.message ?? e) } })
+      await tidur(TAHAN)
+      return { jalan, menunggu: hasil === undefined }
+    }, { timeout: 30_000 })
+    const lepas = Date.now()
+    await r.jalan
+    return { hasil, menunggu: r.menunggu, segarSaatMulai: batas === null || mulai < batas - 300, lewatSaatLepas: batas === null || lepas > batas + 300 }
+  }
+  const kasusTahan = async (nama, siap, harapHasil, harapAlasan) => {
+    const { p, batas } = await siap()
+    const t = await tahanLalu(p, batas)
+    const k = await keadaan(p)
+    const sah = t.menunggu && t.segarSaatMulai && t.lewatSaatLepas
+    const ok = harapHasil === 'DISETUJUI' ? t.hasil?.hasil === 'DISETUJUI' && k === 'APPROVED/APPROVED/NOT_STARTED' : t.hasil?.hasil === harapHasil && t.hasil?.alasan === harapAlasan && !k.includes('APPROVED/NOT_STARTED')
+    cek(`${nama} → ${harapHasil}${harapAlasan ? ` ${harapAlasan}` : ''}`, sah && ok, `menunggu=${t.menunggu} segarAwal=${t.segarSaatMulai} lewatAkhir=${t.lewatSaatLepas} hasil=${JSON.stringify(t.hasil)} keadaan=${k}`)
+  }
+  const LONGGAR = 8000 // cukup untuk menyiapkan fixture; sisa diatur tahanLalu
+  await kasusTahan('konfirmasi ETA melewati 12 jam selama menunggu kunci', async () => {
+    const src = await jadwal(A, { auditPada: new Date(Date.now() - 13 * JAM) })
+    const konf = new Date(Date.now() - 12 * JAM + LONGGAR)
+    await adm.voyageScheduleConfirmation.create({ data: { tenantId: A.t.id, voyageId: src.v.id, field: 'eta', confirmedValue: new Date(`${ETA_BARU}T00:00:00Z`), confirmedAt: konf, confirmedByUserId: A.manajerCtx.userId, sourceKind: 'MASTER_OR_SHIP', sourceNote: 'Batas 12 jam (uji adversarial).' } })
+    const p = await siapPending(A, { sumber: src })
+    return { p, batas: konf.getTime() + 12 * JAM }
+  }, 'DITAHAN', 'CONFIRMATION_EXPIRED')
+  await kasusTahan('milestone melewati 24 jam selama menunggu kunci', async () => {
+    const p = await siapPending(A, { jenis: 'EOSP', jamLalu: 24 - LONGGAR / JAM })
+    return { p, batas: p.e.occurredAt.getTime() + 24 * JAM }
+  }, 'DITAHAN', 'EVENT_TOO_OLD')
+  await kasusTahan('verifikasi kontak kedaluwarsa selama menunggu kunci', async () => {
+    const p = await siapPending(A)
+    const exp = new Date(Date.now() + SISA)
+    await adm.waContact.update({ where: { id: p.cid }, data: { verificationExpiresAt: exp } })
+    return { p, batas: exp.getTime() }
+  }, 'DITAHAN', 'CONTACT_INELIGIBLE')
+  await kasusTahan('grant snapshot kedaluwarsa selama menunggu kunci', async () => {
+    const p = await siapPending(A, { jenis: 'EOSP' })
+    const exp = new Date(Date.now() + SISA)
+    await adm.waPrincipalAccessGrant.update({ where: { id: p.grantId }, data: { validUntil: exp } })
+    return { p, batas: exp.getTime() }
+  }, 'DITAHAN', 'ACCESS_DENIED')
+  await kasusTahan('TTL approval 2 jam lewat selama menunggu kunci', async () => {
+    const p = await siapPending(A)
+    const exp = new Date(Date.now() + SISA)
+    await adm.tahApprovalRequest.update({ where: { id: p.aid }, data: { expiresAt: exp } })
+    return { p, batas: exp.getTime() }
+  }, 'KEDALUWARSA', undefined)
+  {
+    const p = await siapPending(A)
+    let hasil
+    await adm.$transaction(async (tx) => {
+      await tx.$queryRawUnsafe('SELECT "id" FROM "WaContact" WHERE "id" = $1 FOR UPDATE', p.cid)
+      const jalan = setujui(A, p).then((h) => { hasil = h }, (e) => { hasil = { galat: String(e?.message ?? e).slice(0, 80) } })
+      await tidur(6500)
+      return { jalan }
+    }, { timeout: 30_000 }).then((r) => r.jalan)
+    await tidur(300)
+    cek('tahanan > 5 s (timeout transaksi service) → setujui GAGAL & di-rollback, approval tetap PENDING (gagal tertutup)', !hasil?.hasil && (await keadaan(p)) === 'PENDING_APPROVAL/PENDING/NOT_APPLICABLE', JSON.stringify(hasil).slice(0, 120))
+  }
+  await kasusTahan('BATAS BELUM TERLEWATI (konfirmasi segar, verifikasi/grant/TTL jauh) walau menunggu kunci', async () => ({ p: await siapPending(A, { jenis: 'jadwal' }), batas: null }), 'DISETUJUI', undefined)
+  await kasusTahan('BATAS BELUM TERLEWATI (milestone segar, grant jauh) walau menunggu kunci', async () => ({ p: await siapPending(A, { jenis: 'ALL_FAST' }), batas: null }), 'DISETUJUI', undefined)
+
   bagian('[E] Kedaluwarsa (K11)')
   const pe = await siapPending(A)
   await adm.tahApprovalRequest.update({ where: { id: pe.aid }, data: { expiresAt: new Date(Date.now() - 1) } })
