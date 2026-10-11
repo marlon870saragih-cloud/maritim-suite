@@ -24,7 +24,8 @@
 > This checkpoint is the canonical handoff between the owner, ChatGPT, Claude Code, and future sessions.
 
 **Checkpoint resmi:** 2026-10-05 — TAH / Maritim Suite → WhatsApp Automation handoff.
-**Pembaruan terakhir:** 2026-10-10 — **WA-1 ACCEPTED** — Step 2J (E2E Validation & Demo) MERGED (PR #17; checkpoint 2F–2I PR #16; `main` @ `be912290c9e8ce5b5445312190ac771a4a56cb87`) dan **OWNER ACCEPTANCE: APPROVED — 10 Oktober 2026** (demo langsung di Chrome laptop owner). WA-1 memenuhi gate PRD §18 sebagai proof-of-flow **FAKE-only, non-produksi**. Tidak dideploy. SG-05 masih **TERBUKA**. NEXT EXACT STEP = keputusan owner tentang fase berikutnya (§L); WA-2 **belum dimulai**.
+**Pembaruan terakhir:** 2026-10-11 — **WA-2a fondasi lokal MERGED** — Step 2B (PR #19), 2C (PR #20), 2E (PR #21) MERGED ke `main` @ `4086756242a4ac2f05d97b65216d565ea94f915b`. Lapisan schema + service saja: tanpa API/UI, tanpa WhatsApp nyata, tanpa LLM. **Tidak dideploy; migrasi WA-2a belum diterapkan di produksi; flag `WA2_CLIENT_FOUNDATION_ENABLED` default OFF dan produksi selalu ditolak gerbang.** WA-2 **BUKAN production-ready**. Dokumen PRD WA-2 / desain rev2 **tidak ada di repo** (§J.1). NEXT EXACT STEP = keputusan owner (§L).
+**Pembaruan sebelumnya:** 2026-10-10 — **WA-1 ACCEPTED** — Step 2J (E2E Validation & Demo) MERGED (PR #17; checkpoint 2F–2I PR #16; `main` @ `be912290c9e8ce5b5445312190ac771a4a56cb87`) dan **OWNER ACCEPTANCE: APPROVED — 10 Oktober 2026** (demo langsung di Chrome laptop owner). WA-1 memenuhi gate PRD §18 sebagai proof-of-flow **FAKE-only, non-produksi**. Tidak dideploy. SG-05 masih **TERBUKA**. NEXT EXACT STEP = keputusan owner tentang fase berikutnya (§L); WA-2 **belum dimulai**.
 **Status pekerjaan:** TAH / PRD-005 **CLOSED**. Pekerjaan produk berikutnya: **Client Communication / WhatsApp Automation**.
 **Dokumen pendamping:** `docs/whatsapp/PRD-WA-1.md` (**baseline WA-1 v0.2 — source of truth WhatsApp Automation**), `docs/PRD-005-CLOSURE.md`, `docs/PRODUCTION-STATE-2026-09-30.md`, `docs/TAH-TECH-DEBT.md`,
 `docs/TAH-GAP-ANALYSIS-2026-09-30.md` (saat ini hanya di branch `docs/tah-gap-analysis-20260930`, belum di `main`).
@@ -63,7 +64,8 @@ Repo ini PUBLIK: jangan mencatat credential, nilai env rahasia, ID proyek GCP, I
 | Item | Nilai |
 |---|---|
 | Repository | `marlon870saragih-cloud/maritim-suite` (public) |
-| `origin/main` | `be912290c9e8ce5b5445312190ac771a4a56cb87` — merge commit PR #17 (WA-1 Step 2J; parent `543be91` + `807ec82`), 2026-10-10 — VERIFIED 2026-10-10 |
+| `origin/main` | `4086756242a4ac2f05d97b65216d565ea94f915b` — merge commit PR #21 (WA-2a Step 2E; parent `39cdcec` + `87b0476`), 2026-10-11 — VERIFIED 2026-10-11. Sebelumnya: `be91229` (PR #17, 2026-10-10) |
+| PR #18–#21 | MERGED (merge commit biasa) — VERIFIED 2026-10-11 via GitHub: #18 checkpoint WA-1 accepted (2026-10-10); #19 WA-2a Step 2B schema & fondasi DB (`5eec4f4`, 2026-10-10); #20 WA-2a Step 2C service kontak & consent (`39cdcec`, 2026-10-10); #21 WA-2a Step 2E akses principal & resolver otorisasi (`4086756`, 2026-10-11) |
 | PR #16–#17 | MERGED 2026-10-10 (merge commit biasa): #16 checkpoint Step 2F–2I (`543be91`); #17 Step 2J E2E Validation & Demo — pengujian, perangkap egress, seed demo, bukti & 12 tangkapan layar (`be91229`). Tanpa perubahan `src/`, schema, migrasi, PRD, V3 — VERIFIED 2026-10-10 |
 | PR #11–#15 | MERGED (merge commit biasa): #11 checkpoint Step 2E (`5e70451`, 2026-10-09); #12 Step 2F Cancel (`30a686c`, 2026-10-09); #13 Step 2G Read service & Communication History (`f3a372a`, 2026-10-09); #14 Step 2H API `/api/automation/communications` + pengerasan CSRF `48b9be1` (`f97c94e`, 2026-10-10); #15 Step 2I UI Komunikasi (Simulasi) `0553db7` + pemisahan guard sidik jari Intake `a4045a0` (`d4a3e71`, 2026-10-10). Tanpa schema/migrasi baru sejak 2B/Q8 — VERIFIED 2026-10-10 |
 | PR #5–#9 | MERGED 2026-10-05: #5 checkpoint (`ebe86eb`), #6 Step 2A (`5a0673f`), #7 Step 2B (`334052f`), #8 Step 2C (`a1692e0`), #9 Step 2D R1 (`03a1dc9`) — VERIFIED 2026-10-09 (merge commit ada di `main`) |
@@ -76,6 +78,7 @@ Repo ini PUBLIK: jangan mencatat credential, nilai env rahasia, ID proyek GCP, I
 | `docs/tah-gap-analysis-20260930` | `139006d` — hanya dokumen, belum di-merge. File ini menggantikan versi checkpoint di branch tersebut; gap analysis-nya tetap rujukan perencanaan |
 | CI | Tidak ada (0 workflow). Tidak ada integrasi deploy otomatis di GitHub (webhook & deploy key kosong; GitHub App terpasang hanya Claude) |
 | Test WA-1 terakhir yang benar-benar dijalankan | 2026-10-10 (Step 2J) pada `807ec82` (= tree `be91229` minus berkas checkpoint), PostgreSQL 16 loopback sekali pakai + server lokal dengan perangkap egress `prisma/wa1-egress-trap.mjs`: **comm-e2e 108/108** (12 alur pilot × ID/EN, body byte-per-byte vs PRD §11), **comm-e2e mode produksi 5/5** (`next start` lokal → `ENV_NOT_ALLOWED`, 0 baris), comm-ui Playwright 55/55, comm-api 43/43, comm-policy 326, comm-schema 85, comm-prepare-db 98, comm-approval-db 95, comm-send-db 118–121 (cek 52b dinamis; selalu 0 gagal), comm-cancel-db 73, comm-read-db 42, tah-policy 322, tah-ledger 98, validator-v3 226, eval8-runner 62, eval4-prep 109, ais-contract 129, automation-policy 124, intake-policy 417; tsc & eslint bersih; next lint hanya warning lama `ReceiptForm.tsx`. Matriks TS-01..18 & AC-01..18 PASS (`docs/whatsapp/WA-1-STEP2J-EVIDENCE.md`). Uji mutasi E2E (template, panggilan Graph API) tertangkap. **Kegagalan historis:** `check-validator-remediasi` 61/70 — identik di baseline (skrip pra-V3), bukan regresi; tidak diubah (isu terpisah, keputusan owner tertunda) |
+| Test WA-2a terakhir yang benar-benar dijalankan | 2026-10-11 pada HEAD PR #21 `87b0476` (tree = `main` `4086756`), PostgreSQL 16 loopback sekali pakai, data sintetis, sebelum merge: wa2a-access 27/0, wa2a-access-db 68/0 (3 run), wa2a-contact 28/0, wa2a-contact-db 67/0, wa2a-schema 128/0, validator-v3 226/0, intake-policy 417/0, tah-policy 322/0, tah-ledger 98/0, comm-policy 326/0, comm-schema 85/0, comm-prepare-db 98/0, comm-approval-db 95/0, comm-send-db 121/0, comm-cancel-db 73/0, comm-read-db 42/0, eval3-ledger-db 14/0, tenant-guard 2/0; `tsc --noEmit` 0 galat; `npm run lint` lulus (hanya warning lama). Pada `main` lama `39cdcec`, wa2a-schema 126/127 (asersi lingkup 2B usang, dikoreksi di PR #21). **Tidak dijalankan:** uji API/E2E/UI dan `next build` (WA-2a belum punya route/UI) |
 | Test penuh terakhir (seluruh repo) | 2026-09-30 pada `f7635a2` (kode identik dengan `main`): tsc/lint/build hijau; 21/21 migrasi dari nol (PostgreSQL 16); suite offline & DB hijau. Merah yang diharapkan: `check-eval8-runner` E1c, `check-validator-remediasi` 61/70 |
 | Checkout lain milik owner | Checkout laptop lama (HEAD `28b0ef9`, enam file untracked termasuk `_wipe.mjs`) — HISTORICAL 2026-09-30. Jangan dijadikan basis kerja; jangan jalankan script untracked tanpa dibaca |
 
@@ -190,6 +193,10 @@ Catatan: voyage uji `VYG-2026-000003` beserta sinyalnya **masih ada di database 
 - **WA-1 Step 2J MERGED (2026-10-10)** — E2E Validation & Demo (PR #17, `be91229`): `check-comm-e2e` (HTTP nyata, 6 keluarga event × ID/EN byte-per-byte vs PRD §11, gate negatif, retry & batas 5, idempotensi paralel, Cancel ∥ Send, isolasi tenant, otorisasi), perangkap egress proses server, varian `NODE_ENV=production` lokal, seed demo sintetis, panduan demo, laporan bukti + 12 tangkapan layar. Tanpa perubahan kode aplikasi.
 - **WA-1 OWNER ACCEPTANCE: APPROVED (10 Oktober 2026)** — OWNER-VERIFIED: owner menjalankan demo langsung di Google Chrome (laptop owner, DB lokal sintetis, perangkap egress) dan menyetujui alur menu → Siapkan Update Klien → preview ID/EN → approval → FAKE Send → riwayat audit. **WA-1 memenuhi gate PRD §18** (AC P0 lulus, bukti uji, demo diterima owner, checkpoint diperbarui oleh dokumen ini).
 
+- **WA-2a Step 2B MERGED (2026-10-10)** — schema & fondasi DB lokal (PR #19): 7 tabel baru aditif (`WaContact`, `WaConsentState`, `WaConsentEvent`, `WaPrincipalAccessGrant`, `WaPrincipalAccessGrantVoyage`, `WaClientMessage`, `VoyageScheduleConfirmation`), 5 CHECK, 11 trigger hanya di tabel baru, rollback lokal. Keputusan owner DB-1, DB-2, DB-3, B-5 (LOCAL ONLY). Bukti: `docs/whatsapp/WA-2a-B-EVIDENCE.md`.
+- **WA-2a Step 2C MERGED (2026-10-10)** — service kontak & consent (PR #20): registrasi/verifikasi/nonaktifkan kontak, E.164, opt-in/opt-out, gerbang `WA2_CLIENT_FOUNDATION_ENABLED` (default OFF; produksi selalu ditolak). Keputusan owner C-1..C-4. Bukti: `docs/whatsapp/WA-2a-C-EVIDENCE.md`.
+- **WA-2a Step 2E MERGED (2026-10-11)** — akses principal & resolver otorisasi (PR #21): resolver satu pintu (default deny principal), grant maker-checker ≤ 12 bulan, pembaca voyage terbatas per kategori, race R5′–R10. Koreksi asersi lingkup `check-wa2a-schema` yang gagal di `main` sejak PR #20. Keputusan owner E-1..E-6. Bukti: `docs/whatsapp/WA-2a-E-EVIDENCE.md`.
+
 ## G. NOT COMPLETED / NEXT GAP
 
 **Batas alur yang sudah terverifikasi berakhir di:** Human Review / Acknowledged Signal / Audit Trail.
@@ -250,6 +257,12 @@ Syarat minimum mengubah status dari `PENDING_SPIKE` (butuh keputusan owner; PRD-
 | Setuju-sendiri `WA_INTERNAL_FAKE_TEST` | Diizinkan (INTERNAL_WRITE, non-produksi; sesuai PRD AC-14, keputusan 2D). `EXTERNAL_COMMUNICATION` tetap `SELF_APPROVAL_FORBIDDEN` (AC-15). **Wajib ditinjau sebelum WA-2** |
 | Risiko terbuka WA-1 (dari 2H/2I) | Tanpa rate limit di POST; sanitasi log galat belum ada; pagination & allowlist field `AuditLog` belum ada; tanpa token CSRF eksplisit (`NEXTAUTH_URL` wajib = origin publik); uji hanya terhadap `next dev`; tanpa CI independen |
 | **SG-05 fixture ↔ tenant** | **TERBUKA.** Fixture penerima = konstanta kode tanpa relasi tenant. Pembatas yang wajib dipertahankan: FAKE-only, non-produksi, allowlist tenant Automation, zero egress. **Wajib diselesaikan sebelum integrasi pengiriman WhatsApp nyata** (keputusan owner 2026-10-09). |
+| WA-2a Step 2B — schema & fondasi DB | **MERGED** ke `main` (PR #19, 2026-10-10); **tidak dideploy; migrasi belum diterapkan di produksi/staging** |
+| WA-2a Step 2C — kontak & consent (2a-D digabung, C-1) | **MERGED** ke `main` (PR #20, 2026-10-10); service saja; tidak dideploy |
+| WA-2a Step 2E — akses principal & resolver | **MERGED** ke `main` (PR #21, 2026-10-11); service saja; tidak dideploy |
+| WA-2a Step 2a-F / 2a-F′ / 2a-G / 2a-I | **NOT STARTED.** Definisi resmi tidak ada di repo (§J.1) |
+| Flag `WA2_CLIENT_FOUNDATION_ENABLED` | Default `"false"` (`.env.example`); `NODE_ENV=production` selalu ditolak gerbang WA-2a — VERIFIED 2026-10-11 |
+| WA-2 production readiness | **TIDAK production-ready.** Tanpa API/UI, tanpa pengiriman, tanpa uji API/E2E/UI/`next build` |
 | Production WhatsApp integration | **NOT STARTED** |
 | Meta/WhatsApp production egress | **Tidak ada** |
 | Perubahan produksi/deployment dari pekerjaan WA | **Tidak ada** |
@@ -259,6 +272,18 @@ Source of truth desain, kontrak, safety gate, dan acceptance/test (TS-01..TS-18)
 - **Belum ada integrasi.** Di kode hanya tautan `wa.me` (click-to-chat manual) pada halaman login, landing, dan billing.
 - Email: hanya draft + pencatatan manual "tandai terkirim"; belum ada pengiriman otomatis.
 - Fondasi yang sudah terverifikasi di produksi dan menjadi titik awal: Voyage → Audit Log → Voyage Monitoring → Signal → Human Review → Acknowledge (§D).
+
+### J.1 Dokumen desain WA-2 — hasil penelusuran 2026-10-11
+
+| Dokumen | Status |
+|---|---|
+| PRD WA-2 (mis. `PRD-WA-2-DRAFT.md`) | **TIDAK DITEMUKAN** di `main`, di semua branch remote, di riwayat commit, di pencarian issue GitHub (0 hasil), maupun di filesystem sesi (pencarian nama berkas). Status persetujuan: **UNVERIFIED** |
+| Desain WA-2 "rev2" | **TIDAK DITEMUKAN** sebagai berkas. Hanya dirujuk di komentar kode (`wa-access-resolver.ts`: "desain rev2 §4.1") dan `WA-2a-C-EVIDENCE.md` §1 |
+| Daftar keputusan owner WA-2 | **Tidak ada dokumen tersendiri.** ID keputusan hanya tercatat di dokumen bukti/PR: DB-1, DB-2, DB-3, B-5 (2B); C-1..C-4 (2C); E-1..E-6 (2E); B-3, K-05/K-05b, D-T1 dirujuk tanpa definisi lengkap |
+| `WA-2a-B/C/E-EVIDENCE.md` | Ada di `main` (`docs/whatsapp/`) |
+| Definisi 2a-F, 2a-F′, 2a-I | **Tidak ada definisi resmi.** Hanya rujukan sepintas di dokumen bukti (lihat §L) |
+
+Implikasi: urutan dan cakupan langkah WA-2a berikutnya **tidak bisa diturunkan dari dokumen yang disetujui** sampai owner menyediakan atau menetapkan ulang desain tersebut.
 
 ## K. UX BACKLOG (ditemukan saat uji 2026-10-05 — BACKLOG, jangan diimplementasikan saat update checkpoint)
 
@@ -272,14 +297,18 @@ Perilaku yang diinginkan:
 
 **Keputusan owner tentang fase berikutnya (belum dimulai).** WA-1 sudah ACCEPTED (10 Oktober 2026) sebagai proof-of-flow FAKE-only non-produksi.
 
-- **WA-2 (PRD §18) NOT STARTED** — butuh PRD/keputusan terpisah: model kontak WhatsApp, E.164, consent/opt-in/opt-out, penentuan penerima, kebijakan approval untuk klien nyata, aktivasi desain `CLIENT_WA_UPDATE`. Jangan mulai tanpa persetujuan owner eksplisit.
+- **WA-2a fondasi lokal (2B, 2C, 2E) MERGED (2026-10-11, `main` @ `4086756`).** Tidak dideploy; flag default OFF; bukan production-ready.
+- **NEXT EXACT STEP = keputusan owner, BUKAN implementasi.** Sebelum Step 2a-F dimulai, owner perlu: (1) menyediakan atau menetapkan ulang PRD WA-2 / desain rev2 — dokumen ini tidak ada di repo (§J.1); (2) menyetujui cakupan dan acceptance criteria 2a-F; (3) menjelaskan 2a-F′ dan 2a-I.
+- **Kandidat 2a-F (berdasarkan rujukan di dokumen bukti, BELUM disetujui):** service pesan klien (`WaClientMessage`: draft/preview/persetujuan), penautan `TahApprovalRequest` dan pembatalannya (`WA-2a-C-EVIDENCE.md` §5), freshness/konfirmasi jadwal (`wa-voyage-view.ts`: "Tanpa freshness (Step 2a-F)"), pemuatan kandidat lewat `forTenant` dan gagal tertutup bila hilang (`WA-2a-B-EVIDENCE.md` R1), serta uji ulang R4/R8/R9 dengan service sungguhan mengikuti protokol kunci `WaContact → WaConsentState → WaPrincipalAccessGrant → Voyage → WaClientMessage`.
+- **Langkah lain yang dirujuk tanpa definisi:** 2a-G (API/UI; wajib uji API/E2E/UI dan `next build`), 2a-F′ dan 2a-I (isi tidak diketahui); WA-2b (pengiriman; `successKey`), WA-2c (STOP otomatis dari pesan masuk), WA-2d (disebut wajib mengikuti protokol kunci).
+- **Arah produk "AI menyusun draf untuk disetujui staf; auto-reply terbatas setelah validasi tahap berikutnya" — belum tercatat di dokumen repo mana pun.** PRD WA-1 (FROZEN) dan seluruh WA-2a sejauh ini memakai template deterministik tanpa LLM. Perlu dicatat sebagai keputusan owner dan dipetakan ke fase sebelum dibangun.
 - **Wajib ditinjau sebelum WA-2:** aturan setuju-sendiri `WA_INTERNAL_FAKE_TEST` (diizinkan untuk WA-1 per AC-14; klien nyata wajib pemutus ≠ pengaju — AC-15).
 - **Wajib ditutup sebelum WA-3 (pengiriman nyata):** SG-05 (fixture ↔ tenant).
 - **Risiko terbuka WA-1 (tetap):** tanpa rate limit POST; sanitasi log galat belum ada; pagination & allowlist field `AuditLog` belum ada; CSRF bergantung pada `NEXTAUTH_URL` = origin publik (tanpa token eksplisit); uji di kontainer pengembangan tanpa CI independen; `next dev` mencoba mengunduh Google Fonts (`next/font`, perilaku lama); build produksi lokal butuh `PORTAL_DATABASE_URL`.
 - **Isu terpisah:** `check-validator-remediasi.mjs` 9 kegagalan historis (pra-V3) — keputusan owner (arsip/perbarui) tertunda; jangan diubah tanpa persetujuan.
 - Merge ≠ izin deploy. Migrasi 2B & Q8 belum pernah dijalankan di produksi; tidak ada perubahan produksi dari WA-1.
 
-Riwayat: WA-0 COMPLETE 2026-10-05; PRD WA-1 v0.2 FROZEN 2026-10-05; Step 2A–2D MERGED 2026-10-05; Step 2E MERGED 2026-10-09 (PR #10, `8ebd546`); Step 2F–2G MERGED 2026-10-09 (PR #12–#13); Step 2H–2I MERGED 2026-10-10 (PR #14–#15, `d4a3e71`); checkpoint + Step 2J MERGED 2026-10-10 (PR #16–#17, `be91229`); **OWNER ACCEPTANCE WA-1: APPROVED 2026-10-10**.
+Riwayat: WA-0 COMPLETE 2026-10-05; PRD WA-1 v0.2 FROZEN 2026-10-05; Step 2A–2D MERGED 2026-10-05; Step 2E MERGED 2026-10-09 (PR #10, `8ebd546`); Step 2F–2G MERGED 2026-10-09 (PR #12–#13); Step 2H–2I MERGED 2026-10-10 (PR #14–#15, `d4a3e71`); checkpoint + Step 2J MERGED 2026-10-10 (PR #16–#17, `be91229`); **OWNER ACCEPTANCE WA-1: APPROVED 2026-10-10**; checkpoint WA-1 accepted MERGED 2026-10-10 (PR #18); WA-2a Step 2B & 2C MERGED 2026-10-10 (PR #19–#20); WA-2a Step 2E MERGED 2026-10-11 (PR #21, `4086756`).
 
 ## M. HARD STOP / OWNER APPROVAL REQUIRED
 
