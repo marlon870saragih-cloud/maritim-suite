@@ -73,7 +73,7 @@ Pesan APPROVED **tidak dikirim**: `successKey` tetap kosong, tak ada state kirim
 | `check-wa2a-access` / `-db` (2E) | 28/0, 68/0 |
 | `check-comm-policy` / `check-comm-schema` | 326/0, 85/0 |
 | `check-comm-prepare-db` / `read-db` / `approval-db` / `cancel-db` / `send-db` | 98/0, 42/0, 95/0, 73/0, 119/0 |
-| `check-comm-api` / `comm-e2e` / `comm-ui` (HTTP WA-1) | lihat §3.3 |
+| `check-comm-api` / `comm-e2e` / `comm-ui` (HTTP WA-1, `next dev` loopback) | 43/0, 108/0, 55/0 (comm-ui: lihat §3.3) |
 | `check-tah-policy` / `check-tah-ledger` | 322/0, 98/0 |
 | `check-validator-v3` | 226/0 |
 | `check-automation-policy` / `check-intake-policy` / `check-tenant-guard` | 124/0, 417/0, 2/0 |
@@ -129,7 +129,8 @@ Pada jalan pertama dengan start serentak, aksi lawan **selalu** menang (setujui 
 
 - `git diff main -- src/services/communication` kosong.
 - WA-1 `setujuiPesan`/`tolakPesan` atas approval `CLIENT_WA_UPDATE` → FORBIDDEN tanpa mutasi; WA-2 atas approval WA-1 → FORBIDDEN `APPROVAL_POLICY_MISMATCH` tanpa mutasi; jalur WA-1 atas approval WA-1 tetap DISETUJUI.
-- Suite DB WA-1 (prepare/read/approval/cancel/send) lulus; suite HTTP WA-1 (`next dev` loopback): hasil dicantumkan di deskripsi PR.
+- Suite DB WA-1 (prepare/read/approval/cancel/send) lulus. Suite HTTP WA-1: comm-api 43/0, comm-e2e 108/0 (jebakan egress aktif), comm-ui 55/0.
+- **Catatan jujur comm-ui:** jalan pertama gagal 0/1 pada **login formulir** sebelum pemeriksaan apa pun berjalan (diagnosis halaman `/login` kosong — server `next dev` baru dikompilasi ulang setelah `rm -rf .next`). F4 tidak menyentuh UI/route/auth. Satu jalan ulang tanpa perubahan kode: **55/0**.
 
 ## 4. Pengecualian uji (E1–E7, path & baris persis)
 
