@@ -160,3 +160,69 @@ export const KODE_ALASAN_WA2E = [
   'ACCESS_REVOKED',
   'ACCESS_DENIED',
 ] as const
+
+// ===================================================================== WA-2a Step 2F (F1)
+// Kebijakan pesan klien & approval eksternal — DATA saja. Fungsi murni ada di wa-message-policy.ts
+// dan wa-approval-def.ts. Keputusan owner 2a-F: TTL approval eksternal 2 jam; pembuat draft &
+// peminta approval bukan checker; ETA/ETD & waktu milestone tanpa aturan freshness tervalidasi →
+// gagal tertutup; NYATA bukan satu-satunya verifikasi data; 2a-F berhenti di APPROVED.
+
+/** Status terminal: tak ada transisi keluar; activeKey dilepas. APPROVED BUKAN terminal (Send = WA-2b). */
+export const STATUS_PESAN_KLIEN_TERMINAL = ['EXPIRED', 'REJECTED', 'BLOCKED', 'CANCELED'] as const
+
+/**
+ * Mesin status WaClientMessage (DB tidak menjaga transisi — tugas service, WA-2a-B §3.2).
+ * • Penahanan 2a-C/2a-E (STATUS_PESAN_DAPAT_DITAHAN → NEEDS_REVIEW) WAJIB sah dari setiap status itu.
+ * • NEEDS_REVIEW tidak kembali ke DRAFT: snapshot (termasuk consentStateVersion) immutable, jadi
+ *   pemulihan = revisi BARU setelah yang lama dibatalkan.
+ * • Tidak ada transisi ke state kirim di 2a-F.
+ */
+export const TRANSISI_PESAN_KLIEN: Readonly<Record<(typeof STATUS_PESAN_KLIEN)[number], readonly (typeof STATUS_PESAN_KLIEN)[number][]>> = {
+  DRAFT: ['PREVIEWED', 'NEEDS_REVIEW', 'BLOCKED', 'CANCELED'],
+  PREVIEWED: ['PENDING_APPROVAL', 'NEEDS_REVIEW', 'BLOCKED', 'CANCELED'],
+  PENDING_APPROVAL: ['APPROVED', 'REJECTED', 'EXPIRED', 'NEEDS_REVIEW', 'BLOCKED', 'CANCELED'],
+  APPROVED: ['NEEDS_REVIEW', 'BLOCKED', 'CANCELED'],
+  NEEDS_REVIEW: ['BLOCKED', 'CANCELED'],
+  EXPIRED: [],
+  REJECTED: [],
+  BLOCKED: [],
+  CANCELED: [],
+}
+
+/** Approval eksternal pesan klien (keputusan D1: memakai TahApprovalRequest, definisi terpisah dari registry TAH). */
+export const JENIS_APPROVAL_PESAN_KLIEN = 'CLIENT_WA_UPDATE' as const
+export const SUBJEK_APPROVAL_PESAN_KLIEN = 'WaClientMessage' as const
+/** Keputusan owner 2a-F — TTL approval eksternal TEPAT 2 jam (dalam rentang beku TAH 1..720). */
+export const TTL_APPROVAL_PESAN_KLIEN_JAM = 2
+
+/** Keluarga event pesan klien (sama dengan kosakata pilot WA-1; keselarasan dikunci uji). */
+export const KELUARGA_PESAN_KLIEN = ['SCHEDULE_CHANGE', 'EOSP', 'ALL_FAST', 'SAILED'] as const
+/** Medan waktu yang tampil di pesan per keluarga — semuanya tunduk pada aturan freshness. */
+export const MEDAN_WAKTU_PER_KELUARGA: Readonly<Record<(typeof KELUARGA_PESAN_KLIEN)[number], readonly string[]>> = {
+  SCHEDULE_CHANGE: ['eta', 'etd'],
+  EOSP: ['occurredAt'],
+  ALL_FAST: ['occurredAt'],
+  SAILED: ['occurredAt'],
+}
+/**
+ * Aturan freshness yang DISETUJUI owner, per keluarga. SENGAJA KOSONG: belum ada aturan yang
+ * disetujui → semua keluarga gagal tertutup (FRESHNESS_RULE_MISSING). Menambah aturan = keputusan
+ * owner + ulasan kode; tak ada ambang bawaan.
+ */
+export const ATURAN_FRESHNESS_DISETUJUI: Readonly<Partial<Record<(typeof KELUARGA_PESAN_KLIEN)[number], never>>> = Object.freeze({})
+
+export const KODE_ALASAN_WA2F = [
+  'MESSAGE_STATE_INVALID',
+  'MESSAGE_TRANSITION_FORBIDDEN',
+  'FRESHNESS_RULE_MISSING',
+  'DATA_ORIGIN_INSUFFICIENT',
+  'SOURCE_NOT_REVALIDATED',
+  'APPROVAL_POLICY_MISMATCH',
+  'APPROVAL_ENV_NOT_ALLOWED',
+  'APPROVAL_EXPIRED',
+  'SYSTEM_CONTEXT_FORBIDDEN',
+  'ROLE_NOT_ALLOWED',
+  'SELF_APPROVAL_FORBIDDEN',
+  'CHECKER_IS_MAKER',
+] as const
+export type KodeAlasanWa2f = (typeof KODE_ALASAN_WA2F)[number]
