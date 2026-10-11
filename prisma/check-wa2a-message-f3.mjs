@@ -144,6 +144,8 @@ const BOLEH = new Set([
   'src/services/whatsapp/wa-freshness.ts', 'src/services/whatsapp/wa-access-resolver.ts', 'src/services/whatsapp/wa-schedule-confirmation.service.ts', 'src/services/whatsapp/wa-message.service.ts',
   'prisma/check-comm-policy.mjs', 'prisma/check-wa2a-contact.mjs', 'prisma/check-wa2a-access.mjs', 'prisma/check-wa2a-message-policy.mjs', 'prisma/check-wa2a-template.mjs',
   'prisma/check-wa2a-message-f3.mjs', 'prisma/check-wa2a-message-f3-db.mjs', 'docs/whatsapp/WA-2a-F3-EVIDENCE.md',
+  // Perbaikan uji 2B (Stage A F4, PR terpisah) — path persis, tanpa wildcard.
+  'prisma/check-wa2a-schema.mjs',
 ])
 const semua = [...new Set([...berubah, ...baru])]
 cek('hanya berkas F3 yang disetujui (path persis) yang berubah/baru', semua.every((f) => BOLEH.has(f)), semua.filter((f) => !BOLEH.has(f)).join(', ') || `${semua.length} berkas`)
