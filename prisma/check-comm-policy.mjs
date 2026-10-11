@@ -668,7 +668,9 @@ bagian('[12] Egress & lingkup Step 2A')
   // Step 2I — UI: halaman server (pagar bolehAksesKomunikasi) + komponen client (impor `type` saja).
   const UI_SERVER = ['src/app/(app)/automation/alerts/page.tsx', 'src/app/(app)/automation/communications/[id]/page.tsx', 'src/app/(app)/automation/communications/page.tsx', 'src/app/(app)/layout.tsx', 'src/app/(app)/voyages/[id]/page.tsx']
   const UI_CLIENT = ['src/components/automation/CommunicationList.tsx', 'src/components/automation/CommunicationWorkspace.tsx']
-  cek('Step 2I: perujuk modul komunikasi di luar foldernya = PERSIS 11 route API + 5 berkas server UI + 2 komponen client', perujuk.sort().join() === [...harapRute, ...UI_SERVER, ...UI_CLIENT].sort().join(), perujuk.join(', '))
+  // WA-2a Step 2F F3 (pengecualian D2 disetujui owner): SATU adapter WA-2 tepat ini — bukan wildcard.
+  const WA2_ADAPTER = ['src/services/whatsapp/wa1-bridge.ts']
+  cek('Step 2I: perujuk modul komunikasi di luar foldernya = PERSIS 11 route API + 5 berkas server UI + 2 komponen client + 1 adapter WA-2', perujuk.sort().join() === [...harapRute, ...UI_SERVER, ...UI_CLIENT, ...WA2_ADAPTER].sort().join(), perujuk.join(', '))
   for (const f of UI_SERVER) {
     const kode = tanpaKomentar(baca(f))
     const impKom = [...kode.matchAll(/^import\b[\s\S]*?from '(@\/services\/communication\/[^']+)'/gm)].map((x) => x[1])

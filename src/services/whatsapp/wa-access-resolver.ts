@@ -9,6 +9,9 @@
 //      tidak terhapus, NYATA, bukan CLOSED/CANCELLED. Kategori dihitung PER VOYAGE.
 //   4. Tidak ada akses berdasarkan kapal, nomor telepon, consent, atau isi pesan. Tidak ada cache.
 //   5. Mengembalikan ID voyage & kategori SAJA — fakta operasional lewat wa-voyage-view.ts.
+//      (F3, keputusan owner D-GRANT) + identitas grant ACTIVE yang menjadi dasar akses principal per voyage
+//      (`grants`: id, kategori, validUntil) — dari query & kunci YANG SAMA; customer → `grants: []`.
+//      Pemilihan grant untuk snapshot pesan = pilihGrantUntukPesan (wa-message-policy.ts), bukan di sini.
 //
 // PROTOKOL KUNCI (wajib untuk semua pemakai): dijalankan DI DALAM transaksi pemanggil; resolver
 // mengunci FOR SHARE kontak → pihak → grant + voyage yang menjadi dasar keputusan, sehingga
@@ -21,7 +24,8 @@ import { kunciKontak, type TxMentah } from './wa-lock'
 import { statusVerifikasiEfektif } from './wa-contact.service'
 import { ASAL_DATA_SAH, KATEGORI_DATA_GRANT } from './wa2-policy'
 
-export type AksesVoyage = { voyageId: string; kategori: string[] }
+export type GrantAkses = { grantId: string; kategori: string[]; validUntil: string }
+export type AksesVoyage = { voyageId: string; kategori: string[]; grants: GrantAkses[] }
 export type HasilAkses =
   | { izin: 'TOLAK'; alasan: 'CONTACT_INELIGIBLE' | 'PARTY_NOT_ELIGIBLE' }
   | { izin: 'IZIN'; partyType: 'CUSTOMER' | 'PRINCIPAL'; akses: AksesVoyage[] }
@@ -43,15 +47,15 @@ export async function resolusiAkses(tx: TxMentah, tenantId: string, contactId: s
       WHERE "tenantId" = ${tenantId} AND "customerId" = ${k.customerId} AND "deletedAt" IS NULL
         AND "dataOrigin" = ${ASAL_DATA_SAH} AND "status" <> 'CANCELLED'
       ORDER BY "id" FOR SHARE`)
-    return { izin: 'IZIN', partyType: 'CUSTOMER', akses: v.map((r) => ({ voyageId: r.id, kategori: [...KATEGORI_DATA_GRANT] })) }
+    return { izin: 'IZIN', partyType: 'CUSTOMER', akses: v.map((r) => ({ voyageId: r.id, kategori: [...KATEGORI_DATA_GRANT], grants: [] })) }
   }
 
   if (k.partyType === 'PRINCIPAL' && k.principalId) {
     const p = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
       SELECT "id" FROM "Principal" WHERE "id" = ${k.principalId} AND "tenantId" = ${tenantId} FOR SHARE`)
     if (!p[0]) return { izin: 'TOLAK', alasan: 'PARTY_NOT_ELIGIBLE' }
-    const baris = await tx.$queryRaw<{ voyageId: string; dataCategories: string[] }[]>(Prisma.sql`
-      SELECT v."id" AS "voyageId", g."dataCategories"
+    const baris = await tx.$queryRaw<{ voyageId: string; grantId: string; dataCategories: string[]; validUntil: Date }[]>(Prisma.sql`
+      SELECT v."id" AS "voyageId", g."id" AS "grantId", g."dataCategories", g."validUntil"
       FROM "WaPrincipalAccessGrant" g
       JOIN "WaPrincipalAccessGrantVoyage" gv ON gv."grantId" = g."id" AND gv."tenantId" = g."tenantId"
       JOIN "Voyage" v ON v."id" = gv."voyageId"
@@ -61,9 +65,17 @@ export async function resolusiAkses(tx: TxMentah, tenantId: string, contactId: s
         AND v."dataOrigin" = ${ASAL_DATA_SAH} AND v."status" NOT IN ('CLOSED', 'CANCELLED')
       ORDER BY v."id", g."id"
       FOR SHARE OF g, v`)
-    const per = new Map<string, string[]>()
-    for (const b of baris) per.set(b.voyageId, [...(per.get(b.voyageId) ?? []), ...b.dataCategories])
-    return { izin: 'IZIN', partyType: 'PRINCIPAL', akses: Array.from(per.entries()).map(([voyageId, kategori]) => ({ voyageId, kategori: urut(kategori) })) }
+    const per = new Map<string, GrantAkses[]>()
+    for (const b of baris) per.set(b.voyageId, [...(per.get(b.voyageId) ?? []), { grantId: b.grantId, kategori: urut(b.dataCategories), validUntil: b.validUntil.toISOString() }])
+    return {
+      izin: 'IZIN',
+      partyType: 'PRINCIPAL',
+      akses: Array.from(per.entries()).map(([voyageId, grants]) => ({
+        voyageId,
+        kategori: urut(grants.flatMap((g) => g.kategori)),
+        grants: [...grants].sort((a, b) => (a.grantId < b.grantId ? -1 : a.grantId > b.grantId ? 1 : 0)),
+      })),
+    }
   }
 
   return { izin: 'TOLAK', alasan: 'PARTY_NOT_ELIGIBLE' }

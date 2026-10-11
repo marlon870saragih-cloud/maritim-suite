@@ -102,7 +102,35 @@ bagian('[S2] Lingkup Step 2C')
 const berubah = execFileSync('git', ['diff', '--name-only', 'main'], { cwd: AKAR, encoding: 'utf8' }).trim().split('\n').filter(Boolean)
 const baru = execFileSync('git', ['ls-files', '--others', '--exclude-standard'], { cwd: AKAR, encoding: 'utf8' }).trim().split('\n').filter(Boolean)
 const BEKU = [/^src\/services\/communication\//, /^src\/services\/tah\//, /^src\/services\/intake\//, /^docs\/whatsapp\/PRD-WA-1\.md$/, /^prisma\/check-(comm|tah|validator)/, /^prisma\/migrations\//, /^prisma\/schema\.prisma$/, /^prisma\/rollback\//]
-cek('tidak ada perubahan WA-1 / TAH / Validator V3 / schema / migrasi', [...berubah, ...baru].every((f) => !BEKU.some((r) => r.test(f))), [...berubah, ...baru].join(', '))
+// WA-2a Step 2F F3 — pengecualian lingkup yang DISETUJUI owner (D2), per berkas & per BARIS, tanpa wildcard:
+//   communication.service.ts: `export` pada siapkanDalamTx + fungsi baru muatCandidateDalamTx (+ dok);
+//   check-comm-policy.mjs: allowlist perujuk +1 adapter WA-2 (src/services/whatsapp/wa1-bridge.ts).
+// Berkas beku lain — atau baris lain di dua berkas ini — tetap DITOLAK.
+const BARIS_F3 = {
+  'src/services/communication/communication.service.ts': {
+    hapus: ['async function siapkanDalamTx(ctx: TenantContext, tx: Tx, signalId: string): Promise<HasilSiapkanCandidate> {'],
+    tambah: (b) => b === '' || b === '}' || (b.startsWith('/**') && b.endsWith('*/') && /WA-2/.test(b)) || [
+      'export async function siapkanDalamTx(ctx: TenantContext, tx: Tx, signalId: string): Promise<HasilSiapkanCandidate> {',
+      'export async function muatCandidateDalamTx(tx: Tx, candidateId: string): Promise<CandidateBaris | null> {',
+      'return (await tx.communicationCandidate.findFirst({ where: { id: candidateId }, select: PILIH_CANDIDATE })) as CandidateBaris | null',
+    ].includes(b),
+  },
+  'prisma/check-comm-policy.mjs': {
+    hapus: ["cek('Step 2I: perujuk modul komunikasi di luar foldernya = PERSIS 11 route API + 5 berkas server UI + 2 komponen client', perujuk.sort().join() === [...harapRute, ...UI_SERVER, ...UI_CLIENT].sort().join(), perujuk.join(', '))"],
+    tambah: (b) => b === "// WA-2a Step 2F F3 (pengecualian D2 disetujui owner): SATU adapter WA-2 tepat ini — bukan wildcard." || b === "const WA2_ADAPTER = ['src/services/whatsapp/wa1-bridge.ts']" ||
+      b === "cek('Step 2I: perujuk modul komunikasi di luar foldernya = PERSIS 11 route API + 5 berkas server UI + 2 komponen client + 1 adapter WA-2', perujuk.sort().join() === [...harapRute, ...UI_SERVER, ...UI_CLIENT, ...WA2_ADAPTER].sort().join(), perujuk.join(', '))",
+  },
+}
+const diffSesuaiF3 = (f) => {
+  const a = BARIS_F3[f]
+  if (!a) return false
+  const d = execFileSync('git', ['diff', '-U0', 'main', '--', f], { cwd: AKAR, encoding: 'utf8' }).split('\n').filter((l) => /^[-+](?![-+]{2} )/.test(l))
+  const hapus = d.filter((l) => l.startsWith('-')).map((l) => l.slice(1).trim())
+  const tambah = d.filter((l) => l.startsWith('+')).map((l) => l.slice(1).trim())
+  return hapus.join('\n') === a.hapus.join('\n') && tambah.length > 0 && tambah.every(a.tambah)
+}
+cek('tidak ada perubahan WA-1 / TAH / Validator V3 / schema / migrasi (kecuali baris F3 yang disetujui persis)', [...berubah, ...baru].every((f) => !BEKU.some((r) => r.test(f)) || diffSesuaiF3(f)), [...berubah, ...baru].filter((f) => BEKU.some((r) => r.test(f))).join(', ') || '(tanpa berkas beku)')
+cek('pengecualian F3 tidak dipakai untuk berkas beku lain', [...berubah, ...baru].filter((f) => BEKU.some((r) => r.test(f))).every((f) => f in BARIS_F3))
 
 console.log(`\n${gagal === 0 ? '✅ SEMUA LULUS' : '❌ ADA YANG GAGAL'} — lulus ${lulus}, gagal ${gagal}`)
 process.exit(gagal === 0 ? 0 : 1)
