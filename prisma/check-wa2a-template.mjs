@@ -177,9 +177,25 @@ cek('berkas sumber tanpa karakter kontrol/pemisah baris mentah (regex ditulis se
 bagian('[S2] Lingkup F2')
 const berubah = execFileSync('git', ['diff', '--name-only', 'main'], { cwd: AKAR, encoding: 'utf8' }).trim().split('\n').filter(Boolean)
 const baru = execFileSync('git', ['ls-files', '--others', '--exclude-standard'], { cwd: AKAR, encoding: 'utf8' }).trim().split('\n').filter(Boolean)
-const BOLEH = new Set(['src/services/whatsapp/wa-template.ts', 'prisma/check-wa2a-template.mjs', 'prisma/check-wa2a-message-policy.mjs'])
+const BOLEH = new Set([
+  'src/services/whatsapp/wa-template.ts', 'prisma/check-wa2a-template.mjs', 'prisma/check-wa2a-message-policy.mjs',
+  // F3 (penyesuaian lingkup disetujui owner) — path persis, tanpa wildcard. Modul F1 yang diperluas F3:
+  'src/services/whatsapp/wa2-policy.ts', 'src/services/whatsapp/wa-message-policy.ts',
+  'src/services/communication/communication.service.ts',
+  'src/services/whatsapp/wa1-bridge.ts',
+  'src/services/whatsapp/wa-freshness.ts',
+  'src/services/whatsapp/wa-access-resolver.ts',
+  'src/services/whatsapp/wa-schedule-confirmation.service.ts',
+  'src/services/whatsapp/wa-message.service.ts',
+  'prisma/check-comm-policy.mjs',
+  'prisma/check-wa2a-contact.mjs',
+  'prisma/check-wa2a-access.mjs',
+  'prisma/check-wa2a-message-f3.mjs',
+  'prisma/check-wa2a-message-f3-db.mjs',
+  'docs/whatsapp/WA-2a-F3-EVIDENCE.md',
+])
 const semua = [...new Set([...berubah, ...baru])]
-cek('hanya berkas F2 (+ penyesuaian lingkup F1) yang berubah/baru', semua.every((f) => BOLEH.has(f)), semua.join(', ') || '(bersih)')
+cek('hanya berkas F2 (+ penyesuaian lingkup F1 & berkas F3 yang disetujui) yang berubah/baru', semua.every((f) => BOLEH.has(f)), semua.join(', ') || '(bersih)')
 
 console.log(`\n${gagal === 0 ? '✅ SEMUA LULUS' : '❌ ADA YANG GAGAL'} — lulus ${lulus}, gagal ${gagal}`)
 process.exit(gagal === 0 ? 0 : 1)

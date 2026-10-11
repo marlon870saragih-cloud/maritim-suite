@@ -226,3 +226,68 @@ export const KODE_ALASAN_WA2F = [
   'CHECKER_IS_MAKER',
 ] as const
 export type KodeAlasanWa2f = (typeof KODE_ALASAN_WA2F)[number]
+
+// ===================================================================== WA-2a Step 2F (F3)
+// Keputusan owner F3: D6-A (ETA/ETD), D6-B (milestone), D-GRANT, kebijakan draft. DATA saja.
+// [F3] ATURAN_FRESHNESS_DISETUJUI (F1, kosong) DIGANTIKAN ATURAN_FRESHNESS_D6 di bawah — owner menyetujui D6
+// setelah F1. Peta F1 dibiarkan apa adanya (berkas ini hanya ditambah) dan TIDAK dipakai service.
+
+/** D6-A — konfirmasi staf ETA/ETD berlaku maksimum 12 jam pada saat dinilai (draft, preview, approval). */
+export const MAKS_JAM_KONFIRMASI_JADWAL = 12
+/** D6-B — pemberitahuan proaktif milestone maksimum 24 jam sejak waktu kejadian. */
+export const MAKS_JAM_MILESTONE_PROAKTIF = 24
+export const ATURAN_FRESHNESS_D6: Readonly<Record<(typeof KELUARGA_PESAN_KLIEN)[number], Readonly<{ aturan: 'D6A_KONFIRMASI_STAF' | 'D6B_MANUAL'; maksJam: number }>>> = Object.freeze({
+  SCHEDULE_CHANGE: Object.freeze({ aturan: 'D6A_KONFIRMASI_STAF' as const, maksJam: MAKS_JAM_KONFIRMASI_JADWAL }),
+  EOSP: Object.freeze({ aturan: 'D6B_MANUAL' as const, maksJam: MAKS_JAM_MILESTONE_PROAKTIF }),
+  ALL_FAST: Object.freeze({ aturan: 'D6B_MANUAL' as const, maksJam: MAKS_JAM_MILESTONE_PROAKTIF }),
+  SAILED: Object.freeze({ aturan: 'D6B_MANUAL' as const, maksJam: MAKS_JAM_MILESTONE_PROAKTIF }),
+})
+/** Kategori grant yang wajib dimiliki principal untuk isi pesan per keluarga (nilai ETA/ETD lama ⊂ SCHEDULE_ESTIMATE). */
+export const KATEGORI_WAJIB_PER_KELUARGA: Readonly<Record<(typeof KELUARGA_PESAN_KLIEN)[number], (typeof KATEGORI_DATA_GRANT)[number]>> = Object.freeze({
+  SCHEDULE_CHANGE: 'SCHEDULE_ESTIMATE',
+  EOSP: 'MILESTONE',
+  ALL_FAST: 'MILESTONE',
+  SAILED: 'MILESTONE',
+})
+/** Medan konfirmasi jadwal yang boleh dicatat WA-2 (K-3: tanpa ETB walau CHECK DB mengizinkan etb). */
+export const FIELD_KONFIRMASI_JADWAL_WA2 = ['eta', 'etd'] as const
+/** Pencatat konfirmasi jadwal (keputusan owner F3). */
+export const PERAN_PENCATAT_KONFIRMASI_JADWAL = ['ADMIN', 'MANAJER_OPERASI'] as const
+/** D6-B — sumber VoyageEvent yang sah untuk pesan milestone (sementara). */
+export const SUMBER_PERISTIWA_SAH = ['MANUAL'] as const
+/** D-GRANT — pemilihan grant snapshot: masa berlaku terpanjang, lalu id terkecil (deterministik & teraudit). */
+export const ATURAN_PILIH_GRANT = 'VALID_UNTIL_TERLAMA_LALU_ID_TERKECIL' as const
+export const TUJUAN_CONSENT_PESAN_KLIEN = 'PROACTIVE_OPERATIONAL_UPDATE' as const
+
+export const KODE_ALASAN_WA2F3 = [
+  'FRESHNESS_EVIDENCE_MISSING',
+  'CONFIRMATION_MISSING',
+  'CONFIRMATION_INVALIDATED',
+  'CONFIRMATION_VALUE_MISMATCH',
+  'CONFIRMATION_IN_FUTURE',
+  'CONFIRMATION_BEFORE_SOURCE',
+  'CONFIRMATION_EXPIRED',
+  'CONFIRMATION_VALUE_NOT_CURRENT',
+  'CONFIRMATION_ALREADY_INVALIDATED',
+  'EVENT_NOT_ALLOWED',
+  'EVENT_DELETED',
+  'EVENT_SOURCE_NOT_MANUAL',
+  'EVENT_IN_FUTURE',
+  'EVENT_TOO_OLD',
+  'EVENT_DUPLICATE',
+  'SOURCE_CHANGED',
+  'SOURCE_INVALID',
+  'CANDIDATE_BLOCKED',
+  'CONTACT_INELIGIBLE',
+  'CONSENT_NOT_GRANTED',
+  'CONSENT_CHANGED',
+  'ACCESS_DENIED',
+  'CATEGORY_NOT_GRANTED',
+  'GRANT_NOT_ELIGIBLE',
+  'VOYAGE_NOT_ELIGIBLE',
+  'LANGUAGE_INVALID',
+  'TEMPLATE_DATA_INVALID',
+  'SNAPSHOT_MISMATCH',
+  'REVISION_SUPERSEDED',
+] as const
+export type KodeAlasanWa2f3 = (typeof KODE_ALASAN_WA2F3)[number]

@@ -87,26 +87,33 @@ const kodeTah = ['SYSTEM_CONTEXT_FORBIDDEN', 'ROLE_NOT_ALLOWED', 'SELF_APPROVAL_
 cek('kode otorisasi TAH beku tercakup (dipetakan apa adanya)', kodeTah.every((k) => KODE.includes(k)))
 
 // ============================================================================ P3
-bagian('[P3] Freshness — gagal tertutup tanpa aturan disetujui')
+bagian('[P3] Freshness — aturan D6 (disetujui owner F3); tanpa bukti / tanpa aturan → gagal tertutup')
 cek('ATURAN_FRESHNESS_DISETUJUI kosong & beku', Object.keys(K.ATURAN_FRESHNESS_DISETUJUI).length === 0 && Object.isFrozen(K.ATURAN_FRESHNESS_DISETUJUI))
 cek('kosakata keluarga = kosakata pilot WA-1 (KELUARGA_EVENT)', [...K.KELUARGA_PESAN_KLIEN].join() === [...WA1.KELUARGA_EVENT].join())
 cek('setiap keluarga punya medan waktu (ETA/ETD atau waktu milestone)', K.KELUARGA_PESAN_KLIEN.every((k) => K.MEDAN_WAKTU_PER_KELUARGA[k].length > 0) && K.MEDAN_WAKTU_PER_KELUARGA.SCHEDULE_CHANGE.join() === 'eta,etd')
 const verdict = K.KELUARGA_PESAN_KLIEN.map((k) => M.penilaianFreshness(k))
-cek('empat keluarga → GAGAL_TERTUTUP / FRESHNESS_RULE_MISSING / aturan null', verdict.every((v) => v.status === 'GAGAL_TERTUTUP' && v.alasan === 'FRESHNESS_RULE_MISSING' && v.aturan === null && v.versi === 1))
+// D-FRESHNESS (owner F3): asersi F1 "tanpa aturan" DIGANTI — aturan D6 kini ada, tetapi tanpa bukti tetap gagal tertutup.
+cek('ATURAN_FRESHNESS_D6: tepat 4 keluarga; jadwal D6A 12 jam, milestone D6B 24 jam; beku', Object.keys(K.ATURAN_FRESHNESS_D6).join() === [...K.KELUARGA_PESAN_KLIEN].join() && K.ATURAN_FRESHNESS_D6.SCHEDULE_CHANGE.aturan === 'D6A_KONFIRMASI_STAF' && K.ATURAN_FRESHNESS_D6.SCHEDULE_CHANGE.maksJam === 12 && ['EOSP', 'ALL_FAST', 'SAILED'].every((k) => K.ATURAN_FRESHNESS_D6[k].aturan === 'D6B_MANUAL' && K.ATURAN_FRESHNESS_D6[k].maksJam === 24) && Object.isFrozen(K.ATURAN_FRESHNESS_D6) && K.KELUARGA_PESAN_KLIEN.every((k) => Object.isFrozen(K.ATURAN_FRESHNESS_D6[k])))
+cek('tanpa bukti: empat keluarga → GAGAL_TERTUTUP / FRESHNESS_EVIDENCE_MISSING / aturan D6 keluarganya', verdict.every((v) => v.status === 'GAGAL_TERTUTUP' && v.alasan === 'FRESHNESS_EVIDENCE_MISSING' && v.aturan === K.ATURAN_FRESHNESS_D6[v.keluarga].aturan && v.versi === 1))
+cek('keluarga tak dikenal → GAGAL_TERTUTUP / FRESHNESS_RULE_MISSING / aturan null', ['NOR_TENDERED', '', null].every((k) => { const v = M.penilaianFreshness(k); return v.status === 'GAGAL_TERTUTUP' && v.alasan === 'FRESHNESS_RULE_MISSING' && v.aturan === null }))
+cek('peta F1 ATURAN_FRESHNESS_DISETUJUI tetap kosong & TIDAK dipakai kode aplikasi (digantikan D6)', Object.keys(K.ATURAN_FRESHNESS_DISETUJUI).length === 0 && !/ATURAN_FRESHNESS_DISETUJUI/.test(tanpaKomentar(baca('src/services/whatsapp/wa-message-policy.ts')) + tanpaKomentar(baca('src/services/whatsapp/wa-freshness.ts'))))
+cek('penilaianFreshness (tanpa bukti) TIDAK PERNAH LOLOS', [...K.KELUARGA_PESAN_KLIEN, 'X', null].every((k) => M.penilaianFreshness(k).status !== 'LOLOS'))
 cek('keluarga tak dikenal / bukan teks → tetap GAGAL_TERTUTUP (tanpa medan)', ['NOR_TENDERED', '', null, 42].every((k) => { const v = M.penilaianFreshness(k); return v.status === 'GAGAL_TERTUTUP' && v.medan.length === 0 }))
 cek('verdict dapat diserialisasi JSON (kolom freshnessVerdict NOT NULL) tanpa kehilangan medan', verdict.every((v) => JSON.stringify(JSON.parse(JSON.stringify(v))) === JSON.stringify(v)))
-cek('kode verdict ⊆ KODE_ALASAN_WA2F', verdict.every((v) => KODE.includes(v.alasan)))
+cek('kode verdict ⊆ KODE_ALASAN_WA2F ∪ KODE_ALASAN_WA2F3', verdict.every((v) => KODE.includes(v.alasan) || K.KODE_ALASAN_WA2F3.includes(v.alasan)))
 cek('tak ada ambang waktu/angka bawaan di modul freshness', !/\b\d+\s*\*\s*(60|3600|1000)|MENIT|JAM_MAKS|ambang\s*=/.test(tanpaKomentar(baca('src/services/whatsapp/wa-message-policy.ts'))))
 
 // ============================================================================ P4
 bagian('[P4] Syarat data — NYATA bukan satu-satunya verifikasi')
 const lolosF = { status: 'LOLOS' }
 cek('NYATA saja (tanpa revalidasi & freshness) → DITOLAK', M.syaratDataApproval({ dataOrigin: 'NYATA', sumberTervalidasi: undefined, freshness: null }).ok === false)
-cek('NYATA + sumber tervalidasi + freshness GAGAL_TERTUTUP → FRESHNESS_RULE_MISSING', M.syaratDataApproval({ dataOrigin: 'NYATA', sumberTervalidasi: true, freshness: M.penilaianFreshness('EOSP') }).alasan === 'FRESHNESS_RULE_MISSING')
+// D-FRESHNESS (owner F3): kode diganti — freshness tak lolos kini FRESHNESS_EVIDENCE_MISSING (aturan ada, bukti tidak).
+cek('NYATA + sumber tervalidasi + freshness GAGAL_TERTUTUP → FRESHNESS_EVIDENCE_MISSING', M.syaratDataApproval({ dataOrigin: 'NYATA', sumberTervalidasi: true, freshness: M.penilaianFreshness('EOSP') }).alasan === 'FRESHNESS_EVIDENCE_MISSING')
 cek('NYATA + freshness LOLOS tanpa revalidasi sumber → SOURCE_NOT_REVALIDATED', M.syaratDataApproval({ dataOrigin: 'NYATA', sumberTervalidasi: false, freshness: lolosF }).alasan === 'SOURCE_NOT_REVALIDATED')
 cek('SEED / UJI / NULL / teks lain → DATA_ORIGIN_INSUFFICIENT walau syarat lain terpenuhi', ['SEED', 'UJI', null, undefined, 'nyata'].every((o) => M.syaratDataApproval({ dataOrigin: o, sumberTervalidasi: true, freshness: lolosF }).alasan === 'DATA_ORIGIN_INSUFFICIENT'))
 cek('sumberTervalidasi harus PERSIS true (bukan truthy)', M.syaratDataApproval({ dataOrigin: 'NYATA', sumberTervalidasi: 'true', freshness: lolosF }).alasan === 'SOURCE_NOT_REVALIDATED')
-cek('ketiga syarat terpenuhi → ok (jalur ini tak tercapai selama tak ada aturan freshness disetujui)', M.syaratDataApproval({ dataOrigin: 'NYATA', sumberTervalidasi: true, freshness: lolosF }).ok === true && !verdict.some((v) => v.status === 'LOLOS'))
+// D-FRESHNESS (owner F3): LOLOS kini tercapai HANYA lewat evaluator D6 dengan bukti sah (diuji di check-wa2a-message-f3.mjs).
+cek('ketiga syarat terpenuhi → ok; verdict tanpa bukti tak pernah LOLOS', M.syaratDataApproval({ dataOrigin: 'NYATA', sumberTervalidasi: true, freshness: lolosF }).ok === true && !verdict.some((v) => v.status === 'LOLOS'))
 
 // ============================================================================ P5
 bagian('[P5] Definisi approval CLIENT_WA_UPDATE')
@@ -201,7 +208,9 @@ for (const nama of readdirSync(dirWa).filter((f) => /\.(ts|tsx)$/.test(f))) {
     if (tujuan && relative(AKAR, tujuan).split('\\').join('/').startsWith('src/services/communication')) pengimporWa1.push(`${nama} → ${spec}`)
   }
 }
-cek('F1: TIDAK ADA berkas src/services/whatsapp yang mengimpor modul WA-1 (resolusi impor, termasuk relatif)', pengimporWa1.length === 0, pengimporWa1.join(', '))
+// F3 (D2 disetujui owner): SATU adapter wa1-bridge.ts boleh mengimpor TIGA modul WA-1 ini saja; berkas lain tidak sama sekali.
+const IMPOR_ADAPTER_SAH = ['wa1-bridge.ts → @/services/communication/communication.service', 'wa1-bridge.ts → @/services/communication/comm-policy', 'wa1-bridge.ts → @/services/communication/comm-hash']
+cek('F1/F3: hanya wa1-bridge.ts yang mengimpor modul WA-1, dan hanya 3 modul yang disetujui (resolusi impor, termasuk relatif)', pengimporWa1.every((x) => IMPOR_ADAPTER_SAH.includes(x)) && pengimporWa1.length === IMPOR_ADAPTER_SAH.length, pengimporWa1.join(', '))
 cek('impor modul F1 hanya: wa2-policy, tah-policy, registry TAH, gerbang Automation', F1.every((f) => [...isiF1[f].matchAll(/\bfrom\s+'([^']+)'/g)].every((m) => ['./wa2-policy', '../tah/tah-policy', '../tah/registry', '../automation/gate'].includes(m[1]))))
 const pol = tanpaKomentar(baca('src/services/whatsapp/wa2-policy.ts'))
 cek('wa2-policy.ts tetap DATA saja (tanpa impor, process.env, DB, jaringan)', !/^\s*import\s/m.test(pol) && !/process\.env|prisma|fetch\(/.test(pol))
@@ -219,9 +228,22 @@ const BOLEH = new Set([
   // F2 (persetujuan owner: penyesuaian lingkup minimal) — berkas template & ujinya; berkas lain tetap ditolak.
   'src/services/whatsapp/wa-template.ts',
   'prisma/check-wa2a-template.mjs',
+  // F3 (penyesuaian lingkup disetujui owner) — path persis, tanpa wildcard.
+  'src/services/communication/communication.service.ts',
+  'src/services/whatsapp/wa1-bridge.ts',
+  'src/services/whatsapp/wa-freshness.ts',
+  'src/services/whatsapp/wa-access-resolver.ts',
+  'src/services/whatsapp/wa-schedule-confirmation.service.ts',
+  'src/services/whatsapp/wa-message.service.ts',
+  'prisma/check-comm-policy.mjs',
+  'prisma/check-wa2a-contact.mjs',
+  'prisma/check-wa2a-access.mjs',
+  'prisma/check-wa2a-message-f3.mjs',
+  'prisma/check-wa2a-message-f3-db.mjs',
+  'docs/whatsapp/WA-2a-F3-EVIDENCE.md',
 ])
 const semua = [...new Set([...berubah, ...baru])]
-cek('hanya berkas F1 (+ berkas F2 yang disetujui) yang berubah/baru', semua.every((f) => BOLEH.has(f)), semua.join(', ') || '(bersih)')
+cek('hanya berkas F1 (+ berkas F2/F3 yang disetujui) yang berubah/baru', semua.every((f) => BOLEH.has(f)), semua.join(', ') || '(bersih)')
 const diffPolicy = execFileSync('git', ['diff', 'main', '--', 'src/services/whatsapp/wa2-policy.ts'], { cwd: AKAR, encoding: 'utf8' })
 cek('wa2-policy.ts hanya ditambah (tanpa baris dihapus)', !/^-(?!--)/m.test(diffPolicy))
 

@@ -293,6 +293,11 @@ export const PILIH_CANDIDATE = {
   id: true, voyageId: true, family: true, sourceType: true, sourceRef: true, signalIds: true, includedFields: true, state: true, blockReason: true, version: true,
 } as const
 
+/** Muat candidate (tenant-scoped, dalam transaksi pemanggil) — diekspor HANYA untuk adapter WA-2 (keputusan owner D2). */
+export async function muatCandidateDalamTx(tx: Tx, candidateId: string): Promise<CandidateBaris | null> {
+  return (await tx.communicationCandidate.findFirst({ where: { id: candidateId }, select: PILIH_CANDIDATE })) as CandidateBaris | null
+}
+
 // ===================================================== mutasi candidate (+audit)
 
 /**
@@ -501,7 +506,8 @@ export async function siapkanCandidate(ctx: TenantContext, input: { signalId: un
   return denganUlang(() => forTenant(ctx).$transaction((tx) => siapkanDalamTx(ctx, tx, signalId)))
 }
 
-async function siapkanDalamTx(ctx: TenantContext, tx: Tx, signalId: string): Promise<HasilSiapkanCandidate> {
+/** Inti Prepare TANPA gerbang WA-1 — diekspor HANYA untuk adapter WA-2 (src/services/whatsapp/wa1-bridge.ts, keputusan owner D2/D3). */
+export async function siapkanDalamTx(ctx: TenantContext, tx: Tx, signalId: string): Promise<HasilSiapkanCandidate> {
   const s = await tx.monitoringSignal.findFirst({ where: { id: signalId }, select: PILIH_SINYAL })
   if (!s) throw notFound('Sinyal')
   const k = klasifikasiSinyal(s as SinyalMasuk)

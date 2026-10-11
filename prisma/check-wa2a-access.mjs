@@ -54,7 +54,8 @@ cek('resolver: semua query FOR SHARE & bersaring "tenantId"', [...isi.resolver.m
 cek('resolver: jalur principal mensyaratkan grant ACTIVE milik kontak & principal, validUntil > sekarang, principalId voyage SAAT INI, NYATA, bukan CLOSED/CANCELLED', /g\."status" = 'ACTIVE'/.test(isi.resolver) && /g\."contactId" = \$\{k\.id\}/.test(isi.resolver) && /g\."validUntil" > \$\{sekarang\}/.test(isi.resolver) && /v\."principalId" = \$\{k\.principalId\}/.test(isi.resolver) && /NOT IN \('CLOSED', 'CANCELLED'\)/.test(isi.resolver) && /"dataOrigin" = \$\{ASAL_DATA_SAH\}/.test(isi.resolver))
 cek("resolver: jalur customer mengecualikan CANCELLED (CLOSED tetap) & mensyaratkan Customer aktif", /"status" <> 'CANCELLED'/.test(isi.resolver) && /"isActive" = true AND "deletedAt" IS NULL/.test(isi.resolver))
 cek('resolver tidak pernah memakai vesselId / kapal untuk akses', !/vessel/i.test(isi.resolver))
-cek('resolver mengembalikan ID & kategori SAJA', /akses: AksesVoyage\[\]/.test(isi.resolver) && /export type AksesVoyage = \{ voyageId: string; kategori: string\[\] \}/.test(baca(F.resolver)))
+// F3 (D-GRANT disetujui owner): + identitas grant dasar akses (id, kategori, validUntil) — tetap TANPA data voyage/kontak.
+cek('resolver mengembalikan ID voyage, kategori & identitas grant dasar akses SAJA', /akses: AksesVoyage\[\]/.test(isi.resolver) && /export type AksesVoyage = \{ voyageId: string; kategori: string\[\]; grants: GrantAkses\[\] \}/.test(baca(F.resolver)) && /export type GrantAkses = \{ grantId: string; kategori: string\[\]; validUntil: string \}/.test(baca(F.resolver)))
 
 bagian('[S2] Pembaca terbatas (E-1)')
 const selectView = (isi.view.match(/SELECT v\."id"[\s\S]*?FROM "Voyage"/) ?? [''])[0]
@@ -86,7 +87,35 @@ bagian('[S4] Lingkup Step 2E')
 const berubah = execFileSync('git', ['diff', '--name-only', 'main'], { cwd: AKAR, encoding: 'utf8' }).trim().split('\n').filter(Boolean)
 const baru = execFileSync('git', ['ls-files', '--others', '--exclude-standard'], { cwd: AKAR, encoding: 'utf8' }).trim().split('\n').filter(Boolean)
 const BEKU = [/^src\/services\/communication\//, /^src\/services\/tah\//, /^src\/services\/intake\//, /^docs\/whatsapp\/PRD-WA-1\.md$/, /^prisma\/check-(comm|tah|validator)/, /^prisma\/migrations\//, /^prisma\/schema\.prisma$/, /^prisma\/rollback\//, /^src\/services\/whatsapp\/wa-(contact|consent)\.service\.ts$/, /^src\/services\/whatsapp\/wa2-gate\.ts$/]
-cek('tanpa perubahan WA-1/TAH/V3/schema/migrasi dan service kontak/consent 2a-C', [...berubah, ...baru].every((f) => !BEKU.some((r) => r.test(f))), [...berubah, ...baru].join(', '))
+// WA-2a Step 2F F3 — pengecualian lingkup yang DISETUJUI owner (D2), per berkas & per BARIS, tanpa wildcard:
+//   communication.service.ts: `export` pada siapkanDalamTx + fungsi baru muatCandidateDalamTx (+ dok);
+//   check-comm-policy.mjs: allowlist perujuk +1 adapter WA-2 (src/services/whatsapp/wa1-bridge.ts).
+// Berkas beku lain — atau baris lain di dua berkas ini — tetap DITOLAK.
+const BARIS_F3 = {
+  'src/services/communication/communication.service.ts': {
+    hapus: ['async function siapkanDalamTx(ctx: TenantContext, tx: Tx, signalId: string): Promise<HasilSiapkanCandidate> {'],
+    tambah: (b) => b === '' || b === '}' || (b.startsWith('/**') && b.endsWith('*/') && /WA-2/.test(b)) || [
+      'export async function siapkanDalamTx(ctx: TenantContext, tx: Tx, signalId: string): Promise<HasilSiapkanCandidate> {',
+      'export async function muatCandidateDalamTx(tx: Tx, candidateId: string): Promise<CandidateBaris | null> {',
+      'return (await tx.communicationCandidate.findFirst({ where: { id: candidateId }, select: PILIH_CANDIDATE })) as CandidateBaris | null',
+    ].includes(b),
+  },
+  'prisma/check-comm-policy.mjs': {
+    hapus: ["cek('Step 2I: perujuk modul komunikasi di luar foldernya = PERSIS 11 route API + 5 berkas server UI + 2 komponen client', perujuk.sort().join() === [...harapRute, ...UI_SERVER, ...UI_CLIENT].sort().join(), perujuk.join(', '))"],
+    tambah: (b) => b === "// WA-2a Step 2F F3 (pengecualian D2 disetujui owner): SATU adapter WA-2 tepat ini — bukan wildcard." || b === "const WA2_ADAPTER = ['src/services/whatsapp/wa1-bridge.ts']" ||
+      b === "cek('Step 2I: perujuk modul komunikasi di luar foldernya = PERSIS 11 route API + 5 berkas server UI + 2 komponen client + 1 adapter WA-2', perujuk.sort().join() === [...harapRute, ...UI_SERVER, ...UI_CLIENT, ...WA2_ADAPTER].sort().join(), perujuk.join(', '))",
+  },
+}
+const diffSesuaiF3 = (f) => {
+  const a = BARIS_F3[f]
+  if (!a) return false
+  const d = execFileSync('git', ['diff', '-U0', 'main', '--', f], { cwd: AKAR, encoding: 'utf8' }).split('\n').filter((l) => /^[-+](?![-+]{2} )/.test(l))
+  const hapus = d.filter((l) => l.startsWith('-')).map((l) => l.slice(1).trim())
+  const tambah = d.filter((l) => l.startsWith('+')).map((l) => l.slice(1).trim())
+  return hapus.join('\n') === a.hapus.join('\n') && tambah.length > 0 && tambah.every(a.tambah)
+}
+cek('tanpa perubahan WA-1/TAH/V3/schema/migrasi dan service kontak/consent 2a-C (kecuali baris F3 yang disetujui persis)', [...berubah, ...baru].every((f) => !BEKU.some((r) => r.test(f)) || diffSesuaiF3(f)), [...berubah, ...baru].filter((f) => BEKU.some((r) => r.test(f))).join(', ') || '(tanpa berkas beku)')
+cek('pengecualian F3 tidak dipakai untuk berkas beku lain', [...berubah, ...baru].filter((f) => BEKU.some((r) => r.test(f))).every((f) => f in BARIS_F3))
 const lockDiff = execFileSync('git', ['diff', 'main', '--', 'src/services/whatsapp/wa-lock.ts', 'src/services/whatsapp/wa2-policy.ts'], { cwd: AKAR, encoding: 'utf8' })
 cek('wa-lock.ts & wa2-policy.ts hanya ditambah (tanpa baris dihapus)', !/^-(?!--)/m.test(lockDiff))
 
