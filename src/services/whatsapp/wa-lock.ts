@@ -74,3 +74,35 @@ export async function tahanPesanTertunda(tx: TxMentah, tenantId: string, contact
     RETURNING "id"`)
   return baris.map((b) => b.id).sort()
 }
+
+// ===================================================================== WA-2a Step 2E
+
+export type BarisGrantTerkunci = {
+  id: string
+  contactId: string
+  principalId: string
+  status: string
+  requestedByUserId: string
+  dataCategories: string[]
+  validUntil: Date | null
+  version: number
+}
+
+/** Kunci grant FOR UPDATE (kontak WAJIB sudah dikunci lebih dulu oleh pemanggil — urutan tetap). */
+export async function kunciGrant(tx: TxMentah, tenantId: string, grantId: string): Promise<BarisGrantTerkunci | null> {
+  const baris = await tx.$queryRaw<BarisGrantTerkunci[]>(Prisma.sql`
+    SELECT "id", "contactId", "principalId", "status", "requestedByUserId", "dataCategories", "validUntil", "version"
+    FROM "WaPrincipalAccessGrant" WHERE "id" = ${grantId} AND "tenantId" = ${tenantId} FOR UPDATE`)
+  return baris[0] ?? null
+}
+
+/** Tahan pesan yang memakai grant ini sebagai dasar akses → NEEDS_REVIEW. */
+export async function tahanPesanGrant(tx: TxMentah, tenantId: string, grantId: string, alasan: string): Promise<string[]> {
+  const baris = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
+    UPDATE "WaClientMessage"
+    SET "state" = 'NEEDS_REVIEW', "reasonCode" = ${alasan}, "version" = "version" + 1, "updatedAt" = now()
+    WHERE "tenantId" = ${tenantId} AND "grantIdSnapshot" = ${grantId}
+      AND "state" IN (${Prisma.join([...STATUS_PESAN_DAPAT_DITAHAN])})
+    RETURNING "id"`)
+  return baris.map((b) => b.id).sort()
+}

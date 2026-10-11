@@ -14,7 +14,7 @@
 // Lapis:
 //   S1. schema — 7 model, tenant CASCADE, FK pihak NO ACTION, FK komposit, unik, TENANT_MODELS.
 //   S2. migrasi — murni aditif (hanya tabel baru), 5 CHECK, trigger hanya pada tabel baru.
-//   S3. lingkup — belum ada kode aplikasi yang memakai tabel baru; berkas beku tidak tersentuh.
+//   S3. lingkup — tabel baru hanya dipakai src/services/whatsapp/ (sejak 2C); berkas beku tidak tersentuh.
 //   D1. objek DB nyata (tabel, CHECK, trigger, aksi FK).
 //   D2. kontak: pihak tepat-satu, kunci aktif, nomor aktif unik (DB-3), identitas & INACTIVE terminal.
 //   D3. consent: FK komposit tenant, append-only, identitas state.
@@ -124,9 +124,17 @@ cek('Kode galat trigger = daftar KODE_GALAT_DB_WA2A', (() => {
 
 // ============================================================================ S3
 bagian('[S3] Lingkup Step 2B')
-const semuaSrc = execFileSync('git', ['ls-files', 'src'], { cwd: AKAR, encoding: 'utf8' }).trim().split('\n')
-const pemakai = semuaSrc.filter((f) => /\.(ts|tsx)$/.test(f) && /\.(waContact|waConsentState|waConsentEvent|waPrincipalAccessGrant|waPrincipalAccessGrantVoyage|waClientMessage|voyageScheduleConfirmation)\b/.test(baca(f)))
-cek('belum ada kode aplikasi yang memakai tabel baru', pemakai.length === 0, pemakai.join(', '))
+// Berkas TER-TRACK + BELUM DI-COMMIT (untracked) — supaya pemakaian baru terdeteksi sebelum commit.
+const semuaSrc = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', 'src'], { cwd: AKAR, encoding: 'utf8' }).trim().split('\n').filter(Boolean)
+// Pemakaian = akses model Prisma (`.waContact.` dst.) ATAU nama tabel di SQL mentah (`"WaContact"` dst.).
+const POLA_PEMAKAI = /\.(waContact|waConsentState|waConsentEvent|waPrincipalAccessGrant|waPrincipalAccessGrantVoyage|waClientMessage|voyageScheduleConfirmation)\b|"(WaContact|WaConsentState|WaConsentEvent|WaPrincipalAccessGrant|WaPrincipalAccessGrantVoyage|WaClientMessage|VoyageScheduleConfirmation)"/
+const pemakai = semuaSrc.filter((f) => /\.(ts|tsx|js|mjs)$/.test(f) && POLA_PEMAKAI.test(baca(f)))
+// Riwayat: Step 2B menegaskan "belum ada pemakai". Sejak Step 2C (PR #20) lapisan service WA-2 memakainya,
+// sehingga asersi lama gagal di main (126/127). Batas yang tetap ditegakkan: HANYA src/services/whatsapp/**
+// — tidak ada route API, UI, service lain, maupun WA-1. Bukti uji negatif: docs/whatsapp/WA-2a-E-EVIDENCE.md.
+const pemakaiLuar = pemakai.filter((f) => !f.startsWith('src/services/whatsapp/'))
+cek('tabel WA-2a hanya dipakai lapisan service src/services/whatsapp/ (tanpa route/UI/service lain)', pemakaiLuar.length === 0, pemakaiLuar.join(', ') || `${pemakai.length} berkas di src/services/whatsapp/`)
+cek('pemindai pemakai benar-benar menemukan pemakai yang sah (bukan pemeriksaan kosong)', pemakai.length >= 3 && pemakai.every((f) => f.startsWith('src/services/whatsapp/')), `${pemakai.length} berkas`)
 const policy = baca('src/services/whatsapp/wa2-policy.ts').replace(/\/\/[^\n]*|\/\*\*?[\s\S]*?\*\//g, '')
 cek('wa2-policy.ts: data saja (tanpa impor, process.env, DB, jaringan)', !/^\s*import\s/m.test(policy) && !/process\.env|prisma|fetch\(/.test(policy))
 const berubah = execFileSync('git', ['diff', '--name-only', 'HEAD'], { cwd: AKAR, encoding: 'utf8' }).trim().split('\n').filter(Boolean)
