@@ -19,6 +19,7 @@ import { Prisma } from '@prisma/client'
 import { gerbangWa2 } from './wa2-gate'
 import { denganUlangWa2 } from './wa-db-error'
 import { kunciGrant, kunciKontak, tahanPesanGrant, type TxMentah } from './wa-lock'
+import { hentikanApprovalPesanDitahan } from './wa-approval-stop'
 import { sidikBukti, statusVerifikasiEfektif } from './wa-contact.service'
 import { ASAL_DATA_SAH, KATEGORI_DATA_GRANT, MAKS_BULAN_GRANT, MAKS_VOYAGE_PER_GRANT } from './wa2-policy'
 
@@ -198,6 +199,7 @@ export async function cabutGrant(ctx: TenantContext, grantId: unknown, input: { 
       if (g.status === 'REVOKED') return { hasil: 'SUDAH_DICABUT' as const, pesanDitahan: [] }
       if (g.status !== 'ACTIVE') throw conflict('Hanya grant ACTIVE yang dapat dicabut (PENDING → tolak).', { code: 'GRANT_NOT_ACTIVE', status: g.status })
       await tx.waPrincipalAccessGrant.updateMany({ where: { id: gid, status: 'ACTIVE' }, data: { status: 'REVOKED', revokedAt: new Date(), revokedByUserId: ctx.userId, revokeReason: alasan, version: { increment: 1 } } })
+      await hentikanApprovalPesanDitahan(ctx, tx, { grantId: gid }, 'ACCESS_REVOKED')
       const pesanDitahan = await tahanPesanGrant(t, ctx.tenantId, gid, 'ACCESS_REVOKED')
       await catatAudit(ctx, { tableName: TABEL, recordId: gid, action: 'UPDATE', oldValue: { status: 'ACTIVE' }, newValue: { peristiwa: 'WA2_GRANT_DICABUT', sidikAlasan: sidikBukti(alasan), pesanDitahan } }, {}, tx)
       return { hasil: 'DICABUT' as const, pesanDitahan }

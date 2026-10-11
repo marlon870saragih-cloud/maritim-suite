@@ -291,3 +291,30 @@ export const KODE_ALASAN_WA2F3 = [
   'REVISION_SUPERSEDED',
 ] as const
 export type KodeAlasanWa2f3 = (typeof KODE_ALASAN_WA2F3)[number]
+
+// ===================================================================== WA-2a Step 2F (F4)
+// Keputusan owner F4 (K1–K11): approval eksternal atas pesan klien, berhenti di APPROVED (tanpa Send). DATA saja.
+
+/** K4 — peminta approval pesan klien hanya ADMIN / MANAJER_OPERASI (konteks sistem ditolak gerbang WA-2). */
+export const PERAN_PEMINTA_APPROVAL_PESAN_KLIEN = ['ADMIN', 'MANAJER_OPERASI'] as const
+/** Awalan kunci idempotensi TahApprovalRequest pesan klien (WA-1 memakai `WA1:`). */
+export const AWALAN_IDEMPOTENSI_APPROVAL_PESAN_KLIEN = 'WA2:' as const
+/**
+ * K2 — kegagalan freshness saat permintaan/keputusan approval: sumber berubah/terhapus/tidak sah atau
+ * milestone ganda → BLOCKED; selain itu (bukti hilang/invalid/kedaluwarsa) → NEEDS_REVIEW.
+ */
+export const ALASAN_FRESHNESS_BLOCKED = ['SOURCE_CHANGED', 'SOURCE_INVALID', 'EVENT_DELETED', 'EVENT_DUPLICATE', 'EVENT_NOT_ALLOWED', 'EVENT_SOURCE_NOT_MANUAL', 'FRESHNESS_RULE_MISSING'] as const
+
+export const KODE_ALASAN_WA2F4 = [
+  'APPROVAL_NOT_PENDING',
+  'APPROVAL_LINK_MISMATCH',
+  'APPROVAL_ALREADY_EXISTS',
+  'PROPOSAL_HASH_MISMATCH',
+  'CHECKER_IS_EVIDENCE_RECORDER',
+  'EVIDENCE_CHANGED',
+  'DECISION_NOTE_INVALID',
+  'APPROVAL_REJECTED',
+  'MESSAGE_CANCELED_BY_STAFF',
+  'MESSAGE_HELD',
+] as const
+export type KodeAlasanWa2f4 = (typeof KODE_ALASAN_WA2F4)[number]

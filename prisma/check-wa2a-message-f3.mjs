@@ -94,11 +94,12 @@ bagian('[S1] Adapter WA-1 & tanpa duplikasi')
 const bridge = tanpaKomentar(baca('src/services/whatsapp/wa1-bridge.ts'))
 const impBridge = [...bridge.matchAll(/\bfrom\s+'([^']+)'/g)].map((m) => m[1]).sort()
 cek('adapter hanya meneruskan 3 modul WA-1 (alias @/ — terdeteksi uji beku perujuk)', impBridge.join() === ['@/services/communication/comm-hash', '@/services/communication/comm-policy', '@/services/communication/communication.service'].join())
-cek('adapter: hanya ekspor ulang (tanpa logika), tanpa gerbang/flag WA-1, tanpa approval/Send/template/blokir', /^\s*(export \{[\s\S]*?\} from '[^']+'\s*)+$/.test(bridge) && !/process\.env|gerbang|tahApproval|Send|renderPesan|TEMPLATE|blokirCandidate|hentikanApproval/.test(bridge))
+cek('adapter: hanya ekspor ulang (tanpa logika), tanpa gerbang/flag WA-1, tanpa approval/Send/template/blokir', /^\s*(export \{[\s\S]*?\} from '[^']+'\s*)+$/.test(bridge) && !/process\.env|gerbang|tahApproval|Send|renderPesan|TEMPLATE|blokirCandidate/.test(bridge))
 const dirWa = join(AKAR, 'src/services/whatsapp')
 const berkasWa = readdirSync(dirWa).filter((f) => f.endsWith('.ts'))
 cek('tak ada berkas WA-2 yang menyebut nama tabel komunikasi WA-1 (pagar check-comm-schema)', berkasWa.every((f) => !/communicationCandidate|communicationMessage|communicationAttempt/.test(readFileSync(join(dirWa, f), 'utf8'))), berkasWa.filter((f) => /communicationCandidate|communicationMessage|communicationAttempt/.test(readFileSync(join(dirWa, f), 'utf8'))).join())
-cek('tak ada pembuat TahApprovalRequest di WA-2 (approval = F4)', berkasWa.every((f) => !/tahApprovalRequest\.create/.test(readFileSync(join(dirWa, f), 'utf8'))))
+// F4 (pengecualian E1, sisi WA-2): pembuat TahApprovalRequest di WA-2 = TEPAT service approval F4.
+cek('pembuat TahApprovalRequest di WA-2 = PERSIS wa-message-approval.service.ts (F4)', berkasWa.filter((f) => /tahApprovalRequest\.create/.test(readFileSync(join(dirWa, f), 'utf8'))).join() === 'wa-message-approval.service.ts')
 const svcWa1 = baca('src/services/communication/communication.service.ts')
 const svcWa1Main = execFileSync('git', ['show', 'main:src/services/communication/communication.service.ts'], { cwd: AKAR, encoding: 'utf8' })
 const potong = (s, awal) => s.slice(s.indexOf(awal), s.indexOf('\n}\n', s.indexOf(awal)) + 2)
@@ -146,10 +147,39 @@ const BOLEH = new Set([
   'prisma/check-wa2a-message-f3.mjs', 'prisma/check-wa2a-message-f3-db.mjs', 'docs/whatsapp/WA-2a-F3-EVIDENCE.md',
   // Perbaikan uji 2B (Stage A F4, PR terpisah) — path persis, tanpa wildcard.
   'prisma/check-wa2a-schema.mjs',
+  // F4 (pengecualian E4 disetujui owner) — path persis, tanpa wildcard.
+  'src/services/whatsapp/wa-message-approval.service.ts',
+  'src/services/whatsapp/wa-approval-stop.ts',
+  'src/services/whatsapp/wa-message-check.ts',
+  'src/services/whatsapp/wa-approval-def.ts',
+  'src/services/whatsapp/wa-contact.service.ts',
+  'src/services/whatsapp/wa-consent.service.ts',
+  'src/services/whatsapp/wa-grant.service.ts',
+  'src/services/ops/voyage-event.service.ts',
+  'prisma/check-wa2a-approval-f4.mjs',
+  'prisma/check-wa2a-approval-f4-db.mjs',
+  'docs/whatsapp/WA-2a-F4-EVIDENCE.md',
 ])
 const semua = [...new Set([...berubah, ...baru])]
 cek('hanya berkas F3 yang disetujui (path persis) yang berubah/baru', semua.every((f) => BOLEH.has(f)), semua.filter((f) => !BOLEH.has(f)).join(', ') || `${semua.length} berkas`)
-cek('tanpa migrasi / schema / rollback / V3 / TAH / template v1 / service 2a-C', !semua.some((f) => /^prisma\/(migrations|rollback)\/|^prisma\/schema\.prisma$|^src\/services\/(tah|intake)\/|wa-template\.ts$|wa-(contact|consent)\.service\.ts$|wa2-gate\.ts$|wa-lock\.ts$/.test(f)))
+// F4 (pengecualian E4b disetujui owner): wa-contact/wa-consent.service.ts HANYA boleh berubah pada baris K3 persis.
+const BARIS_F4 = {
+  "src/services/whatsapp/wa-contact.service.ts": {
+    hapus: [],
+    tambah: ["import { hentikanApprovalPesanDitahan } from './wa-approval-stop'", "      await hentikanApprovalPesanDitahan(ctx, tx, { contactId: id }, 'CONTACT_INELIGIBLE')", "      await hentikanApprovalPesanDitahan(ctx, tx, { contactId: id }, 'CONTACT_INELIGIBLE')"],
+  },
+  "src/services/whatsapp/wa-consent.service.ts": {
+    hapus: [],
+    tambah: ["import { hentikanApprovalPesanDitahan } from './wa-approval-stop'", "        await hentikanApprovalPesanDitahan(ctx, tx, { contactId: id }, 'CONSENT_NOT_GRANTED')", "      await hentikanApprovalPesanDitahan(ctx, tx, { contactId: id }, 'CONSENT_NOT_GRANTED')"],
+  },
+}
+const diffSesuaiF4 = (f) => {
+  const a = Object.hasOwn(BARIS_F4, f) ? BARIS_F4[f] : null
+  if (!a || baru.includes(f)) return false
+  const isi = execFileSync('git', ['diff', '--no-renames', '-U0', 'main', '--', f], { cwd: AKAR, encoding: 'utf8' }).split('\n').filter((l) => /^[-+]/.test(l) && !/^(---|\+\+\+) (a\/|b\/|\/dev\/null)/.test(l))
+  return isi.filter((l) => l.startsWith('-')).map((l) => l.slice(1)).join('\n') === a.hapus.join('\n') && isi.filter((l) => l.startsWith('+')).map((l) => l.slice(1)).join('\n') === a.tambah.join('\n')
+}
+cek('tanpa migrasi / schema / rollback / V3 / TAH / template v1 / service 2a-C (kecuali baris K3 F4 persis)', !semua.some((f) => /^prisma\/(migrations|rollback)\/|^prisma\/schema\.prisma$|^src\/services\/(tah|intake)\/|wa-template\.ts$|wa2-gate\.ts$|wa-lock\.ts$/.test(f) || (/wa-(contact|consent)\.service\.ts$/.test(f) && !diffSesuaiF4(f))))
 const diffPol = execFileSync('git', ['diff', 'main', '--', 'src/services/whatsapp/wa2-policy.ts'], { cwd: AKAR, encoding: 'utf8' })
 cek('wa2-policy.ts hanya ditambah', !/^-(?!--)/m.test(diffPol))
 

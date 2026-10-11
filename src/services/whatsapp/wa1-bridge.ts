@@ -8,9 +8,12 @@
 //   • Klasifikasi sinyal & teks kunci kandidat (murni), JSON kanonik untuk sidik (murni), deteksi konflik yang
 //     aman diulang.
 // Tidak ada pembuat approval, tidak ada Send, tidak ada template WA-1 (template klien = wa-template.ts).
+// F4 (keputusan owner K3/K6): + hentikanApprovalTertaut — penghenti approval subjek-agnostik WA-1 (PENDING →
+// CANCELLED/SUPERSEDED; APPROVED+NOT_STARTED/FAILED → eksekusi CANCELLED) dipakai ulang APA ADANYA.
 
 export {
   bisaDiulang as bisaDiulangWa1,
+  hentikanApprovalTertaut,
   kunciCandidate,
   muatCandidateDalamTx,
   revalidasiCandidate,

@@ -1,5 +1,5 @@
-// Draft & preview pesan klien WA-2a Step 2F (F3d). Berhenti SEBELUM approval (F4) — tanpa Send, provider,
-// API/UI, maupun LLM. Keputusan owner: D1–D3 (Solusi A), D6-A/B, D7, D8, D-GRANT, kebijakan draft F3.
+// Draft & preview pesan klien WA-2a Step 2F (F3d). Approval = wa-message-approval.service.ts (F4) — tanpa Send,
+// provider, API/UI, maupun LLM. Keputusan owner: D1–D3 (Solusi A), D6-A/B, D7, D8, D-GRANT, kebijakan draft F3.
 //
 // Draft (satu transaksi, urutan kunci WaContact → WaConsentState → grant/Voyage (resolver) → bukti freshness →
 // CommunicationCandidate (Prepare WA-1 via adapter) → WaClientMessage):
@@ -23,14 +23,10 @@ import type { TenantContext } from '../context'
 import { conflict, notFound, validation } from '../errors'
 import { forTenant } from '../tenant-db'
 import { catatAudit } from '../finance/audit'
-import { kunciTanggal } from '../master/voyage-dates'
 import { gerbangWa2 } from './wa2-gate'
-import { denganUlangWa2 } from './wa-db-error'
-import { kunciConsent, kunciKontak, type TxMentah } from './wa-lock'
-import { statusVerifikasiEfektif } from './wa-contact.service'
-import { resolusiAkses } from './wa-access-resolver'
+import { kunciConsent, type TxMentah } from './wa-lock'
+import { asalDataVoyage, denganUlangPesan, nilaiFreshnessDb, periksaAkses, periksaKontak } from './wa-message-check'
 import {
-  bisaDiulangWa1,
   jsonKanonikKomunikasi,
   klasifikasiSinyal,
   kunciCandidate,
@@ -38,105 +34,18 @@ import {
   revalidasiCandidate,
   siapkanCandidateDalamTx,
   teksKunciCandidate,
-  type CandidateBaris,
-  type HasilRevalidasiCandidate,
   type SinyalMasuk,
 } from './wa1-bridge'
-import { nilaiFreshnessJadwal, nilaiFreshnessMilestone, type VerdictFreshnessD6 } from './wa-freshness'
-import { kategoriWajibUntuk, pilihGrantUntukPesan, syaratDataApproval, transisiPesanKlienSah } from './wa-message-policy'
-import { GalatTemplateKlien, renderPesanKlien, type BahasaPesanKlien, type KeluargaTemplateKlien } from './wa-template'
+import { hentikanApprovalPesan } from './wa-approval-stop'
+import { kategoriWajibUntuk, syaratDataApproval, transisiPesanKlienSah } from './wa-message-policy'
+import { GalatTemplateKlien, renderPesanKlien, type KeluargaTemplateKlien } from './wa-template'
 import { MODE_PESAN_KLIEN, TUJUAN_CONSENT_PESAN_KLIEN, type KodeAlasanWa2f3 } from './wa2-policy'
 
 const TABEL = 'WaClientMessage'
-const MAKS_PERCOBAAN = 4
 const tolak = (alasan: KodeAlasanWa2f3 | string, rinci: Record<string, unknown> = {}) => validation('Draft pesan klien ditolak.', { code: alasan, ...rinci })
 const idSah = (v: unknown, nama: string): string => {
   if (typeof v !== 'string' || v.trim() === '' || v.length > 64) throw validation(`${nama} tidak sah.`)
   return v
-}
-
-/** Pengulangan transaksi: konflik WA-2 (40001/P2034) + konflik WA-1 (KonflikKonkurensi, P2002) dari Prepare/kunci kandidat. */
-async function denganUlangPesan<T>(fn: () => Promise<T>): Promise<T> {
-  for (let percobaan = 1; ; percobaan++) {
-    try {
-      return await denganUlangWa2(fn)
-    } catch (e) {
-      if (bisaDiulangWa1(e) && percobaan < MAKS_PERCOBAAN) continue
-      if (bisaDiulangWa1(e)) throw conflict('Permintaan bersamaan belum terselesaikan. Coba lagi.', { code: 'CONCURRENCY_CONFLICT' })
-      throw e
-    }
-  }
-}
-
-// ================================================================ pemeriksaan bersama (draft & preview)
-
-type KontakLayak = { id: string; partyType: 'CUSTOMER' | 'PRINCIPAL'; partyId: string; e164: string; bahasa: BahasaPesanKlien }
-
-async function periksaKontak(tx: TxMentah, ctx: TenantContext, contactId: string, sekarang: Date): Promise<{ ok: true; k: KontakLayak } | { ok: false; alasan: KodeAlasanWa2f3 }> {
-  const k = await kunciKontak(tx, ctx.tenantId, contactId, 'SHARE')
-  if (!k) throw notFound('Kontak')
-  if (k.status !== 'ACTIVE' || statusVerifikasiEfektif(k, sekarang) !== 'VERIFIED') return { ok: false, alasan: 'CONTACT_INELIGIBLE' }
-  const partyId = k.partyType === 'CUSTOMER' ? k.customerId : k.principalId
-  if ((k.partyType !== 'CUSTOMER' && k.partyType !== 'PRINCIPAL') || !partyId) return { ok: false, alasan: 'CONTACT_INELIGIBLE' }
-  const b = await tx.$queryRaw<{ language: string }[]>(Prisma.sql`SELECT "language" FROM "WaContact" WHERE "id" = ${contactId} AND "tenantId" = ${ctx.tenantId}`)
-  const bahasa = b[0]?.language
-  if (bahasa !== 'ID' && bahasa !== 'EN') return { ok: false, alasan: 'LANGUAGE_INVALID' }
-  return { ok: true, k: { id: k.id, partyType: k.partyType, partyId, e164: k.e164, bahasa } }
-}
-
-type HasilAksesPesan = { ok: true; grantIdSnapshot: string | null; kandidatGrant: string[] } | { ok: false; alasan: KodeAlasanWa2f3 }
-
-/** Resolver 2E = SATU-SATUNYA sumber otorisasi; di sini hanya memilih/memeriksa grant dari hasilnya. */
-async function periksaAkses(tx: TxMentah, ctx: TenantContext, k: KontakLayak, voyageId: string, kategori: string, sekarang: Date, grantSnapshot?: string | null): Promise<HasilAksesPesan> {
-  const r = await resolusiAkses(tx, ctx.tenantId, k.id, sekarang)
-  if (r.izin !== 'IZIN') return { ok: false, alasan: 'ACCESS_DENIED' }
-  const a = r.akses.find((x) => x.voyageId === voyageId)
-  if (!a) return { ok: false, alasan: 'ACCESS_DENIED' }
-  if (!a.kategori.includes(kategori)) return { ok: false, alasan: 'CATEGORY_NOT_GRANTED' }
-  if (r.partyType === 'CUSTOMER') return grantSnapshot ? { ok: false, alasan: 'GRANT_NOT_ELIGIBLE' } : { ok: true, grantIdSnapshot: null, kandidatGrant: [] }
-  const p = pilihGrantUntukPesan(a.grants, kategori, sekarang)
-  if (!p.ok) return { ok: false, alasan: p.alasan }
-  if (grantSnapshot === undefined) return { ok: true, grantIdSnapshot: p.grantId, kandidatGrant: p.kandidat }
-  // Preview/approval: grant SNAPSHOT harus masih termasuk grant sah ber-kategori (bukan sembarang grant lain).
-  return p.kandidat.includes(grantSnapshot ?? '') ? { ok: true, grantIdSnapshot: grantSnapshot, kandidatGrant: p.kandidat } : { ok: false, alasan: 'GRANT_NOT_ELIGIBLE' }
-}
-
-type Fakta = Extract<HasilRevalidasiCandidate, { ok: true }>['fakta']
-
-/** Bukti freshness D6 dibaca dari DB tenant (terkunci FOR SHARE) lalu dinilai evaluator murni. */
-async function nilaiFreshnessDb(tx: TxMentah, ctx: TenantContext, c: CandidateBaris, fakta: Fakta, sekarang: Date): Promise<VerdictFreshnessD6> {
-  if ('perubahan' in fakta) {
-    const sumber = await tx.$queryRaw<{ createdAt: Date }[]>(Prisma.sql`
-      SELECT "createdAt" FROM "AuditLog" WHERE "id" = ${c.sourceRef} AND "tenantId" = ${ctx.tenantId} AND "tableName" = 'Voyage' AND "recordId" = ${c.voyageId}`)
-    const v = await tx.$queryRaw<{ eta: Date | null; etd: Date | null }[]>(Prisma.sql`
-      SELECT "eta", "etd" FROM "Voyage" WHERE "id" = ${c.voyageId} AND "tenantId" = ${ctx.tenantId} AND "deletedAt" IS NULL FOR SHARE`)
-    const medan = fakta.perubahan.map((p) => p.medan)
-    const kf = medan.length
-      ? await tx.$queryRaw<{ id: string; field: string; confirmedValue: Date; confirmedAt: Date; confirmedByUserId: string; invalidatedAt: Date | null }[]>(Prisma.sql`
-          SELECT "id", "field", "confirmedValue", "confirmedAt", "confirmedByUserId", "invalidatedAt" FROM "VoyageScheduleConfirmation"
-          WHERE "tenantId" = ${ctx.tenantId} AND "voyageId" = ${c.voyageId} AND "field" IN (${Prisma.join(medan)})
-          ORDER BY "id" FOR SHARE`)
-      : []
-    return nilaiFreshnessJadwal({
-      perubahan: fakta.perubahan.map((p) => ({ medan: p.medan, baru: p.baru })),
-      nilaiVoyageKini: { eta: kunciTanggal(v[0]?.eta ?? null), etd: kunciTanggal(v[0]?.etd ?? null) },
-      sumberDicatatPada: sumber[0]?.createdAt as Date,
-      konfirmasi: kf.map((x) => ({ id: x.id, field: x.field, nilai: kunciTanggal(x.confirmedValue), confirmedAt: x.confirmedAt, confirmedByUserId: x.confirmedByUserId, invalidatedAt: x.invalidatedAt })),
-      sekarang,
-    })
-  }
-  const ev = await tx.$queryRaw<{ id: string; voyageId: string; eventCode: string; occurredAt: Date; source: string; deletedAt: Date | null; portCallId: string | null; recordedByUserId: string }[]>(Prisma.sql`
-    SELECT "id", "voyageId", "eventCode", "occurredAt", "source", "deletedAt", "portCallId", "recordedByUserId" FROM "VoyageEvent"
-    WHERE "id" = ${c.sourceRef} AND "tenantId" = ${ctx.tenantId} AND "voyageId" = ${c.voyageId} FOR SHARE`)
-  const lain = await tx.$queryRaw<{ id: string; eventCode: string; portCallId: string | null }[]>(Prisma.sql`
-    SELECT "id", "eventCode", "portCallId" FROM "VoyageEvent"
-    WHERE "tenantId" = ${ctx.tenantId} AND "voyageId" = ${c.voyageId} AND "eventCode" = ${fakta.keluarga} AND "deletedAt" IS NULL AND "id" <> ${c.sourceRef}`)
-  return nilaiFreshnessMilestone({ keluarga: fakta.keluarga, peristiwa: ev[0] ?? null, peristiwaAktifLain: lain, sekarang })
-}
-
-async function asalDataVoyage(tx: TxMentah, ctx: TenantContext, voyageId: string): Promise<string | null> {
-  const r = await tx.$queryRaw<{ dataOrigin: string | null }[]>(Prisma.sql`SELECT "dataOrigin" FROM "Voyage" WHERE "id" = ${voyageId} AND "tenantId" = ${ctx.tenantId}`)
-  return r[0]?.dataOrigin ?? null
 }
 
 // ================================================================ snapshot
@@ -161,7 +70,7 @@ type IsiSnapshot = {
 }
 
 /** Bagian verdict yang stabil (tanpa jam evaluasi) — dasar sidik & idempotensi revisi identik. */
-const verdictStabil = (v: unknown) => {
+export const verdictStabil = (v: unknown) => {
   const o = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>
   return { versi: o.versi ?? null, keluarga: o.keluarga ?? null, aturan: o.aturan ?? null, maksJam: o.maksJam ?? null, status: o.status ?? null, bukti: o.bukti ?? null }
 }
@@ -171,11 +80,11 @@ export function sidikSnapshotKlien(s: IsiSnapshot): string {
   return createHash('sha256').update(`WA2_SNAPSHOT\n${jsonKanonikKomunikasi(isi)}`, 'utf8').digest('hex')
 }
 
-const PILIH_PESAN = {
+export const PILIH_PESAN = {
   id: true, candidateId: true, revision: true, contactId: true, recipientE164Snapshot: true, partyTypeSnapshot: true, partyIdSnapshot: true,
   grantIdSnapshot: true, consentStateVersion: true, logicalMessageKey: true, activeKey: true, language: true, templateId: true, templateVersion: true,
   body: true, fields: true, sourceFingerprint: true, snapshotFingerprint: true, freshnessVerdict: true, mode: true, state: true, version: true,
-  approvalRequestId: true, createdByUserId: true,
+  approvalRequestId: true, createdByUserId: true, previewedByUserId: true,
 } as const
 
 // ================================================================ draft
@@ -270,8 +179,9 @@ async function draftDalamTx(ctx: TenantContext, tx: TxTenant, sid: string, cid: 
   if (aktif && aktif.snapshotFingerprint === sidik) return { hasil: 'SUDAH_ADA', messageId: aktif.id, candidateId: c.id, revision: aktif.revision, snapshotFingerprint: sidik }
   let digantikan: string | null = null
   if (aktif) {
-    // F3 tidak membuat approval; revisi aktif ber-approval (F4) tak boleh diganti diam-diam di sini.
-    if (aktif.approvalRequestId !== null || !transisiPesanKlienSah(aktif.state, 'CANCELED')) throw tolak('MESSAGE_STATE_INVALID', { state: aktif.state })
+    if (!transisiPesanKlienSah(aktif.state, 'CANCELED')) throw tolak('MESSAGE_STATE_INVALID', { state: aktif.state })
+    // F4 (K3): approval tertaut revisi lama dihentikan (SUPERSEDED) di transaksi yang sama — kandidat → approval → pesan.
+    await hentikanApprovalPesan(ctx, tx, aktif.id, aktif.approvalRequestId, 'SUPERSEDED', 'REVISION_SUPERSEDED')
     const n = await tx.waClientMessage.updateMany({
       where: { id: aktif.id, version: aktif.version, activeKey: logicalMessageKey },
       data: { state: 'CANCELED', reasonCode: 'REVISION_SUPERSEDED', activeKey: null, finalizedAt: sekarang, version: { increment: 1 } },

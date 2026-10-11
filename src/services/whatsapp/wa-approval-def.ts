@@ -22,7 +22,7 @@ import {
   type DefinisiApprovalData,
   type PemutusCalon,
 } from '../tah/tah-policy'
-import { JENIS_APPROVAL_PESAN_KLIEN, SUBJEK_APPROVAL_PESAN_KLIEN, TTL_APPROVAL_PESAN_KLIEN_JAM, type KodeAlasanWa2f } from './wa2-policy'
+import { JENIS_APPROVAL_PESAN_KLIEN, SUBJEK_APPROVAL_PESAN_KLIEN, TTL_APPROVAL_PESAN_KLIEN_JAM, type KodeAlasanWa2f, type KodeAlasanWa2f4 } from './wa2-policy'
 
 export type DefinisiApprovalWaKlien = {
   readonly kind: 'CLIENT_WA_UPDATE'
@@ -163,5 +163,40 @@ export function otorisasiCheckerWaKlien(c: CalonCheckerWaKlien, j: DefinisiAppro
   })
   if (!h.boleh) return tolak(h.kode)
   if (c.pemutus.userId === c.pembuatDraft) return tolak('CHECKER_IS_MAKER')
+  return { ok: true, nilai: null }
+}
+
+// ===================================================================== F4 — maker-checker atas BUKTI aktual
+
+/**
+ * Pencatat bukti freshness D6 dari `bukti` verdict LOLOS: konfirmasi ETA/ETD → confirmedByUserId; milestone →
+ * recordedByUserId. Bentuk tak dikenal / kosong → null (pemanggil gagal tertutup).
+ */
+export function pencatatBuktiFreshness(bukti: unknown): string[] | null {
+  if (!bukti || typeof bukti !== 'object') return null
+  const b = bukti as { konfirmasi?: unknown; recordedByUserId?: unknown }
+  const sah = (x: unknown): x is string => typeof x === 'string' && x !== ''
+  if (Array.isArray(b.konfirmasi)) {
+    const ids = b.konfirmasi.map((k) => (k && typeof k === 'object' ? (k as { confirmedByUserId?: unknown }).confirmedByUserId : undefined))
+    return ids.length > 0 && ids.every(sah) ? Array.from(new Set(ids)).sort() : null
+  }
+  return sah(b.recordedByUserId) ? [b.recordedByUserId] : null
+}
+
+export type CalonCheckerBuktiWaKlien = CalonCheckerWaKlien & {
+  /** Pencatat konfirmasi ETA/ETD atau milestone yang menjadi bukti (snapshot ∪ evaluasi ulang saat keputusan). */
+  pencatatBukti: readonly string[] | null
+}
+
+/**
+ * Keputusan owner F4 (K5): checker ≠ pembuat draft, ≠ peminta approval, ≠ pencatat bukti. Berlaku untuk
+ * SETUJU maupun TOLAK. Pencatat tak diketahui → APPROVAL_POLICY_MISMATCH (gagal tertutup).
+ */
+export function otorisasiCheckerBuktiWaKlien(c: CalonCheckerBuktiWaKlien, j: DefinisiApprovalWaKlien): { ok: true; nilai: null } | { ok: false; alasan: KodeAlasanWa2f | KodeAlasanWa2f4 } {
+  const dasar = otorisasiCheckerWaKlien(c, j)
+  if (!dasar.ok) return dasar
+  const p = c.pencatatBukti
+  if (!Array.isArray(p) || p.length === 0 || !p.every((x) => typeof x === 'string' && x !== '')) return tolak('APPROVAL_POLICY_MISMATCH')
+  if (p.includes(c.pemutus.userId)) return { ok: false, alasan: 'CHECKER_IS_EVIDENCE_RECORDER' }
   return { ok: true, nilai: null }
 }

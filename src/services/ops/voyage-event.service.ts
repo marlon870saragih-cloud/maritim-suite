@@ -3,7 +3,7 @@
 // delete). BUKAN entitas polimorfik (K84/K85) — voyageId adalah FK langsung,
 // jadi kepemilikan dibuktikan lewat query voyage biasa, bukan owner-guard.ts.
 
-import type { VoyageEvent } from '@prisma/client'
+import { Prisma, type VoyageEvent } from '@prisma/client'
 import type { TenantContext } from '../context'
 import { requireRole } from '../context'
 import { forTenant } from '../tenant-db'
@@ -27,6 +27,20 @@ export type VoyageEventRow = {
   recordedByUserId: string
   recordedByName: string | null
   createdAt: Date
+}
+
+/**
+ * WA-2a F4 (K1): penulis VoyageEvent mengunci baris Voyage FOR NO KEY UPDATE di transaksinya. Kunci ini bentrok
+ * dengan FOR SHARE yang dipegang transaksi pesan klien WA-2 (preview/approval) SEBELUM membaca peristiwa, sehingga
+ * sisipan/hapus bersamaan menunggu atau sudah commit (terlihat) — tak ada peristiwa "hantu" saat keputusan.
+ * Tidak bentrok dengan FOR KEY SHARE milik FK tabel anak. Perilaku API (validasi, galat, hasil) tidak berubah.
+ */
+type TxKunci = { $queryRaw<T = unknown>(query: Prisma.Sql): Promise<T> }
+
+async function kunciVoyageUntukPeristiwa(tx: TxKunci, ctx: TenantContext, voyageId: string): Promise<void> {
+  const v = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
+    SELECT "id" FROM "Voyage" WHERE "id" = ${voyageId} AND "tenantId" = ${ctx.tenantId} AND "deletedAt" IS NULL FOR NO KEY UPDATE`)
+  if (!v[0]) throw notFound('Voyage')
 }
 
 async function pastikanVoyageMilikTenant(ctx: TenantContext, voyageId: string): Promise<void> {
@@ -94,18 +108,21 @@ export async function createVoyageEvent(
     if (!pc) throw notFound('Port call')
   }
 
-  const row = await forTenant(ctx).voyageEvent.create({
-    data: {
-      tenantId: ctx.tenantId,
-      voyageId,
-      portCallId,
-      eventCode,
-      description: str(body.description),
-      occurredAt,
-      source: 'MANUAL',
-      remarks: str(body.remarks),
-      recordedByUserId: ctx.userId,
-    },
+  const row = await forTenant(ctx).$transaction(async (tx) => {
+    await kunciVoyageUntukPeristiwa(tx, ctx, voyageId)
+    return tx.voyageEvent.create({
+      data: {
+        tenantId: ctx.tenantId,
+        voyageId,
+        portCallId,
+        eventCode,
+        description: str(body.description),
+        occurredAt,
+        source: 'MANUAL',
+        remarks: str(body.remarks),
+        recordedByUserId: ctx.userId,
+      },
+    })
   })
 
   const [dinamai] = await namakanPencatat(ctx, [row])
@@ -117,9 +134,12 @@ export async function removeVoyageEvent(ctx: TenantContext, voyageId: string, id
   requireRole(ctx, ...PERAN_KELOLA_PERISTIWA)
   await pastikanVoyageMilikTenant(ctx, voyageId)
 
-  const hasil = await forTenant(ctx).voyageEvent.updateMany({
-    where: { id, voyageId, deletedAt: null },
-    data: { deletedAt: new Date() },
+  const hasil = await forTenant(ctx).$transaction(async (tx) => {
+    await kunciVoyageUntukPeristiwa(tx, ctx, voyageId)
+    return tx.voyageEvent.updateMany({
+      where: { id, voyageId, deletedAt: null },
+      data: { deletedAt: new Date() },
+    })
   })
   if (hasil.count === 0) throw notFound('Peristiwa')
 }

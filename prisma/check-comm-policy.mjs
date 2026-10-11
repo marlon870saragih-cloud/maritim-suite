@@ -630,7 +630,8 @@ bagian('[12] Egress & lingkup Step 2A')
     .filter((f) => /\.(ts|tsx)$/.test(f))
     .map((f) => `src/${f}`)
     .filter((f) => /tahApprovalRequest\.create\(/.test(baca(f)))
-  cek('Step 2D R1: SATU-SATUNYA pembuat TahApprovalRequest = service approval WA (tanpa jalur NULL-TTL umum)', pembuatApproval.join() === 'src/services/communication/communication-approval.service.ts', pembuatApproval.join())
+  // WA-2a Step 2F F4 (pengecualian E1 disetujui owner): + TEPAT satu pembuat WA-2 ber-TTL (CLIENT_WA_UPDATE) — bukan wildcard.
+  cek('Step 2D R1: pembuat TahApprovalRequest = PERSIS service approval WA-1 + service approval pesan klien WA-2 (F4)', pembuatApproval.sort().join() === ['src/services/communication/communication-approval.service.ts', 'src/services/whatsapp/wa-message-approval.service.ts'].join(), pembuatApproval.join())
   const kodeAp = baca('src/services/communication/communication-approval.service.ts')
   cek('Step 2D R1: kind & expiresAt diturunkan dari definisi WA, bukan dari input', /kind: jenis\.kind,/.test(kodeAp) && /expiresAt: jenis\.kedaluwarsaJam,/.test(kodeAp) && /const j = JENIS_APPROVAL_WA_FAKE/.test(kodeAp) && !/input\??\.(kind|expiresAt|proposalHash|requiredRoles|actionRisk)/.test(kodeAp))
   const rujuk = /services\/communication/
