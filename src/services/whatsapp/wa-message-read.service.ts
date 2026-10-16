@@ -26,6 +26,12 @@ import type { TxMentah } from './wa-lock'
 const TABEL_PESAN = SUBJEK_APPROVAL_PESAN_KLIEN
 const TABEL_APPROVAL = 'TahApprovalRequest'
 export const LABEL_PENGIRIMAN = 'BELUM DIKIRIM — tidak ada pengiriman pada fase ini'
+/**
+ * D-13 / OD-12 — status review sinyal yang boleh di-Prepare (cermin kelayakanSinyal WA-1; kesetaraan dikunci
+ * check-wa2a-g-static.mjs atas fungsi asli). Hanya petunjuk daftar: buatDraftPesanKlien tetap menilai ulang
+ * seluruh prasyarat, termasuk kelayakan grup sinyal.
+ */
+export const STATUS_SINYAL_LAYAK = ['OPEN', 'ACKNOWLEDGED'] as const
 const MEDAN_FIELDS = ['keluarga', 'kategoriWajib', 'vesselName', 'voyageNumber', 'portName', 'perubahan', 'occurredAt', 'timezone', 'eventLocalTime'] as const
 
 // ================================================================ bentuk hasil
@@ -290,7 +296,8 @@ export async function kandidatSinyalPesanKlien(
   const take = takeSah(input.take, 20, 50)
   return baca(ctx, async (tx) => {
     const rows = await tx.monitoringSignal.findMany({
-      where: voyageId ? { voyageId } : {},
+      // Status disaring di query (sebelum take) agar sinyal DISMISSED/EXPIRED tidak memakan jendela pemindaian.
+      where: { reviewState: { in: [...STATUS_SINYAL_LAYAK] }, ...(voyageId ? { voyageId } : {}) },
       select: { id: true, tenantId: true, voyageId: true, kind: true, sourceType: true, sourceRef: true, reviewState: true, after: true, detectedAt: true },
       orderBy: [{ detectedAt: 'desc' }, { id: 'desc' }],
       take: Math.min(take * 5, 250),
