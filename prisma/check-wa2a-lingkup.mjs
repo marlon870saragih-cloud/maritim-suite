@@ -387,10 +387,12 @@ try {
     tulis(`src/lib/${x}.ts`, urutanA === 'siklus-dulu' ? `import './${y}'\nimport '../services/whatsapp/wa2-gate'\n` : `import '../services/whatsapp/wa2-gate'\nimport './${y}'\n`)
     return Object.keys(L.perujukTransitif(K, M.i1.akar, M.i1.sasaran).perujuk).sort()
   }
+  // Harapan = 10 route 2a-G yang disetujui (literal, BUKAN keluaran pemindai) + route fixture yang ditambahkan skenario.
+  const harapSiklus = [...DISETUJUI_I1, 'src/app/a/route.ts', 'src/app/b/route.ts'].sort().join()
   skenario('N-25a', 'T2: reproduksi siklus (a.ts impor ./b dulu) → KEDUA route ditemukan, I-1 gagal', () => {
     const d = siklus('siklus-dulu')
     const r = nilai()
-    return [d.join() === 'src/app/a/route.ts,src/app/b/route.ts' && gagalPada(r, 'I-1'), d.join(', ')]
+    return [d.join() === harapSiklus && gagalPada(r, 'I-1'), d.join(', ')]
   })
   skenario('P-11', 'T2: variasi urutan impor dan urutan pemindaian (nama dibalik) → himpunan sama', () => {
     const v1 = siklus('siklus-dulu')
@@ -400,7 +402,7 @@ try {
     const v3 = siklus('siklus-dulu', ['z', 'b']).map((f) => f.replace('/z/', '/a/')).sort()
     pulih()
     const v4 = siklus('siklus-dulu', ['b', 'a']).sort()
-    return [[v2, v3, v4].every((v) => v.join() === v1.join()) && v1.length === 2, `${v1.join()} | ${v2.join()} | ${v3.join()} | ${v4.join()}`]
+    return [[v1, v2, v3, v4].every((v) => v.join() === harapSiklus), `${v1.join()} | ${v2.join()} | ${v3.join()} | ${v4.join()}`]
   })
   skenario('N-25b', 'T2: hanya route A diizinkan → route B tetap membuat I-1 gagal', () => {
     siklus('siklus-dulu')
@@ -425,7 +427,8 @@ try {
     const kode = `const L = await import(${JSON.stringify(pathToFileURL(join(AKAR, L.JALUR_HELPER)).href)}); const r = L.perujukTransitif(${JSON.stringify(K)}, ['src/app', 'src/components'], 'src/services/whatsapp/'); console.log(JSON.stringify(Object.keys(r.perujuk)))`
     const t0 = Date.now()
     const out = execFileSync(process.execPath, ['--input-type=module', '-e', kode], { encoding: 'utf8', timeout: 60_000 })
-    return [JSON.parse(out).length === 0, `selesai ${Date.now() - t0} ms; temuan ${out.trim()}`]
+    // Cincin/diri tidak menjangkau WA-2: temuan = PERSIS 10 route 2a-G yang disetujui (literal), tanpa page cincin.
+    return [JSON.parse(out).sort().join() === DISETUJUI_I1.join(), `selesai ${Date.now() - t0} ms; temuan ${JSON.parse(out).length} berkas`]
   })
   const HELPER = L.JALUR_HELPER
   skenario('N-26a', 'T3: perubahan helper tanpa pengecualian → P-global gagal', () => {
