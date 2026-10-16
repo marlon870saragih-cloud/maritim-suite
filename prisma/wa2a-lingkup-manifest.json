@@ -138,12 +138,14 @@
       "prisma/check-wa2a-approval-f4.mjs",
       "prisma/check-wa2a-contact-db.mjs",
       "prisma/check-wa2a-contact.mjs",
+      "prisma/check-wa2a-lingkup.mjs",
       "prisma/check-wa2a-message-f3-db.mjs",
       "prisma/check-wa2a-message-f3.mjs",
       "prisma/check-wa2a-message-policy.mjs",
       "prisma/check-wa2a-schema.mjs",
       "prisma/check-wa2a-template.mjs",
-      "prisma/schema.prisma"
+      "prisma/schema.prisma",
+      "prisma/wa2a-lingkup.mjs"
     ],
     "tambahSaja": [
       "src/services/whatsapp/wa-lock.ts",
@@ -168,6 +170,11 @@
     },
     {
       "basis": "f3049187334d4665eb276b125f6a1e9918da41bb",
+      "path": "prisma/check-wa2a-lingkup.mjs",
+      "blob": "eaaae906ba7f0014c5ee150946c5543eb5b12b00"
+    },
+    {
+      "basis": "f3049187334d4665eb276b125f6a1e9918da41bb",
       "path": "prisma/check-wa2a-message-f3.mjs",
       "blob": "4b2c19134800ce2d0c64c0f1ee8505126a22ca26"
     },
@@ -180,6 +187,11 @@
       "basis": "f3049187334d4665eb276b125f6a1e9918da41bb",
       "path": "prisma/check-wa2a-template.mjs",
       "blob": "b2ae0eab54cd2cb01fb6c4793eca4cb42cfcedbd"
+    },
+    {
+      "basis": "f3049187334d4665eb276b125f6a1e9918da41bb",
+      "path": "prisma/wa2a-lingkup.mjs",
+      "blob": "0b12116a9c6674913d691ba3753b28c8ca61b9f1"
     }
   ]
 }

@@ -51,7 +51,13 @@ export function blobBerkas(akar, rel) {
 export const blobDiTree = (akar, rev, rel) => (git(akar, ['ls-tree', rev, '--', rel], { boleh: true }) ?? '').trim().split(/\s+/)[2] ?? null
 
 const adaCommit = (akar, sha) => SHA40.test(sha ?? '') && git(akar, ['cat-file', '-e', `${sha}^{commit}`], { boleh: true }) !== null
-const tanpaPola = (p) => typeof p === 'string' && p !== '' && !/[*?[\]]/.test(p) && !p.startsWith('/') && !p.includes('..')
+/**
+ * Path relatif PERSIS (dibandingkan sebagai string, tidak pernah diekspansi sebagai glob). Segmen route dinamis
+ * Next.js seperti `[id]` / `[...slug]` adalah nama berkas literal dan diterima. Ditolak: wildcard `*` `?` `{` `}`,
+ * path absolut, backslash, karakter kontrol, segmen kosong, `.` atau `..` (traversal).
+ */
+const tanpaPola = (p) =>
+  typeof p === 'string' && p !== '' && !/[*?{}\\\x00-\x1f]/.test(p) && !p.startsWith('/') && p.split('/').every((seg) => seg !== '' && seg !== '.' && seg !== '..')
 const daftarSah = (a, { kosongBoleh = true } = {}) => Array.isArray(a) && (kosongBoleh || a.length > 0) && a.every(tanpaPola) && new Set(a).size === a.length
 
 // ============================================================================ manifest
@@ -73,11 +79,11 @@ export function validasiManifest(m) {
     else if (!a.jangkar.every((p) => a.izin.includes(p))) g.push(`faseAktif ${id}: jangkar di luar izin`)
   }
   const i1 = m.i1
-  if (!i1 || !daftarSah(i1.akar, { kosongBoleh: false }) || !tanpaPola(i1.sasaran) || !i1.sasaran.endsWith('/') || !daftarSah(i1.diizinkan)) g.push('i1 tidak sah')
+  if (!i1 || !daftarSah(i1.akar, { kosongBoleh: false }) || typeof i1.sasaran !== 'string' || !i1.sasaran.endsWith('/') || !tanpaPola(i1.sasaran.slice(0, -1)) || !daftarSah(i1.diizinkan)) g.push('i1 tidak sah')
   if (!m.i2 || typeof m.i2 !== 'object' || Object.keys(m.i2).length === 0) g.push('i2 kosong')
   for (const [p, b] of Object.entries(m.i2 ?? {})) if (!tanpaPola(p) || !SHA40.test(b ?? '')) g.push(`i2 ${p}: path/blob tidak sah`)
   const pg = m.pGlobal
-  if (!pg || !daftarSah(pg.persis) || !daftarSah(pg.tambahSaja) || !Array.isArray(pg.awalan) || !pg.awalan.every((a) => typeof a === 'string' && a.length > 0 && !/[*?[\]]/.test(a))) g.push('pGlobal tidak sah')
+  if (!pg || !daftarSah(pg.persis) || !daftarSah(pg.tambahSaja) || !Array.isArray(pg.awalan) || !pg.awalan.every((a) => typeof a === 'string' && a.length > 0 && !/[*?{}\\]/.test(a) && !a.startsWith('/') && !a.split('/').some((seg) => seg === '.' || seg === '..'))) g.push('pGlobal tidak sah')
   if (!Array.isArray(m.pengecualian)) g.push('pengecualian bukan array')
   for (const e of m.pengecualian ?? []) if (!SHA40.test(e?.basis ?? '') || !tanpaPola(e?.path) || !SHA40.test(e?.blob ?? '') || Object.keys(e).length !== 3) g.push(`pengecualian ${e?.path}: harus tepat {basis, path, blob}`)
   return g
@@ -240,37 +246,56 @@ function jelajahSrc(akar, rel = 'src', hasil = []) {
   return hasil
 }
 
-/** Berkas di bawah `akarPindai` yang mencapai `sasaran` lewat impor langsung atau perantara (rantai pertama dicatat). */
+/**
+ * Berkas di bawah `akarPindai` yang mencapai `sasaran` lewat impor langsung atau perantara.
+ * Keterjangkauan dihitung sekali dengan BFS mundur dari sasaran pada grafik impor (aman untuk siklus, tidak
+ * bergantung pada urutan impor atau urutan pemindaian); rantai = jalur terpendek, tetangga diurutkan
+ * (deterministik). Setiap simpul dikunjungi paling banyak sekali per BFS, sehingga penelusuran selalu berhenti.
+ */
 export function perujukTransitif(akar, akarPindai, sasaran) {
-  const berkas = jelajahSrc(akar)
+  const berkas = jelajahSrc(akar).sort()
   const keluar = new Map()
   let dinamis = 0
   for (const f of berkas) {
     const e = ekstrakSpecifier(readFileSync(join(akar, f), 'utf8'))
     if (akarPindai.some((a) => f.startsWith(`${a}/`))) dinamis += e.dinamis
-    keluar.set(f, [...new Set(e.spec.map((s) => selesaikan(akar, f, s)).filter(Boolean))])
+    keluar.set(f, [...new Set(e.spec.map((s) => selesaikan(akar, f, s)).filter(Boolean))].sort())
   }
   const kena = (f) => f.startsWith(sasaran)
-  const memo = new Map()
-  const rantai = (f, jalan = new Set()) => {
-    if (kena(f)) return [f]
-    if (memo.has(f)) return memo.get(f)
-    if (jalan.has(f)) return null
-    jalan.add(f)
-    let r = null
-    for (const g of keluar.get(f) ?? []) {
-      const sub = rantai(g, jalan)
-      if (sub) { r = [f, ...sub]; break }
+  const masuk = new Map()
+  for (const [f, tujuan] of keluar) for (const g of tujuan) (masuk.get(g) ?? masuk.set(g, []).get(g)).push(f)
+  const jangkau = new Set()
+  const antre = [...new Set([...berkas, ...masuk.keys()])].filter(kena)
+  for (const t of antre) jangkau.add(t)
+  for (let i = 0; i < antre.length; i++) {
+    for (const f of masuk.get(antre[i]) ?? []) {
+      if (!jangkau.has(f)) {
+        jangkau.add(f)
+        antre.push(f)
+      }
     }
-    jalan.delete(f)
-    memo.set(f, r)
-    return r
+  }
+  const rantaiTerpendek = (awal) => {
+    const asal = new Map([[awal, null]])
+    const q = [awal]
+    for (let i = 0; i < q.length; i++) {
+      const f = q[i]
+      if (kena(f)) {
+        const jalur = []
+        for (let x = f; x !== null; x = asal.get(x)) jalur.unshift(x)
+        return jalur
+      }
+      for (const g of keluar.get(f) ?? []) {
+        if (jangkau.has(g) && !asal.has(g)) {
+          asal.set(g, f)
+          q.push(g)
+        }
+      }
+    }
+    return null
   }
   const perujuk = {}
-  for (const f of berkas.filter((x) => akarPindai.some((a) => x.startsWith(`${a}/`)) && !kena(x))) {
-    const r = rantai(f)
-    if (r) perujuk[f] = r
-  }
+  for (const f of berkas.filter((x) => akarPindai.some((a) => x.startsWith(`${a}/`)) && !kena(x) && jangkau.has(x))) perujuk[f] = rantaiTerpendek(f)
   return { perujuk, dinamis, dipindai: berkas.length }
 }
 

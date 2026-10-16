@@ -59,6 +59,24 @@ cek('I-1 repo nyata: perujuk service WA-2 = daftar manifest (kosong)', Object.ke
 const sp = L.ekstrakSpecifier("// import a from '@/x'\n/* from '@/y' */ const s = \"from '@/z'\"; import b from './b'; export * from '../c'; const d = await import('@/d'); require('e'); import('@/' + n); obj.import('f'); Array.from('g')")
 cek('ekstrakSpecifier: komentar/string biasa diabaikan; from/import()/require literal terbaca; import() non-literal dihitung', sp.spec.join() === './b,../c,@/d,e' && sp.dinamis === 1, `${sp.spec.join()} | dinamis=${sp.dinamis}`)
 
+// Temuan review #1 (PR #29): segmen route dinamis Next.js adalah path LITERAL, bukan glob. Manifest SINTETIS
+// (fase G tidak diaktifkan di manifest produksi).
+const PID = 'src/app/api/automation/client-messages/[id]/route.ts'
+const sintetis = (izin, jangkar, diizinkan) => Object.assign(salin(M), { faseAktif: { G: { izin, jangkar } }, i1: { ...M.i1, diizinkan } })
+cek('T1: path literal `[id]` dan `[...slug]` diterima di faseAktif.izin/jangkar dan i1.diizinkan (manifest sintetis)', L.validasiManifest(sintetis([PID, 'src/app/x/[...slug]/page.tsx'], [PID], [PID])).length === 0, L.validasiManifest(sintetis([PID], [PID], [PID])).join('; '))
+const TIDAK_AMAN = ['src/app/*/route.ts', 'src/app/?.ts', 'src/app/{a,b}.ts', 'src/app/../x.ts', '../x.ts', './x.ts', '/abs/x.ts', 'src//x.ts', 'src\\x.ts', 'src/x\u0000.ts', '']
+cek('T1: path wildcard / traversal / absolut / segmen kosong / backslash / kontrol tetap ditolak', TIDAK_AMAN.every((p) => L.validasiManifest(sintetis([p], [p], [])).length > 0 && L.validasiManifest(sintetis([PID], [PID], [p])).length > 0), `${TIDAK_AMAN.length} path`)
+{
+  const m2 = sintetis([PID], [PID], [])
+  const cocok = L.periksaModeFase(m2, { WA2A_FASE: 'G' }, [PID]).hasil.every((h) => h.ok)
+  const lain = L.periksaModeFase(m2, { WA2A_FASE: 'G' }, ['src/app/api/automation/client-messages/123/route.ts', PID]).hasil
+  const id2 = L.periksaModeFase(m2, { WA2A_FASE: 'G' }, ['src/app/api/automation/client-messages/[id2]/route.ts', PID]).hasil
+  cek('T1: `[id]` hanya cocok dengan string persis — `123/route.ts` dan `[id2]/route.ts` di luar allowlist', cocok && lain.some((h) => !h.ok && h.nama.includes('allowlist')) && id2.some((h) => !h.ok && h.nama.includes('allowlist')))
+}
+const awalanBuruk = salin(M)
+awalanBuruk.pGlobal.awalan = [...M.pGlobal.awalan, 'src/../x/']
+cek('T1: awalan pGlobal dengan traversal ditolak', L.validasiManifest(awalanBuruk).length > 0)
+
 // ============================================================================ S
 bagian('[S] Skenario pada clone sementara')
 const TMP = mkdtempSync(join(tmpdir(), 'wa2a-lingkup-'))
@@ -335,6 +353,112 @@ try {
     appendFileSync(join(K, 'prisma/check-wa2a-access-db.mjs'), '\n// lemahkan\n')
     const r = nilai()
     return [gagalPada(r, 'P-global: tidak ada berkas beku'), ringkas(r)]
+  })
+
+  // ------------------------------------------------------------------ temuan review PR #29
+  const RUTE_ID = 'src/app/api/automation/client-messages/[id]/route.ts'
+  const isiRute = "import { samarkanNomor } from '@/services/whatsapp/wa-phone'\nexport const GET = () => Response.json(samarkanNomor(''))\n"
+  const mG = () => Object.assign(salin(M), { faseAktif: { G: { izin: [RUTE_ID], jangkar: [RUTE_ID] } }, i1: { ...M.i1, diizinkan: [RUTE_ID] } })
+  skenario('P-10', 'T1: berkas route literal `[id]` + manifest sintetis (faseAktif.G, i1.diizinkan) → semua lapis lulus', () => {
+    tulis(RUTE_ID, isiRute)
+    const r = nilai({ WA2A_FASE: 'G' }, mG())
+    return [semuaOk(r) && r.perubahan.semua.join() === RUTE_ID, ringkas(r)]
+  })
+  skenario('N-24', 'T1: route `abc/route.ts` dengan manifest `[id]` → allowlist, jangkar, dan I-1 gagal (`[id]` bukan wildcard)', () => {
+    tulis('src/app/api/automation/client-messages/abc/route.ts', isiRute)
+    const r = nilai({ WA2A_FASE: 'G' }, mG())
+    return [gagalPada(r, 'allowlist') && gagalPada(r, 'jangkar') && gagalPada(r, 'I-1'), ringkas(r)]
+  })
+  const siklus = (urutanA, nama = ['a', 'b']) => {
+    const [x, y] = nama
+    tulis(`src/app/${x}/route.ts`, `import '../../lib/${x}'\n`)
+    tulis(`src/app/${y}/route.ts`, `import '../../lib/${y}'\n`)
+    tulis(`src/lib/${y}.ts`, `import './${x}'\n`)
+    tulis(`src/lib/${x}.ts`, urutanA === 'siklus-dulu' ? `import './${y}'\nimport '../services/whatsapp/wa2-gate'\n` : `import '../services/whatsapp/wa2-gate'\nimport './${y}'\n`)
+    return Object.keys(L.perujukTransitif(K, M.i1.akar, M.i1.sasaran).perujuk).sort()
+  }
+  skenario('N-25a', 'T2: reproduksi siklus (a.ts impor ./b dulu) → KEDUA route ditemukan, I-1 gagal', () => {
+    const d = siklus('siklus-dulu')
+    const r = nilai()
+    return [d.join() === 'src/app/a/route.ts,src/app/b/route.ts' && gagalPada(r, 'I-1'), d.join(', ')]
+  })
+  skenario('P-11', 'T2: variasi urutan impor dan urutan pemindaian (nama dibalik) → himpunan sama', () => {
+    const v1 = siklus('siklus-dulu')
+    pulih()
+    const v2 = siklus('wa2-dulu')
+    pulih()
+    const v3 = siklus('siklus-dulu', ['z', 'b']).map((f) => f.replace('/z/', '/a/')).sort()
+    pulih()
+    const v4 = siklus('siklus-dulu', ['b', 'a']).sort()
+    return [[v2, v3, v4].every((v) => v.join() === v1.join()) && v1.length === 2, `${v1.join()} | ${v2.join()} | ${v3.join()} | ${v4.join()}`]
+  })
+  skenario('N-25b', 'T2: hanya route A diizinkan → route B tetap membuat I-1 gagal', () => {
+    siklus('siklus-dulu')
+    const m2 = salin(M)
+    m2.i1.diizinkan = ['src/app/a/route.ts']
+    const r = nilai({}, m2)
+    const d = r.hasil.find((h) => h.nama.startsWith('I-1'))?.detail ?? ''
+    return [gagalPada(r, 'I-1') && d.includes('src/app/b/route.ts') && !d.includes('tak disetujui: src/app/a/'), d]
+  })
+  skenario('P-12', 'T2: siklus tanpa jalur ke WA-2 → tanpa temuan palsu', () => {
+    tulis('src/app/c/route.ts', "import '../../lib/c'\n")
+    tulis('src/lib/c.ts', "import './d'\nimport './c'\n")
+    tulis('src/lib/d.ts', "import './c'\n")
+    const r = nilai()
+    return [semuaOk(r), ringkas(r)]
+  })
+  skenario('P-13', 'T2: penelusuran selalu berhenti — impor diri, siklus dua arah, cincin 300 berkas (proses anak, batas 60 dtk)', () => {
+    tulis('src/lib/diri.ts', "import './diri'\n")
+    for (let n = 0; n < 300; n++) tulis(`src/lib/cincin/c${n}.ts`, `import './c${(n + 1) % 300}'\nimport '../diri'\n`)
+    tulis('src/app/cincin/page.tsx', "import '../../lib/cincin/c0'\n")
+    tulis('src/app/cincin2/page.tsx', "import '../../lib/cincin/c150'\nimport '../../lib/cincin/c0'\n")
+    const kode = `const L = await import(${JSON.stringify(pathToFileURL(join(AKAR, L.JALUR_HELPER)).href)}); const r = L.perujukTransitif(${JSON.stringify(K)}, ['src/app', 'src/components'], 'src/services/whatsapp/'); console.log(JSON.stringify(Object.keys(r.perujuk)))`
+    const t0 = Date.now()
+    const out = execFileSync(process.execPath, ['--input-type=module', '-e', kode], { encoding: 'utf8', timeout: 60_000 })
+    return [JSON.parse(out).length === 0, `selesai ${Date.now() - t0} ms; temuan ${out.trim()}`]
+  })
+  const HELPER = L.JALUR_HELPER
+  skenario('N-26a', 'T3: perubahan helper tanpa pengecualian → P-global gagal', () => {
+    appendFileSync(join(K, HELPER), '\n// lemahkan helper\n')
+    const r = nilai()
+    return [gagalPada(r, 'P-global: tidak ada berkas beku') && r.hasil.find((h) => h.nama.startsWith('P-global: tidak ada')).detail.includes(HELPER), ringkas(r)]
+  })
+  skenario('N-26b', 'T3: tuple helper dengan basis salah atau blob salah → P-global gagal', () => {
+    appendFileSync(join(K, HELPER), '\n// ubah helper\n')
+    const blob = L.blobBerkas(K, HELPER)
+    const a = salin(M)
+    a.pengecualian = [{ basis: M.fase.F4.merge, path: HELPER, blob }]
+    const b = salin(M)
+    b.pengecualian = [{ basis: H0, path: HELPER, blob: L.blobBerkas(K, 'prisma/check-wa2a-template.mjs') }]
+    return [gagalPada(nilai({}, a), 'P-global: tidak ada berkas beku') && gagalPada(nilai({}, b), 'P-global: tidak ada berkas beku'), 'basis F4 / blob berkas lain']
+  })
+  skenario('P-14', 'T3: tuple helper tepat (basis, path, blob akhir) pada basis yang sesuai → lulus', () => {
+    appendFileSync(join(K, HELPER), '\n// ubah helper\n')
+    const m2 = salin(M)
+    m2.pengecualian = [{ basis: H0, path: HELPER, blob: L.blobBerkas(K, HELPER) }]
+    const r = nilai({}, m2)
+    return [semuaOk(r), ringkas(r)]
+  })
+  skenario('N-26c', 'T3: simulasi merge lalu basis berubah → tuple lama tidak mengizinkan perubahan helper berikutnya', () => {
+    gk(['switch', '-q', '-c', 'uji-merge'])
+    appendFileSync(join(K, HELPER), '\n// ubah helper tahap 1\n')
+    const tuple = { basis: H0, path: HELPER, blob: L.blobBerkas(K, HELPER) }
+    const m2 = salin(M)
+    m2.pengecualian = [tuple]
+    const sebelum = semuaOk(nilai({}, m2))
+    gk(['commit', '-qam', 'ubah helper tahap 1'])
+    const H1 = gk(['rev-parse', 'HEAD']).trim()
+    gk(['update-ref', 'refs/remotes/origin/main', H1])
+    const sesudahMerge = semuaOk(nilai({}, m2))
+    appendFileSync(join(K, HELPER), '// ubah helper tahap 2\n')
+    const r = nilai({}, m2)
+    const m3 = salin(M)
+    m3.pengecualian = [{ ...tuple, blob: L.blobBerkas(K, HELPER) }]
+    const r3 = nilai({}, m3)
+    gk(['reset', '-q', '--hard', H1])
+    gk(['switch', '-q', '--detach', H0])
+    gk(['branch', '-qD', 'uji-merge'])
+    return [sebelum && sesudahMerge && gagalPada(r, 'P-global: tidak ada berkas beku') && gagalPada(r3, 'P-global: tidak ada berkas beku'), `sebelum merge lulus=${sebelum}; main pasca-merge bersih lulus=${sesudahMerge}; ubah lagi: tuple lama → ${ringkas(r).slice(0, 80)}; blob baru + basis lama → gagal=${gagalPada(r3, 'P-global')}`]
   })
 } finally {
   rmSync(TMP, { recursive: true, force: true })
