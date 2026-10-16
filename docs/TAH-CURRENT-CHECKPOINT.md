@@ -69,7 +69,8 @@ Repo ini PUBLIK: jangan mencatat credential, nilai env rahasia, ID proyek GCP, I
 | Item | Nilai |
 |---|---|
 | Repository | `marlon870saragih-cloud/maritim-suite` (public) |
-| `origin/main` | `5e58237c393a6115d3c55a5c1382dd3c5826a976` — merge commit biasa PR #27, parent `0ad9251` + `d665216`; VERIFIED 2026-10-16 melalui GitHub. SHA ini adalah basis fitur sesudah F4; HEAD PR dokumentasi dilihat pada metadata PR. |
+| `origin/main` saat penulisan | `a1f69506e5ad04bc522c2dd8ac5232ded7fa4d42` — merge PR #29 (gate I/H/P), parent `f304918` + `2d37111`; VERIFIED 2026-10-16 melalui GitHub dan git. Merge PR dokumentasi yang memuat baris ini menghasilkan HEAD baru yang dicatat pada checkpoint berikutnya. |
+| Baseline historis F4 (bukan HEAD terkini) | `5e58237c393a6115d3c55a5c1382dd3c5826a976` — merge commit PR #27, parent `0ad9251` + `d665216`; VERIFIED 2026-10-16. Basis fitur sesudah F4, dipertahankan sebagai sejarah. |
 | PR #23–#27 | MERGED — #23 F1 `e5f8676`, #24 F2 `cd276bb`, #25 F3 `2cec0ce`, #26 perbaikan uji 2B `0ad9251` (11 Oktober); #27 F4 `5e58237` (16 Oktober). Keadaan GitHub diverifikasi dalam rangka review/merge F4. |
 | PR #28–#29 | MERGED 2026-10-16 — #28 checkpoint + rancangan DRAFT (`f3049187334d4665eb276b125f6a1e9918da41bb`); #29 gate lingkup I/H/P (`a1f69506e5ad04bc522c2dd8ac5232ded7fa4d42`, parent `f304918` + `2d37111`). VERIFIED 2026-10-16 melalui GitHub dan git |
 | PR #22 | MERGED 2026-10-11 11.39 WITA — checkpoint WA-2a Step 2B/2C/2E merged, merge `b805f839014069e83d5aed43ffa94e749bd02a31` (parent `4086756` + `e60d6e2`), satu berkas dokumentasi. VERIFIED 2026-10-16 melalui GitHub dan git |
