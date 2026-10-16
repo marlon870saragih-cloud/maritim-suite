@@ -1,8 +1,40 @@
 # WA-2a — Bukti perbaikan gate lingkup F1–F4 (I/H/P)
 
-**Status:** diimplementasikan di branch `fix/wa2a-gate-lingkup-ihp`, menunggu review dan keputusan merge owner. Bukan izin 2a-G, deploy, migrasi, aktivasi flag, atau pengiriman WhatsApp.
+**Status:** [PR #29](https://github.com/marlon870saragih-cloud/maritim-suite/pull/29) **MERGED** 16 Oktober 2026 23.47 WITA sebagai `a1f69506e5ad04bc522c2dd8ac5232ded7fa4d42` (parent `f3049187334d4665eb276b125f6a1e9918da41bb` + `2d37111429e3a6adc2d7f76ee108102cda9fb282`, merge commit, tree = tree HEAD PR). Gate lulus pada `main` bersih (§P). Bukan izin 2a-G, deploy, migrasi, aktivasi flag, atau pengiriman WhatsApp.
 
-Keputusan owner (16 Oktober 2026): G-D1 tiga lapis I/H/P dengan deteksi impor transitif; G-D2 2C/2E ikut; G-D3 I-2 diperluas ke berkas pendukung F3/F4; G-D4 pengecualian hanya tuple basis, path, blob akhir. Scope: 12 path persis. Rancangan dan daftar I-2: [WA-2a-NEXT-PHASE-DRAFT.md §5](WA-2a-NEXT-PHASE-DRAFT.md#5-perbaikan-gate-lingkup-f1f4-e-g1--diimplementasikan-di-pr-gate-menunggu-reviewmerge).
+## P. Verifikasi pasca-merge (hasil aktual terbaru)
+
+Dijalankan Claude Code 16 Oktober 2026 malam di clone sekali pakai pada SHA merge. Karena repo kerja dangkal, `clone --shared` jatuh ke clone lokal biasa tanpa objek yang hanya terjangkau dari `origin/main`; ref itu di-fetch ke clone lebih dulu. Percobaan pertama yang belum melakukan fetch gagal checkout dan berjalan pada HEAD lain — **hasilnya dibuang, tidak dipakai**. Ref repo kerja tidak dipindahkan.
+
+| Item | Nilai |
+|---|---|
+| HEAD uji | `a1f69506e5ad04bc522c2dd8ac5232ded7fa4d42` |
+| Ref `main` / `origin/main` di clone | `a1f69506e5ad04bc522c2dd8ac5232ded7fa4d42` / `a1f69506e5ad04bc522c2dd8ac5232ded7fa4d42` |
+| Basis P | `a1f69506e5ad04bc522c2dd8ac5232ded7fa4d42` (merge-base = HEAD; diff kosong) |
+| Working tree | bersih (`git status --porcelain=v1 --untracked-files=all` kosong) |
+| Blob helper / manifest | `0b12116a9c6674913d691ba3753b28c8ca61b9f1` / `0ae3b911077a5bc4de6bd7b6b4e4e019c812d37e` |
+
+| Uji (`WA2A_BUKTI=1`) | Hasil | Exit |
+|---|---|---|
+| Helper `check-wa2a-lingkup.mjs` | 65/0 | 0 |
+| F1 `check-wa2a-message-policy.mjs` | 100/0 | 0 |
+| F2 `check-wa2a-template.mjs` | 61/0 | 0 |
+| F3 `check-wa2a-message-f3.mjs` | 66/0 | 0 |
+| F4 `check-wa2a-approval-f4.mjs` | **70/0** (sebelum PR #29 di `main`: 60/1 pada L182) | 0 |
+| 2C `check-wa2a-contact.mjs` | 37/0 | 0 |
+| 2E `check-wa2a-access.mjs` | 36/0 | 0 |
+| 2B `check-wa2a-schema.mjs` | **hanya bagian statis** 32/0; bagian DB DILEWATI (`WA2A_SCHEMA_DB_URL` tidak diset) — suite 2B penuh **tidak** dinyatakan lulus | **3** |
+| `check-comm-policy.mjs` | 326/0 | 0 |
+| `check-tah-policy.mjs` | 322/0 | 0 |
+
+Pemeriksaan tambahan pada clone yang sama:
+- P: `0 berkas berubah`; I-1: 0 perujuk (771 berkas `src` dipindai); I-2: 15 blob cocok.
+- Manifest: `faseAktif` = `{}`, `i1.diizinkan` = `[]` — fase G **tidak** aktif; 8 tuple semuanya berbasis `f304918`.
+- Tuple bootstrap lama tidak berlaku setelah basis berganti: menambah satu baris pada `prisma/check-wa2a-template.mjs` atau `prisma/wa2a-lingkup.mjs` → P-global **gagal** pada berkas itu (basis kini `a1f6950`, bukan `f304918`). Perubahan dipulihkan; tree kembali bersih.
+
+Bagian §0–§6 di bawah adalah bukti **historis** pra-merge (putaran 1 dan 2).
+
+Keputusan owner (16 Oktober 2026): G-D1 tiga lapis I/H/P dengan deteksi impor transitif; G-D2 2C/2E ikut; G-D3 I-2 diperluas ke berkas pendukung F3/F4; G-D4 pengecualian hanya tuple basis, path, blob akhir. Scope: 12 path persis. Rancangan dan daftar I-2: [WA-2a-NEXT-PHASE-DRAFT.md §5](WA-2a-NEXT-PHASE-DRAFT.md#5-perbaikan-gate-lingkup-f1f4-e-g1--merged-pr-29).
 
 ## 0. Putaran 2 — perbaikan temuan review PR #29 (hasil aktual terbaru)
 

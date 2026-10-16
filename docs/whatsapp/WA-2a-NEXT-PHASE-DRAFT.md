@@ -14,7 +14,7 @@ Dokumen ini berisi dua rancangan yang **terpisah**: perbaikan gate lingkup F1–
 Tiga keputusan berikut **berdiri sendiri**; menyetujui salah satu tidak menyetujui yang lain:
 
 1. **Merge dokumentasi PR #28** (checkpoint + dokumen ini sebagai rancangan).
-2. **Perbaikan gate lingkup F1–F4 (§5):** rancangan G-D1..G-D4 disetujui owner dan diimplementasikan di PR gate tersendiri; merge PR gate tetap keputusan terpisah.
+2. **Perbaikan gate lingkup F1–F4 (§5):** disetujui, diimplementasikan, dan MERGED (PR #29, `a1f6950`). T0 selesai.
 3. **Definisi dan scope 2a-G (§6):** persetujuan kontrak/scope, lalu — terpisah — izin implementasi per tahap (§6.15).
 
 Rekomendasi: fase berikutnya **2a-G — API/UI lokal untuk alur pesan klien sampai APPROVED**, menggunakan service F3/F4 yang sudah merged. Arah scope awal yang diusulkan (masih rancangan): peran ADMIN dan MANAJER_OPERASI; tanpa link Sidebar dahulu; kontak/consent/grant/konfirmasi melalui setup lokal sintetis; tanpa schema/migrasi; alur berhenti di APPROVED.
@@ -72,9 +72,9 @@ Jika kebutuhan UI memerlukan perubahan di luar batas tersebut, siapkan usulan pe
 
 **Apakah setup lokal yang sudah ada cukup untuk fase awal?** Ya untuk pengujian dan demo lokal: kontak, verifikasi, consent, grant, dan konfirmasi jadwal dapat dibuat pada DB loopback sekali pakai melalui service yang sudah ada (`buatKontak`, `verifikasiKontak`, service consent 2C, `ajukanGrant`/`putuskanGrant`, `catatKonfirmasiJadwal`). Keterbatasannya: operator belum dapat menyiapkan data tersebut sendiri dari UI, sehingga demo memakai data sintetis yang disiapkan skrip. Pengelolaan lewat UI = fase terpisah.
 
-## 5. Perbaikan gate lingkup F1–F4 (E-G1) — diimplementasikan di PR gate, menunggu review/merge
+## 5. Perbaikan gate lingkup F1–F4 (E-G1) — MERGED (PR #29)
 
-Owner menyetujui G-D1..G-D4 dan mengizinkan implementasi PR gate pada 12 path persis (16 Oktober 2026). Implementasi ada di branch `fix/wa2a-gate-lingkup-ihp` dari `main` `f3049187334d4665eb276b125f6a1e9918da41bb`; status merge mengikuti PR tersebut. Bukti aktual: [WA-2a-GATE-SCOPE-EVIDENCE.md](WA-2a-GATE-SCOPE-EVIDENCE.md). Persetujuan ini **bukan** izin 2a-G.
+Owner menyetujui G-D1..G-D4, implementasi pada 12 path persis, tiga koreksi review, dan merge (16 Oktober 2026). [PR #29](https://github.com/marlon870saragih-cloud/maritim-suite/pull/29) MERGED sebagai `a1f69506e5ad04bc522c2dd8ac5232ded7fa4d42` (parent `f304918` + `2d37111`); gate lulus pada `main` bersih pasca-merge (hasil aktual di dokumen bukti). Bukti aktual: [WA-2a-GATE-SCOPE-EVIDENCE.md](WA-2a-GATE-SCOPE-EVIDENCE.md). Persetujuan ini **bukan** izin 2a-G.
 
 ### 5.1 Fakta kode baseline (`f304918`, sebelum PR gate)
 
@@ -650,7 +650,7 @@ Berkas diubah (2):
 
 | Path | Alasan |
 |---|---|
-| `prisma/wa2a-lingkup-manifest.json` | `i1.diizinkan` diisi 12 path route/halaman di atas (pengecualian X-1) dan entri `faseAktif.G` (allowlist persis 2a-G + jangkar) untuk mode `WA2A_FASE=G` — perlu keputusan owner; bergantung pada PR gate (§5) merged |
+| `prisma/wa2a-lingkup-manifest.json` | `i1.diizinkan` diisi 12 path route/halaman di atas (pengecualian X-1) dan entri `faseAktif.G` (allowlist persis 2a-G + jangkar) untuk mode `WA2A_FASE=G` — perlu keputusan owner; PR gate (§5) sudah merged |
 | `docs/TAH-CURRENT-CHECKPOINT.md` | status 2a-G |
 
 Total 24 path. Tidak ada perubahan `package.json`, lockfile, schema, migrasi, `Sidebar.tsx`, `(app)/layout.tsx`, service F3/F4, `wa2-gate.ts`, atau berkas WA-1/TAH/V3. Komponen client tidak mengimpor `@/services/*` (tipe DTO dideklarasikan lokal), sehingga daftar I-1 hanya memuat 10 route dan 2 halaman.
@@ -705,7 +705,7 @@ Hanya nama variabel; tanpa nilai rahasia. Semua lokal/loopback.
 
 | Tahap | Isi | Bergantung pada | Batas |
 |---|---|---|---|
-| T0 | PR perbaikan gate (§5.3–§5.4) | rancangan §5 disetujui owner; implementasi diizinkan; merge = keputusan terpisah | hanya 12 path §5.3 |
+| T0 | PR perbaikan gate (§5.3–§5.4) | **selesai** — PR #29 MERGED `a1f6950`, gate lulus pasca-merge | 12 path §5.3 |
 | T1 | `wa-message-read.service.ts`, `wa2-access.ts`, `g-static` (bagian baca), `g-api` (bagian baca) | T0 merged; persetujuan §6 (kontrak, path, X-1) | tanpa route mutasi/UI |
 | T2 | Route #1–#11, X-1, `g-api` penuh, `g-prod` | T1 direview | berhenti di APPROVED |
 | T3 | Halaman, komponen, `seed-wa2a-g-demo.mjs`, `g-ui` | T2 direview | tanpa Sidebar |
@@ -753,14 +753,14 @@ Suite yang tidak dijalankan harus disebutkan bersama alasannya. Tidak ada klaim 
 ## 9. Urutan persetujuan
 
 1. Owner memutuskan merge dokumentasi PR #28.
-2. Rancangan gate §5 disetujui owner (G-D1..G-D4) dan diimplementasikan di PR gate; owner memutuskan merge PR gate.
+2. Gate §5 selesai: disetujui (G-D1..G-D4), diimplementasikan, dan MERGED (PR #29, `a1f6950`).
 3. Owner memutuskan definisi/scope 2a-G §6 (D-G1..D-G9).
 4. Owner memberi izin implementasi per tahap §6.15.
 5. Keputusan owner atas merge, penerimaan fase, checkpoint dan langkah berikutnya. Merge tidak berarti deploy atau izin Send.
 
 ## 10. Keputusan owner yang masih terbuka
 
-**Gate (§5):** keputusan rancangan selesai; yang tersisa: review dan keputusan merge PR gate.
+**Gate (§5):** selesai — PR #29 MERGED (`a1f6950`); tidak ada keputusan gate yang tertunda.
 - G-D1: **disetujui** — tiga lapis I/H/P termasuk deteksi impor transitif.
 - G-D2: **disetujui** — 2C/2E memakai basis helper.
 - G-D3: **disetujui** — I-2 diperluas ke berkas pendukung F3/F4; daftar terverifikasi 15 berkas (§5.2).
