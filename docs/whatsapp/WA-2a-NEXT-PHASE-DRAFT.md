@@ -2,6 +2,8 @@
 
 **Status: DRAFT UNTUK REVIEW OWNER — bukan baseline yang disahkan, BELUM IZIN IMPLEMENTASI.**
 
+> **Pembaruan 16 Oktober 2026 (pasca-merge PR #31):** gate (§5) dan API 2a-G T1–T2 (§6) sudah MERGED. Usulan UI tahap T3–T4 yang mengikuti kontrak API yang sudah merged ada di **§12** — disetujui owner dengan dua koreksi (OD-20); implementasi di PR terpisah.
+
 Tanggal: 16 Oktober 2026 (WITA); revisi preflight 16 Oktober 2026 malam.
 Basis fitur: main setelah [PR #27](https://github.com/marlon870saragih-cloud/maritim-suite/pull/27), merge `5e58237c393a6115d3c55a5c1382dd3c5826a976`; HEAD F4 yang ditinjau `d665216acf85803092771a2b01bced5131cbe927`.
 Handoff: [TAH-CURRENT-CHECKPOINT.md](../TAH-CURRENT-CHECKPOINT.md).
@@ -706,8 +708,8 @@ Hanya nama variabel; tanpa nilai rahasia. Semua lokal/loopback.
 | Tahap | Isi | Bergantung pada | Batas |
 |---|---|---|---|
 | T0 | PR perbaikan gate (§5.3–§5.4) | **selesai** — PR #29 MERGED `a1f6950`, gate lulus pasca-merge | 12 path §5.3 |
-| T1 | `wa-message-read.service.ts`, `wa2-access.ts`, `g-static` (bagian baca), `g-api` (bagian baca) | T0 merged; persetujuan §6 (kontrak, path, X-1) | tanpa route mutasi/UI |
-| T2 | Route #1–#11, X-1, `g-api` penuh, `g-prod` | T1 direview | berhenti di APPROVED |
+| T1 | `wa-message-read.service.ts`, `wa2-access.ts`, `g-static` (bagian baca), `g-api` (bagian baca) | **selesai** — PR #31 MERGED `fa0ad59` | tanpa route mutasi/UI |
+| T2 | Route #1–#11, X-1, `g-api` penuh, `g-prod` | **selesai** — PR #31 MERGED `fa0ad59` | berhenti di APPROVED |
 | T3 | Halaman, komponen, `seed-wa2a-g-demo.mjs`, `g-ui` | T2 direview | tanpa Sidebar |
 | T4 | Regresi G-11, build, evidence G-12, PR | T3 | tanpa deploy |
 | T5 | Keputusan owner: merge dan penerimaan fase | T4 | merge ≠ deploy ≠ izin Send |
@@ -790,3 +792,127 @@ Suite yang tidak dijalankan harus disebutkan bersama alasannya. Tidak ada klaim 
 | Auto-reply | Fase terpisah setelah validasi dan persetujuan; tidak termasuk izin F4 atau rancangan 2a-G |
 
 SG-05 tetap terbuka dan harus ditutup sebelum pengiriman WhatsApp nyata. Dokumen ini tidak menggantikan PRD WA-1 yang beku atau menciptakan persetujuan untuk produksi.
+
+## 12. Usulan UI 2a-G (T3–T4) — pasca-merge API (PR #31)
+
+**Status: DISETUJUI OWNER dengan koreksi UI-01/UI-04 (OD-20); implementasi belum.** Disusun dari kontrak API yang sudah merged (`main` @ `fa0ad5992bba45967271cf943f12e146a95ed142`), §6.9–§6.10, dan pola UI WA-1 yang ada (`src/app/(app)/automation/communications/*`, `src/components/automation/Communication*.tsx`). Batas tetap: tanpa Send, provider WhatsApp, webhook, worker, atau pengiriman nyata; tanpa Sidebar; tanpa perubahan service F3/F4, schema, migrasi, dependency, lockfile.
+
+**Keputusan owner (16 Oktober 2026, OD-20):** dua koreksi rencana ini (UI-01, UI-04) disetujui; merge PR dokumen ini; implementasi UI T3–T4 dengan **opsi B** (`contactId` di detail, 14 path = §12.3 #1–#14); komponen di `src/components/automation/`; pencatatan `fase.G` (PR #31) dan `faseAktif.GUI` di manifest. Tidak termasuk merge PR UI, deploy, atau pengiriman WhatsApp nyata.
+
+### 12.1 Alur
+
+1. **Daftar** `/automation/client-messages`: `GET /api/automation/client-messages?state&take&cursor`. Tombol "Buat draft".
+2. **Kandidat** (panel di halaman daftar):
+   - pilih sinyal dari `GET …/candidates/signals?voyageId&take`;
+   - lalu pilih kontak dari `GET …/candidates/contacts?signalId`. Kontak `layak=false` tampil nonaktif dengan teks alasan.
+3. **Draft**: `POST …` `{signalId, contactId}`.
+   - `DRAFT_DIBUAT`/`SUDAH_ADA` → buka detail `messageId`.
+   - 400 → tampilkan `details.code`.
+4. **Detail** `/automation/client-messages/[id]`: `GET …/[id]` dan `GET …/[id]/history`. Tombol hanya muncul bila ada di `aksiTersedia` (petunjuk; server tetap menegakkan).
+   - **Pratinjau**: `POST …/[id]/preview` `{snapshotFingerprint}` dari detail.
+   - **Minta approval**: `POST …/[id]/request-approval` `{snapshotFingerprint}`.
+   - **Setujui**: `POST …/approvals/[aid]/approve` `{proposalHash}` = `approval.proposalHash` dari detail.
+   - **Tolak**: `POST …/approvals/[aid]/reject` `{proposalHash, decisionNote}`, catatan 3–1000 karakter.
+   - **Batalkan**: `POST …/[id]/cancel` `{alasan}`, berlaku di DRAFT, PREVIEWED, PENDING_APPROVAL, **APPROVED**, NEEDS_REVIEW (§6.9).
+   - **Buat revisi**: lihat §12.4.
+5. Setelah setiap aksi: tampilkan `hasil` (+ `alasan`), lalu muat ulang detail dan riwayat. Tanpa kirim ulang otomatis.
+
+### 12.2 Tampilan dan kondisi
+
+| Bagian | Isi |
+|---|---|
+| Daftar | `state` (badge), `reasonCode`, `revision`, `penerimaTersamar`, `partyType`, `language`, `konteks.keluarga`, `approval.status`/`expiresAt`, `createdAt`; filter `state`; "Muat lebih" via `nextCursor`; label tetap "BELUM DIKIRIM — tidak ada pengiriman pada fase ini" |
+| Detail | `body` read-only, `fields` (allowlist), `freshness` (status, aturan, `buktiRingkas`), `konteks` (voyage, keluarga, sinyal), `approval` (status, `expiresAt` dari server, `decidedAt`), `previewedAt`/`approvedAt`, `labelPengiriman` |
+| Riwayat | `waktu`, `objek`, `peristiwa`, `stateDari → stateKe`, `alasan`, `aktor.nama`; "Muat lebih" via `nextCursor` |
+| Status | 9 status §6.9; status terminal tanpa aksi yang mengubah pesan itu sendiri; "Buat revisi" tetap mengikuti `aksiTersedia` (membuat atau menemukan pesan revisi lewat service, bukan mengubah pesan terminal); APPROVED = "Disetujui — BELUM DIKIRIM" |
+| Error | 400/403/404 → `error.code` + teks statis per `details.code` (mis. `CHECKER_IS_MAKER`, `SELF_APPROVAL_FORBIDDEN`, `CHECKER_IS_EVIDENCE_RECORDER`, `DECISION_NOTE_INVALID`, `CONSENT_NOT_GRANTED`, `SOURCE_INVALID`); 401 → login; 409 → muat ulang + "Data berubah, tinjau ulang"; timeout → "Status tidak pasti — memuat ulang" |
+| Hasil bisnis 200 | `DITOLAK`/`DITAHAN`/`DIBLOKIR`/`KEDALUWARSA`/`SUDAH_*` ditampilkan sebagai informasi, bukan sukses |
+| Akses/flag mati | Halaman server memanggil `bolehAksesWa2(ctx)` → `notFound()` bila tenant di luar allowlist, peran bukan ADMIN/MANAJER_OPERASI, konteks sistem, flag mati, atau produksi. Tidak ada link Sidebar; akses lewat URL langsung |
+| Bahasa | Teks ID/EN mengikuti `getLang()` seperti halaman WA-1 |
+
+### 12.3 Path implementasi yang diusulkan (12 path; +2 bila opsi B §12.4)
+
+| # | Path | Jenis | Isi |
+|---|---|---|---|
+| 1 | `src/app/(app)/automation/client-messages/page.tsx` | baru | halaman server: `requireTenant` + `bolehAksesWa2` → `notFound()`; merender komponen daftar |
+| 2 | `src/app/(app)/automation/client-messages/[id]/page.tsx` | baru | halaman server detail, pagar sama |
+| 3 | `src/components/automation/ClientMessageList.tsx` | baru | komponen client daftar + panel kandidat/draft |
+| 4 | `src/components/automation/ClientMessageWorkspace.tsx` | baru | komponen client detail, aksi, riwayat |
+| 5 | `src/components/automation/client-message-shared.tsx` | baru | label status, teks error, tipe DTO lokal (tanpa impor `@/services/*`) |
+| 6 | `prisma/check-wa2a-g-ui.mjs` | baru | uji peramban (playwright-core dari luar repo, pola `check-comm-ui.mjs`) |
+| 7 | `prisma/seed-wa2a-g-demo.mjs` | baru | data demo sintetis, hanya DB loopback |
+| 8 | `docs/whatsapp/WA-2a-G-UI-EVIDENCE.md` | baru | bukti UI |
+| 9 | `prisma/check-wa2a-g-static.mjs` | ubah | lapis UI (§12.6); asersi X-1 lama diganti literal fase UI |
+| 10 | `prisma/check-wa2a-lingkup.mjs` | ubah (beku, butuh tuple) | literal I-1 = 10 route + 2 halaman; literal `faseAktif` fase UI; skenario sintetis P-10/N-24 tidak boleh lagi memakai id `G` (§12.5) |
+| 11 | `prisma/wa2a-lingkup-manifest.json` | ubah | §12.5 |
+| 12 | `docs/TAH-CURRENT-CHECKPOINT.md` | ubah | status |
+| 13–14 | `src/services/whatsapp/wa-message-read.service.ts`, `prisma/check-wa2a-g-api.mjs` | ubah, **hanya bila opsi B** | `contactId` di detail + kunci uji |
+
+Komponen client hanya memanggil `fetch` ke `/api/automation/client-messages*` (origin sendiri). Komponen tidak mengimpor `@/services/*`, sehingga perujuk I-1 baru hanya 2 halaman. Lokasi komponen `src/components/automation/` mengikuti WA-1; §6.11 sebelumnya menyebut `src/components/whatsapp/` — keputusan kecil owner, rekomendasi `automation/` demi konsistensi.
+
+### 12.4 Keputusan `contactId` pada detail
+
+- **Kebutuhan UI.** Revisi (`BUAT_REVISI`, §6.9) adalah `POST` `{signalId, contactId}`. Detail memberi `konteks.signalIds` dan `penerimaTersamar`, tetapi tidak `contactId`.
+- **Opsi A — kontrak tetap.** Dari detail, UI membuka panel kandidat kontak (`GET …/candidates/contacts?signalId=<signalIds[0]>`) dan staf memilih kontak lagi. Dampak:
+  - tanpa perubahan API dan tanpa uji ulang API;
+  - satu langkah ekstra;
+  - risiko memilih kontak yang salah bila dua kontak berpenerima tersamar serupa — service tetap menilai ulang, tetapi kontak yang salah tetap kontak yang sah;
+  - pemulihan NEEDS_REVIEW tetap "Batalkan lalu buat draft baru".
+- **Opsi B — tambah `contactId` ke allowlist detail.** `contactId` adalah ID opak ber-tenant, sudah dikeluarkan endpoint #4, dan bukan nomor. Dampak:
+  - ubah `detailPesanKlien` dan kunci uji (`KUNCI_DETAIL` di `check-wa2a-g-api.mjs`, asersi statis);
+  - jalankan ulang static + API dev (+ flag-mati);
+  - revisi menjadi satu klik dengan kontak yang sama persis.
+- **Rekomendasi: opsi B, dikerjakan di PR UI** dengan uji yang menguncinya. Alasannya: revisi adalah aksi rutin saat data berubah, dan memilih ulang kontak dari nomor tersamar rawan salah. Opsi A layak bila owner ingin PR UI tanpa menyentuh API sama sekali.
+
+### 12.5 Usulan entri manifest H dan perubahan gate (belum diterapkan)
+
+Mekanisme yang berlaku:
+- `periksaModeFase` menolak `WA2A_FASE=<id>` bila id tercatat di `fase`.
+- `validasiManifest` menolak `faseAktif` yang id-nya sama dengan fase merged.
+- `periksaRekaman` mewajibkan `merge^1 = basis`, `merge^2 = kepala`, tree merge = tree kepala, dan diff basis→kepala = `berkas` persis.
+
+Nilai di bawah dihitung dari git, bukan ditebak:
+
+| Usulan | Nilai |
+|---|---|
+| `fase.G` (wajib bila fase UI memakai mode fase) | `pr: 31`, `merge: fa0ad5992bba45967271cf943f12e146a95ed142`, `basis: 6a064ea585321440d0cf71812465419495f230a8`, `kepala: ec7fc9a72d535c20d1e5a527459c0cda29af0574`, `berkas`: 19 path = `faseAktif.G.izin` saat ini (terurut). Diperiksa: `^1`/`^2` cocok, tree sama, diff 19 berkas |
+| `faseAktif.G` | dihapus bersamaan (tidak boleh berdampingan dengan `fase.G`) |
+| `faseAktif.GUI` (nama usulan) | `izin` = path §12.3 yang disetujui; `jangkar` = `prisma/check-wa2a-g-ui.mjs` dan `src/app/(app)/automation/client-messages/page.tsx` |
+| `i1.diizinkan` | 10 route + 2 halaman (§12.3 #1–#2) |
+| Tuple `check-wa2a-lingkup.mjs` | `{basis: <merge main saat PR UI dibuat>, path, blob: <blob akhir>}` — dihitung saat implementasi, tidak sekarang |
+| PR #29 (gate) / PR #30 (dokumen) | **tidak direkomendasikan** dicatat sebagai fase: tidak ada uji yang memeriksanya dan keduanya bukan fase fitur. Bila owner ingin, nilainya terverifikasi: #29 `merge a1f69506…`, `basis f3049187…`, `kepala 2d37111…`, 12 berkas; #30 `merge 6a064ea5…`, `basis a1f69506…`, `kepala 1f0705f2…`, 3 berkas |
+
+Asersi yang kini sengaja mengunci "tanpa UI" dan harus diganti, bukan dilemahkan, di PR UI:
+- `check-wa2a-g-static.mjs`: "X-1: tanpa halaman/komponen UI di allowlist G", serta literal 19 path/10 route.
+- `check-wa2a-lingkup.mjs`: "I-1 repo nyata … PERSIS 10 route", "X-1 manifest … faseAktif hanya G", dan skenario P-10/N-24 yang menyusun `faseAktif.G` sintetis.
+
+Guard teks lain yang tetap berlaku untuk `src/app` dan `src/components`:
+- comm-policy: larangan `services/communication`;
+- tah-policy: larangan `TahApprovalRequest`/`services/tah`;
+- 2B: tanpa accessor model WA-2a.
+
+### 12.6 Acceptance criteria (dapat diuji)
+
+| ID | Kriteria | Bukti |
+|---|---|---|
+| UI-01 | Kedua halaman: **tanpa sesi → redirect ke `/login`** (layout `(app)`); **sesi tidak berhak → 404**: tenant di luar allowlist, OPERATOR, flag mati, dan `next start` produksi lokal. Sidebar & layout tidak berubah | `check-wa2a-g-ui.mjs` (dev dan server produksi lokal) + diff. `check-wa2a-g-prod.mjs` tetap hanya menguji API dan tidak diubah |
+| UI-02 | Daftar menampilkan field §12.2, filter `state`, paginasi `nextCursor`, kondisi kosong, label BELUM DIKIRIM | g-ui |
+| UI-03 | Panel kandidat: sinyal dari endpoint #3 (hanya OPEN/ACKNOWLEDGED, sesuai API); kontak tidak layak nonaktif dengan alasan; draft → detail; `SUDAH_ADA` → detail pesan yang sama; 400 menampilkan `details.code` | g-ui |
+| UI-04 | Tombol aksi = `aksiTersedia`. Status terminal (EXPIRED, REJECTED, BLOCKED, CANCELED) tanpa aksi yang mengubah pesan itu (pratinjau, minta approval, setujui, tolak, batalkan); "Buat revisi" tetap tampil bila ada di `aksiTersedia` dan dibuktikan dari status terminal dengan hasil aktual service (`DRAFT_DIBUAT`, `SUDAH_ADA`, atau penolakan). Kebijakan service tidak diubah untuk menyesuaikan UI. Tidak ada tombol/teks "Kirim"/Send | g-ui + g-static |
+| UI-05 | Alur penuh lewat peramban: draft → pratinjau → minta approval (pengguna lain) → setujui (checker lain) → APPROVED BELUM DIKIRIM → batalkan; dan cabang tolak (catatan wajib) | g-ui |
+| UI-06 | Maker-checker: pembuat/peminta/pencatat bukti mencoba setujui → pesan 403 sesuai `details.code`, status tidak berubah | g-ui |
+| UI-07 | 409, `KEDALUWARSA`, `DITAHAN`, `SUDAH_DIPUTUSKAN`: muat ulang + teks status aktual; klik ganda tidak mengirim dua permintaan | g-ui |
+| UI-08 | Revisi sesuai keputusan §12.4 (B: satu klik dengan kontak sama; A: pilih ulang kontak) → `DRAFT_DIBUAT` revisi baru atau `SUDAH_ADA` | g-ui |
+| UI-09 | DOM & lalu lintas jaringan tanpa nomor utuh; permintaan hanya ke `/api/automation/client-messages*` dan `/api/auth*`; perangkap egress server 0 BLOCKED di luar pengecualian font yang sudah dikenal | g-ui + log server |
+| UI-10 | Komponen tanpa impor `@/services/*`; halaman hanya `requireTenant` + `bolehAksesWa2`; I-1 = 10 route + 2 halaman; P-fase UI lulus `WA2A_FASE=<id UI> WA2A_BUKTI=1` | g-static + helper |
+| UI-11 | Regresi: g-static, g-api (aktif & flag-mati), g-prod, helper, F1–F4, 2B/2C/2E, comm-policy, tah-policy, tsc, lint, `next build` | ringkasan exit code di bukti |
+| UI-12 | Teks ID/EN; tombol berlabel teks; fokus keyboard pada aksi utama | g-ui (cek dasar) |
+
+**Kebutuhan lingkungan.**
+- PostgreSQL 16 loopback sekali pakai;
+- `next dev`/`next start` loopback dengan perangkap egress;
+- Chromium terpasang (`/opt/pw-browsers`);
+- `playwright-core` dari luar repo — tanpa perubahan `package.json`/lockfile, mengikuti pola `check-comm-ui.mjs`.
+
+Bila `playwright-core` tidak tersedia, g-ui DILEWATI (kode 3) dan dilaporkan apa adanya.
+
