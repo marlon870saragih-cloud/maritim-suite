@@ -4,7 +4,64 @@
 
 Keputusan owner (16 Oktober 2026): G-D1 tiga lapis I/H/P dengan deteksi impor transitif; G-D2 2C/2E ikut; G-D3 I-2 diperluas ke berkas pendukung F3/F4; G-D4 pengecualian hanya tuple basis, path, blob akhir. Scope: 12 path persis. Rancangan dan daftar I-2: [WA-2a-NEXT-PHASE-DRAFT.md §5](WA-2a-NEXT-PHASE-DRAFT.md#5-perbaikan-gate-lingkup-f1f4-e-g1--diimplementasikan-di-pr-gate-menunggu-reviewmerge).
 
-## 1. Identitas yang diuji
+## 0. Putaran 2 — perbaikan temuan review PR #29 (hasil aktual terbaru)
+
+| Item | Nilai |
+|---|---|
+| HEAD PR sebelum revisi | `7d7270c4d5b3b2bfec4d1650f2d2f9092a509c2c` (base `f304918`, working tree bersih — diverifikasi) |
+| **HEAD yang diuji** | `22c84f904e8bbfe5881a2a9dfa7d009c86e4424c` — commit kode perbaikan (3 berkas `prisma/`) |
+| Blob helper / manifest pada HEAD uji | `0b12116a9c6674913d691ba3753b28c8ca61b9f1` / `0ae3b911077a5bc4de6bd7b6b4e4e019c812d37e` |
+| Commit sesudah HEAD uji | hanya dokumentasi (berkas ini, `WA-2a-NEXT-PHASE-DRAFT.md`, `TAH-CURRENT-CHECKPOINT.md`) — diverifikasi dengan `git diff --name-only 22c84f9 HEAD` dan dicatat di PR |
+| Lingkungan | sama dengan §1 (clone `--shared` sekali pakai, ref di clone saja, tanpa DB/jaringan) |
+
+**Temuan dan perbaikan**
+
+| # | Temuan | Perbaikan |
+|---|---|---|
+| T1 | Validasi path menolak `[` `]`, sehingga `src/app/api/automation/client-messages/[id]/route.ts` tidak bisa masuk `faseAktif.izin`/`jangkar`/`i1.diizinkan` | Kurung siku diterima sebagai nama literal; daftar tetap dibandingkan sebagai string persis (tanpa ekspansi glob). Tetap ditolak: `*` `?` `{` `}`, path absolut, backslash, karakter kontrol, segmen kosong, segmen `.`/`..`. `i1.sasaran` divalidasi sebagai awalan direktori. |
+| T2 | `perujukTransitif` menyimpan `null` hasil siklus ke memo bersama → hasil bergantung urutan impor | Keterjangkauan dihitung sekali dengan BFS mundur dari sasaran (setiap simpul dikunjungi paling banyak sekali, aman untuk siklus); rantai = jalur terpendek dengan tetangga terurut; daftar berkas diurutkan |
+| T3 | Helper tidak dilindungi P-global | `prisma/wa2a-lingkup.mjs` dan uji helper `prisma/check-wa2a-lingkup.mjs` ditambahkan ke `pGlobal.persis`; perubahan pada PR ini lewat tuple (basis `f304918`, path, blob akhir) |
+
+**Reproduksi sebelum dan sesudah** (skrip sementara di luar repo; helper lama = `git show 7d7270c:prisma/wa2a-lingkup.mjs`):
+
+| Uji | Helper lama `7d7270c` | Helper baru |
+|---|---|---|
+| T1 `validasiManifest` dengan `[id]` di `faseAktif.G` dan `i1.diizinkan` | galat: "faseAktif G: izin/jangkar kosong atau bukan path persis", "i1 tidak sah" | tanpa galat |
+| T2 reproduksi siklus, `a.ts` impor `./b` dulu | hanya `src/app/a/route.ts` | `src/app/a/route.ts`, `src/app/b/route.ts` |
+| T2 urutan dibalik (`wa2-gate` dulu) | keduanya | keduanya (sama) |
+| T3 `terlarangGlobal(prisma/wa2a-lingkup.mjs)` | `false` | `true` |
+| Uji helper baru + manifest baru dijalankan dengan helper **lama** | **57/8**: 3 asersi T1 murni, P-10, N-24, N-25a, P-11, N-25b gagal | — |
+| Uji helper baru dengan helper baru | — | **65/0** |
+
+Asersi T3 di uji helper baru lulus juga terhadap helper lama karena perlindungan T3 berada di data manifest; reproduksi T3 dengan manifest lama menunjukkan `false`. Tanpa dua tuple baru, P-global repo nyata gagal pada `prisma/check-wa2a-lingkup.mjs` dan `prisma/wa2a-lingkup.mjs` (diverifikasi) — tuple diperlukan, bukan pelemahan.
+
+**Hasil aktual pada HEAD uji `22c84f9`** (clone bersih, `WA2A_BUKTI=1`, basis `f304918`):
+
+| Uji | Hasil | Exit |
+|---|---|---|
+| F1 `check-wa2a-message-policy.mjs` | 100/0 | 0 |
+| F2 `check-wa2a-template.mjs` | 61/0 | 0 |
+| F3 `check-wa2a-message-f3.mjs` | 66/0 | 0 |
+| F4 `check-wa2a-approval-f4.mjs` | 70/0 | 0 |
+| 2C `check-wa2a-contact.mjs` | 37/0 | 0 |
+| 2E `check-wa2a-access.mjs` | 36/0 | 0 |
+| Helper `check-wa2a-lingkup.mjs` | **65/0** (16 repo nyata/murni, 14 positif, 35 negatif) | 0 |
+| 2B `check-wa2a-schema.mjs` | statis 32/0; bagian DB DILEWATI (`WA2A_SCHEMA_DB_URL` tidak diset) | **3** |
+| `check-comm-policy.mjs` | 326/0 | 0 |
+| `check-tah-policy.mjs` | 322/0 | 0 |
+
+Simulasi `main` bersih pasca-merge (origin/main = HEAD uji): enam uji fase/2C/2E lulus dengan angka sama. Sintaks: `node --check` pada helper dan uji helper. Konsistensi manifest: validasi tanpa galat; 8 tuple berbasis `f304918` dengan blob = blob tree HEAD; 15 blob I-2 = blob tree HEAD; `faseAktif` = `{}` dan `i1.diizinkan` = `[]` (fase G **tidak** diaktifkan; kasus `[id]` memakai manifest sintetis).
+
+**Kasus uji baru** (rincian di rancangan §5.4): T1 murni (4 asersi: `[id]`/`[...slug]` diterima, 11 path tidak aman ditolak, `[id]` hanya cocok string persis, awalan traversal ditolak); P-10 route literal `[id]` lulus; N-24 `abc/route.ts` gagal allowlist, jangkar, dan I-1; N-25a kedua route siklus ditemukan; P-11 empat variasi urutan impor/pemindaian → himpunan sama; N-25b hanya A diizinkan → B tetap gagal; P-12 siklus tanpa jalur WA-2 → tanpa temuan; P-13 impor diri + cincin 300 berkas selesai di proses anak (batas 60 detik; selesai < 1 detik); N-26a helper diubah tanpa tuple gagal; N-26b basis/blob salah gagal; P-14 tuple tepat lulus; N-26c sesudah simulasi merge dan basis berubah, tuple lama (blob lama maupun blob baru dengan basis lama) tidak mengizinkan perubahan helper berikutnya.
+
+Tuple G-D4 sesudah revisi (basis `f3049187334d4665eb276b125f6a1e9918da41bb`): enam tuple uji fase tidak berubah (§5); dua tuple baru:
+
+| Path | Blob akhir |
+|---|---|
+| `prisma/check-wa2a-lingkup.mjs` | `eaaae906ba7f0014c5ee150946c5543eb5b12b00` |
+| `prisma/wa2a-lingkup.mjs` | `0b12116a9c6674913d691ba3753b28c8ca61b9f1` |
+
+## 1. Putaran 1 — identitas yang diuji (historis sejak putaran 2)
 
 | Item | Nilai |
 |---|---|
@@ -15,9 +72,9 @@ Keputusan owner (16 Oktober 2026): G-D1 tiga lapis I/H/P dengan deteksi impor tr
 | Lingkungan | Node 22.22.0, git 2.43.0, Linux; clone `git clone --shared` sekali pakai di direktori sementara; `node_modules` disambungkan lewat symlink yang ter-ignore; tanpa DB, tanpa jaringan |
 | Ref di clone uji | `refs/remotes/origin/main` dan `refs/heads/main` di-set ke baseline **di clone saja**; ref repo kerja tidak dipindahkan |
 
-Semua hasil di §2–§4 adalah **hasil aktual yang dijalankan Claude Code pada 16 Oktober 2026 malam** pada identitas di atas. Hasil sebelum tanggal itu dipisah di §6.
+Hasil §2–§4 adalah hasil aktual putaran 1 (Claude Code, 16 Oktober 2026 malam) pada HEAD `4da70eb`; sejak putaran 2 menjadi **bukti historis** dan tidak diklaim ulang. Hasil terbaru ada di §0. Hasil sebelum tanggal itu dipisah di §6.
 
-## 2. Hasil aktual pada HEAD uji (`WA2A_BUKTI=1`, working tree bersih)
+## 2. Putaran 1 — hasil pada HEAD `4da70eb` (`WA2A_BUKTI=1`, working tree bersih)
 
 | Uji | Baseline `f304918` | HEAD uji `4da70eb` | Exit |
 |---|---|---|---|
@@ -50,7 +107,7 @@ Dijalankan di clone yang sama, ref `origin/main` diganti sesuai skenario.
 | E-3b (negatif) | Route untracked `src/app/api/uji-x/route.ts` mengimpor `@/services/whatsapp/wa-phone` | F4 exit 1: I-1 gagal dengan rantai `src/app/api/uji-x/route.ts → src/services/whatsapp/wa-phone.ts` |
 | E-4 (negatif) | `WA2A_BUKTI=1` dengan berkas untracked | F2 exit 1: "mode bukti: working tree bersih" gagal |
 
-## 4. Uji helper (`check-wa2a-lingkup.mjs`, 50/0)
+## 4. Putaran 1 — uji helper (`check-wa2a-lingkup.mjs`, 50/0 pada `4da70eb`)
 
 **R — repo nyata (12 asersi):** manifest sah; 5 fase / 49 berkas; rekaman H F1, F2, F3, PR26, F4 lulus; blob I-2 = `git hash-object` = blob tree HEAD untuk 15 berkas; 75 atribut `.gitattributes` (`text`, `eol`, `filter`, `diff`, `crlf` × 15) `unspecified`; pemindai I-1 menemukan 18 perujuk transitif modul WA-1 (kontrol tidak hampa); perujuk WA-2 = daftar manifest (kosong); tokenisasi specifier (komentar/string diabaikan, `import('@/' + n)` dihitung dinamis).
 
@@ -102,7 +159,7 @@ Tuple G-D4 PR ini (basis `f3049187334d4665eb276b125f6a1e9918da41bb`):
 | `prisma/check-wa2a-message-policy.mjs` | `118eced51c321296cb84a8e09f595094d3507320` |
 | `prisma/check-wa2a-template.mjs` | `b2ae0eab54cd2cb01fb6c4793eca4cb42cfcedbd` |
 
-Setelah merge, branch berikutnya memiliki basis lain sehingga keenam tuple tidak berlaku lagi.
+Putaran 2 menambah dua tuple (helper dan uji helper, §0). Setelah merge, branch berikutnya memiliki basis lain sehingga kedelapan tuple tidak berlaku lagi (dibuktikan N-26c).
 
 ## 6. Bukti historis (tidak dijalankan ulang di sini)
 
@@ -117,6 +174,7 @@ Setelah merge, branch berikutnya memiliki basis lain sehingga keenam tuple tidak
 
 ## 8. Keterbatasan
 
+- **Path literal:** kurung siku diterima sebagai nama berkas; kecocokan selalu string persis. Path yang sah secara Git tetapi memuat `{`, `}`, `*`, `?`, atau backslash tidak dapat dicantumkan di manifest (sengaja ditolak).
 - **Deteksi impor:** `import()`/`require()` dengan ekspresi terhitung hanya dihitung (info), tidak diselesaikan; pemuatan lewat `fs`/`eval`, alias di luar `tsconfig.json`, dan kode hasil generate tidak terdeteksi; regex literal yang memuat tanda kutip dapat mengacaukan tokenisasi.
 - **Integritas manifest:** manifest tidak melindungi dirinya sendiri. Daftar lingkup literal di uji fase membatasi perusakan rekaman H, tetapi penambahan tuple pengecualian atau perubahan `i1`/`i2` hanya tertangkap review owner pada diff PR.
 - **Riwayat dan basis:** H butuh commit fase (clone dangkal gagal tertutup); kesegaran `origin/main` tidak diperiksa offline; di `main` sendiri P hanya menjaga perubahan belum di-commit.
