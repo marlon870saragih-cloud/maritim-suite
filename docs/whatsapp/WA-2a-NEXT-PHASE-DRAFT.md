@@ -2,7 +2,7 @@
 
 **Status: DRAFT UNTUK REVIEW OWNER — bukan baseline yang disahkan, BELUM IZIN IMPLEMENTASI.**
 
-> **Pembaruan 16 Oktober 2026 (pasca-merge PR #31):** gate (§5) dan API 2a-G T1–T2 (§6) sudah MERGED. Usulan UI tahap T3–T4 yang mengikuti kontrak API yang sudah merged ada di **§12**. UI belum diizinkan.
+> **Pembaruan 16 Oktober 2026 (pasca-merge PR #31):** gate (§5) dan API 2a-G T1–T2 (§6) sudah MERGED. Usulan UI tahap T3–T4 yang mengikuti kontrak API yang sudah merged ada di **§12** — disetujui owner dengan dua koreksi (OD-20); implementasi di PR terpisah.
 
 Tanggal: 16 Oktober 2026 (WITA); revisi preflight 16 Oktober 2026 malam.
 Basis fitur: main setelah [PR #27](https://github.com/marlon870saragih-cloud/maritim-suite/pull/27), merge `5e58237c393a6115d3c55a5c1382dd3c5826a976`; HEAD F4 yang ditinjau `d665216acf85803092771a2b01bced5131cbe927`.
@@ -795,7 +795,9 @@ SG-05 tetap terbuka dan harus ditutup sebelum pengiriman WhatsApp nyata. Dokumen
 
 ## 12. Usulan UI 2a-G (T3–T4) — pasca-merge API (PR #31)
 
-**Status: USULAN, belum diizinkan.** Disusun dari kontrak API yang sudah merged (`main` @ `fa0ad5992bba45967271cf943f12e146a95ed142`), §6.9–§6.10, dan pola UI WA-1 yang ada (`src/app/(app)/automation/communications/*`, `src/components/automation/Communication*.tsx`). Batas tetap: tanpa Send, provider WhatsApp, webhook, worker, atau pengiriman nyata; tanpa Sidebar; tanpa perubahan service F3/F4, schema, migrasi, dependency, lockfile.
+**Status: DISETUJUI OWNER dengan koreksi UI-01/UI-04 (OD-20); implementasi belum.** Disusun dari kontrak API yang sudah merged (`main` @ `fa0ad5992bba45967271cf943f12e146a95ed142`), §6.9–§6.10, dan pola UI WA-1 yang ada (`src/app/(app)/automation/communications/*`, `src/components/automation/Communication*.tsx`). Batas tetap: tanpa Send, provider WhatsApp, webhook, worker, atau pengiriman nyata; tanpa Sidebar; tanpa perubahan service F3/F4, schema, migrasi, dependency, lockfile.
+
+**Keputusan owner (16 Oktober 2026, OD-20):** dua koreksi rencana ini (UI-01, UI-04) disetujui; merge PR dokumen ini; implementasi UI T3–T4 dengan **opsi B** (`contactId` di detail, 14 path = §12.3 #1–#14); komponen di `src/components/automation/`; pencatatan `fase.G` (PR #31) dan `faseAktif.GUI` di manifest. Tidak termasuk merge PR UI, deploy, atau pengiriman WhatsApp nyata.
 
 ### 12.1 Alur
 
@@ -822,7 +824,7 @@ SG-05 tetap terbuka dan harus ditutup sebelum pengiriman WhatsApp nyata. Dokumen
 | Daftar | `state` (badge), `reasonCode`, `revision`, `penerimaTersamar`, `partyType`, `language`, `konteks.keluarga`, `approval.status`/`expiresAt`, `createdAt`; filter `state`; "Muat lebih" via `nextCursor`; label tetap "BELUM DIKIRIM — tidak ada pengiriman pada fase ini" |
 | Detail | `body` read-only, `fields` (allowlist), `freshness` (status, aturan, `buktiRingkas`), `konteks` (voyage, keluarga, sinyal), `approval` (status, `expiresAt` dari server, `decidedAt`), `previewedAt`/`approvedAt`, `labelPengiriman` |
 | Riwayat | `waktu`, `objek`, `peristiwa`, `stateDari → stateKe`, `alasan`, `aktor.nama`; "Muat lebih" via `nextCursor` |
-| Status | 9 status §6.9; terminal tanpa tombol ubah status; APPROVED = "Disetujui — BELUM DIKIRIM" |
+| Status | 9 status §6.9; status terminal tanpa aksi yang mengubah pesan itu sendiri; "Buat revisi" tetap mengikuti `aksiTersedia` (membuat atau menemukan pesan revisi lewat service, bukan mengubah pesan terminal); APPROVED = "Disetujui — BELUM DIKIRIM" |
 | Error | 400/403/404 → `error.code` + teks statis per `details.code` (mis. `CHECKER_IS_MAKER`, `SELF_APPROVAL_FORBIDDEN`, `CHECKER_IS_EVIDENCE_RECORDER`, `DECISION_NOTE_INVALID`, `CONSENT_NOT_GRANTED`, `SOURCE_INVALID`); 401 → login; 409 → muat ulang + "Data berubah, tinjau ulang"; timeout → "Status tidak pasti — memuat ulang" |
 | Hasil bisnis 200 | `DITOLAK`/`DITAHAN`/`DIBLOKIR`/`KEDALUWARSA`/`SUDAH_*` ditampilkan sebagai informasi, bukan sukses |
 | Akses/flag mati | Halaman server memanggil `bolehAksesWa2(ctx)` → `notFound()` bila tenant di luar allowlist, peran bukan ADMIN/MANAJER_OPERASI, konteks sistem, flag mati, atau produksi. Tidak ada link Sidebar; akses lewat URL langsung |
@@ -893,10 +895,10 @@ Guard teks lain yang tetap berlaku untuk `src/app` dan `src/components`:
 
 | ID | Kriteria | Bukti |
 |---|---|---|
-| UI-01 | Kedua halaman → 404 untuk: tanpa sesi (redirect login), tenant di luar allowlist, OPERATOR, flag mati, `next start` produksi lokal; Sidebar & layout tidak berubah | g-ui + g-prod (halaman) + diff |
+| UI-01 | Kedua halaman: **tanpa sesi → redirect ke `/login`** (layout `(app)`); **sesi tidak berhak → 404**: tenant di luar allowlist, OPERATOR, flag mati, dan `next start` produksi lokal. Sidebar & layout tidak berubah | `check-wa2a-g-ui.mjs` (dev dan server produksi lokal) + diff. `check-wa2a-g-prod.mjs` tetap hanya menguji API dan tidak diubah |
 | UI-02 | Daftar menampilkan field §12.2, filter `state`, paginasi `nextCursor`, kondisi kosong, label BELUM DIKIRIM | g-ui |
 | UI-03 | Panel kandidat: sinyal dari endpoint #3 (hanya OPEN/ACKNOWLEDGED, sesuai API); kontak tidak layak nonaktif dengan alasan; draft → detail; `SUDAH_ADA` → detail pesan yang sama; 400 menampilkan `details.code` | g-ui |
-| UI-04 | Tombol aksi = `aksiTersedia`; tidak ada tombol untuk status terminal; tidak ada tombol/teks "Kirim"/Send | g-ui + g-static |
+| UI-04 | Tombol aksi = `aksiTersedia`. Status terminal (EXPIRED, REJECTED, BLOCKED, CANCELED) tanpa aksi yang mengubah pesan itu (pratinjau, minta approval, setujui, tolak, batalkan); "Buat revisi" tetap tampil bila ada di `aksiTersedia` dan dibuktikan dari status terminal dengan hasil aktual service (`DRAFT_DIBUAT`, `SUDAH_ADA`, atau penolakan). Kebijakan service tidak diubah untuk menyesuaikan UI. Tidak ada tombol/teks "Kirim"/Send | g-ui + g-static |
 | UI-05 | Alur penuh lewat peramban: draft → pratinjau → minta approval (pengguna lain) → setujui (checker lain) → APPROVED BELUM DIKIRIM → batalkan; dan cabang tolak (catatan wajib) | g-ui |
 | UI-06 | Maker-checker: pembuat/peminta/pencatat bukti mencoba setujui → pesan 403 sesuai `details.code`, status tidak berubah | g-ui |
 | UI-07 | 409, `KEDALUWARSA`, `DITAHAN`, `SUDAH_DIPUTUSKAN`: muat ulang + teks status aktual; klik ganda tidak mengirim dua permintaan | g-ui |
