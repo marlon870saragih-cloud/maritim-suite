@@ -14,7 +14,7 @@ Dokumen ini berisi dua rancangan yang **terpisah**: perbaikan gate lingkup F1–
 Tiga keputusan berikut **berdiri sendiri**; menyetujui salah satu tidak menyetujui yang lain:
 
 1. **Merge dokumentasi PR #28** (checkpoint + dokumen ini sebagai rancangan).
-2. **Perbaikan gate lingkup F1–F4 (§5):** persetujuan rancangan, lalu — terpisah — izin implementasi melalui PR kode tersendiri.
+2. **Perbaikan gate lingkup F1–F4 (§5):** rancangan G-D1..G-D4 disetujui owner dan diimplementasikan di PR gate tersendiri; merge PR gate tetap keputusan terpisah.
 3. **Definisi dan scope 2a-G (§6):** persetujuan kontrak/scope, lalu — terpisah — izin implementasi per tahap (§6.15).
 
 Rekomendasi: fase berikutnya **2a-G — API/UI lokal untuk alur pesan klien sampai APPROVED**, menggunakan service F3/F4 yang sudah merged. Arah scope awal yang diusulkan (masih rancangan): peran ADMIN dan MANAJER_OPERASI; tanpa link Sidebar dahulu; kontak/consent/grant/konfirmasi melalui setup lokal sintetis; tanpa schema/migrasi; alur berhenti di APPROVED.
@@ -72,130 +72,96 @@ Jika kebutuhan UI memerlukan perubahan di luar batas tersebut, siapkan usulan pe
 
 **Apakah setup lokal yang sudah ada cukup untuk fase awal?** Ya untuk pengujian dan demo lokal: kontak, verifikasi, consent, grant, dan konfirmasi jadwal dapat dibuat pada DB loopback sekali pakai melalui service yang sudah ada (`buatKontak`, `verifikasiKontak`, service consent 2C, `ajukanGrant`/`putuskanGrant`, `catatKonfirmasiJadwal`). Keterbatasannya: operator belum dapat menyiapkan data tersebut sendiri dari UI, sehingga demo memakai data sintetis yang disiapkan skrip. Pengelolaan lewat UI = fase terpisah.
 
-## 5. Rancangan perbaikan gate lingkup F1–F4 (E-G1) — usulan, belum diimplementasikan
+## 5. Perbaikan gate lingkup F1–F4 (E-G1) — diimplementasikan di PR gate, menunggu review/merge
 
-Implementasi rancangan ini memerlukan **PR kode terpisah** dan izin owner tersendiri. Tidak ada kode atau skrip uji yang diubah oleh PR dokumentasi ini.
+Owner menyetujui G-D1..G-D4 dan mengizinkan implementasi PR gate pada 12 path persis (16 Oktober 2026). Implementasi ada di branch `fix/wa2a-gate-lingkup-ihp` dari `main` `f3049187334d4665eb276b125f6a1e9918da41bb`; status merge mengikuti PR tersebut. Bukti aktual: [WA-2a-GATE-SCOPE-EVIDENCE.md](WA-2a-GATE-SCOPE-EVIDENCE.md). Persetujuan ini **bukan** izin 2a-G.
 
-### 5.1 Fakta kode saat ini
+### 5.1 Fakta kode baseline (`f304918`, sebelum PR gate)
 
-| Uji | Bagian lingkup | Mekanisme |
+| Uji | Bagian lingkup | Mekanisme lama |
 |---|---|---|
-| F1 `prisma/check-wa2a-message-policy.mjs` | S2, L219–263 | `git diff --name-only main` + `git ls-files --others --exclude-standard`; allowlist `BOLEH` persis (L223–259, sudah ditambah entri F2/F3/#26/F4); L262–263 `wa2-policy.ts` hanya ditambah |
-| F2 `prisma/check-wa2a-template.mjs` | S2, L176–214 | sama; allowlist L180–212 |
-| F3 `prisma/check-wa2a-message-f3.mjs` | L103–112 dan S3 L140–186 | L104/L110 `git show main:<berkas>` untuk membandingkan badan fungsi WA-1 dan klausa resolver; S3 allowlist L143–164, pengecualian baris F4 L167–183, larangan berkas beku L184 |
-| F4 `prisma/check-wa2a-approval-f4.mjs` | S4, L166–182 | `git diff --no-renames --name-only main`; allowlist L170–176; L179 larangan berkas beku; **L180 "tanpa route API / UI baru (F4 hanya service)"**; L181 `wa2-policy.ts` hanya ditambah; **L182 `semua.includes(SVC)`** |
-| 2C `prisma/check-wa2a-contact.mjs`, 2E `prisma/check-wa2a-access.mjs` | S2 L100–151; S4 L86–143 | denylist berkas beku `BEKU` terhadap `main` + pengecualian per baris; lulus pada branch dokumentasi |
-| 2B `prisma/check-wa2a-schema.mjs` (#26) | L100–114, S3 | basis = `merge-base(HEAD, main)` dengan syarat ref lokal `main` = `origin/main` (gagal tertutup), `--no-renames` |
+| F1 `prisma/check-wa2a-message-policy.mjs` | S2, L219–263 | `git diff --name-only main` + untracked; allowlist `BOLEH` (sudah ditambah entri F2/F3/#26/F4); `wa2-policy.ts` tambah-saja terhadap `main` |
+| F2 `prisma/check-wa2a-template.mjs` | S2, L176–214 | sama |
+| F3 `prisma/check-wa2a-message-f3.mjs` | L103–112, S3 L140–186 | `git show main:` untuk badan WA-1 dan klausa resolver; allowlist; pengecualian baris K3 F4 terhadap `main` |
+| F4 `prisma/check-wa2a-approval-f4.mjs` | S4, L166–182 | allowlist; L179 berkas beku; L180 tanpa route/UI; L181 tambah-saja; **L182 `semua.includes(SVC)`** |
+| 2C `prisma/check-wa2a-contact.mjs`, 2E `prisma/check-wa2a-access.mjs` | S2 L100–151; S4 L86–143 | denylist `BEKU` terhadap ref lokal `main`, deteksi rename bawaan Git, pengecualian baris F3/F4 |
+| 2B `prisma/check-wa2a-schema.mjs` (#26) | L100–114 | basis `merge-base(HEAD, main)` dengan `main` = `origin/main`, gagal tertutup — **tidak diubah** |
 
-Akibatnya:
-- **Pada `main` bersih**, diff terhadap `main` kosong sehingga L182 F4 gagal (hasil Claude 2026-10-16: F4 60 lulus, 1 gagal). Allowlist F1–F3 lulus secara hampa karena himpunan kosong.
-- **Pada branch PR #28**, dua path dokumentasi tidak ada di allowlist F1–F4 (hasil Claude 2026-10-16 pada `383b93e`: F1 89/1, F2 50/1, F3 53/1, F4 59/2 — F4 gagal pada allowlist dan L182). Setelah PR #28 merged dan checkout `main` bersih, penolakan path dokumentasi tidak berlaku lagi; cacat L182 tetap ada.
-- Asersi "perubahan ⊆ allowlist fase X" hanya bermakna pada branch fase X. Setiap fase sesudahnya terpaksa menambah path ke empat allowlist (lihat entri F2/F3/#26/F4 di allowlist F1), dan larangan F4 L180 akan menolak 2a-G mana pun.
-- F1–F4 bergantung pada ref lokal `main` tanpa memeriksa kesesuaiannya dengan `origin/main`; F1–F3 memakai `git diff` tanpa `--no-renames`. F3 L104/L110 membandingkan dengan `main:` sehingga sesudah merge membandingkan berkas dengan dirinya sendiri.
+Hasil baseline yang dijalankan ulang di clone bersih pada `f304918` (16 Oktober malam): F1 90/0, F2 51/0, F3 54/0, **F4 60/1 (L182)**, 2C 29/0, 2E 28/0, 2B statis 32/0 (bagian DB dilewati, exit 3).
 
-### 5.2 Rancangan yang direkomendasikan: tiga lapis pemeriksaan terpisah
+### 5.2 Rancangan terimplementasi: tiga lapis
 
-Setiap uji fase dipecah menjadi tiga lapis dengan tujuan berbeda. Tidak ada lapis yang dilewati hanya karena diff kosong.
-
-| Lapis | Pertanyaan | Basis → target | Selalu dijalankan? |
-|---|---|---|---|
-| **I — invarian kode** | Apakah kode **saat ini** masih memenuhi sifat beku? | Isi working tree; tanpa diff | Ya |
-| **H — rekaman lingkup historis** | Apakah fase yang sudah merged mengubah **persis** berkas yang tercatat? | `merge^1` → `merge^2` per fase (SHA 40-hex tercatat) | Ya |
-| **P — lingkup perubahan berjalan** | Apakah perubahan **belum merged** menyentuh berkas beku? (+ allowlist persis untuk fase aktif) | `merge-base(HEAD, origin/main)` → working tree + untracked | Ya (P-global); P-fase hanya pada mode fase eksplisit |
-
-**Lapis H — manifest historis (data dari repo, 16 Oktober 2026):**
-
-| Fase | Merge | Basis (`^1`) | Kepala (`^2`) | Berkas |
-|---|---|---|---|---|
-| F1 #23 | `e5f86768cdb9ed412668652af83d95fd2ece07ae` | `b805f839014069e83d5aed43ffa94e749bd02a31` | `c5c041e0a17997f54b8f242d41a4d596deecce3b` | 4 |
-| F2 #24 | `cd276bb296acf898b5bd8558c6711b9361178736` | `e5f86768cdb9ed412668652af83d95fd2ece07ae` | `217e39d49443da39bc5e8aa2961ed46f7f89845f` | 3 |
-| F3 #25 | `2cec0ce6980987ea24cdea986971a2bbc9dde387` | `cd276bb296acf898b5bd8558c6711b9361178736` | `a7fedf7898d810d307e4de2ce4692a1c49ef78f8` | 16 |
-| #26 | `0ad92516959e8b89e4f0945baccc03e8145a32d6` | `2cec0ce6980987ea24cdea986971a2bbc9dde387` | `46acda9b1224c14aac4c7967b706acbdf2e94064` | 4 |
-| F4 #27 | `5e58237c393a6115d3c55a5c1382dd3c5826a976` | `0ad92516959e8b89e4f0945baccc03e8145a32d6` | `d665216acf85803092771a2b01bced5131cbe927` | 22 |
-
-Jumlah berkas di atas dihitung dengan `git diff --no-renames --name-status <basis> <kepala>`; untuk kelima merge, tree merge = tree kepala (merge tidak membawa perubahan tambahan). Daftar path persis per fase disalin ke manifest pada PR perbaikan gate.
-
-Asersi H per fase:
-1. Basis dan kepala ada sebagai commit (`git cat-file -e <sha>^{commit}`); bila tidak tersedia (mis. clone dangkal) → **GAGAL** dengan pesan "riwayat tidak tersedia", bukan lewat.
-2. `merge^1` = basis dan `merge^2` = kepala tercatat; tree merge = tree kepala.
-3. Himpunan `git diff --no-renames --name-only basis kepala` **SAMA PERSIS** dengan manifest (bukan subset). Karena manifest tidak kosong, asersi ini menggantikan maksud L182 ("pemindai menemukan berkas fase") tanpa bergantung pada working tree.
-4. Larangan khusus fase dievaluasi pada diff fasenya sendiri: F4 — tidak ada path `src/app/**`, tidak ada berkas beku L179, `wa2-policy.ts` tanpa baris dihapus (`git diff basis kepala -- src/services/whatsapp/wa2-policy.ts`); F1 — `wa2-policy.ts` hanya ditambah; F3 — larangan L184 dan pengecualian baris F4 tetap dinilai pada diff F4 historis.
-5. Fungsi diff yang sama dipakai H dan P. Mutasi yang membuat fungsi itu mengembalikan himpunan kosong langsung menggagalkan asersi 3, sehingga P tidak dapat lulus hampa tanpa ketahuan.
-
-**Lapis I — invarian yang menggantikan larangan berbasis diff:**
-- **I-1 (pengganti F4 L180, lintas fase):** himpunan berkas `src/app/**` dan `src/components/**` yang mengimpor `@/services/whatsapp/*` (resolusi impor, termasuk relatif dan `import()` dinamis) = **PERSIS daftar disetujui**. Nilai sekarang = kosong (diverifikasi 16 Oktober: tidak ada berkas `src/app` atau `src/components` yang merujuk `services/whatsapp`). 2a-G harus mengubah daftar ini secara eksplisit melalui pengecualian per asersi (§6.12, X-1). Dengan begitu larangan "tanpa route/API/UI" tidak hilang hanya karena allowlist ditambah: setiap route WA-2 yang tidak terdaftar tetap tertangkap, di branch maupun di `main`.
-- **I-2 (berkas beku identik):** SHA-256 isi `src/services/whatsapp/wa2-gate.ts`, `wa-access-resolver.ts`, `wa-freshness.ts`, `wa-template.ts` direkam pada manifest; perubahan → GAGAL, juga sesudah merge. Perluasan daftar ke service F3/F4 = keputusan owner G-D3.
-- **I-3:** F3 L104/L110 membandingkan dengan SHA basis F3 tetap `cd276bb296acf898b5bd8558c6711b9361178736` (main sebelum F3), bukan `main:`. Badan `siapkanCandidate`/`siapkanDalamTx` dan klausa resolver tetap dibandingkan dengan keadaan sebelum F3.
-- Asersi isi lain di S1/S2/S3 masing-masing uji tetap apa adanya.
-
-**Lapis P — perubahan berjalan:**
-- **Basis:** `merge-base(HEAD, refs/remotes/origin/main)`. Syarat: ref `origin/main` ada dan merge-base ditemukan; bila tidak → **GAGAL tertutup**. Override `WA2A_BASIS=<40-hex>` hanya untuk checkout terlepas/CI: wajib SHA penuh, commit ada, dan leluhur HEAD (`git merge-base --is-ancestor`), selain itu GAGAL. Tidak ada instruksi `git branch -f`. Kesegaran `origin/main` terhadap GitHub tidak dapat diperiksa tanpa jaringan (keterbatasan, dicatat di output).
-- **Target:** `git diff --no-renames --name-only <BASIS>` (mencakup perubahan ter-commit sejak basis, staged, dan unstaged; berkas terhapus ikut muncul; rename muncul sebagai hapus + tambah) ditambah `git ls-files --others --exclude-standard` (untracked). Berkas yang di-ignore tidak terlihat; perubahan `.gitignore` sendiri adalah perubahan ter-track yang ikut diperiksa.
-- **Mode bukti** (`WA2A_BUKTI=1`): working tree wajib bersih (`git status --porcelain=v1 --untracked-files=all` kosong) sehingga hasil terikat pada HEAD yang dicetak.
-- **P-global (uji F1–F4 lama):** denylist berkas beku — WA-1 (`src/services/communication/`), TAH, intake, V3/validator, `prisma/schema.prisma`, migrasi, rollback, `docs/whatsapp/PRD-WA-1.md`, berkas I-2, berkas uji WA-2a yang sudah ada pada basis PR gate (daftar path persis di manifest, bukan pola; uji fase baru seperti `prisma/check-wa2a-g-static.mjs` tidak termasuk) dan `prisma/wa2a-lingkup.mjs` — ditambah aturan "hanya ditambah" untuk `wa2-policy.ts` dan `wa-lock.ts`. Pengecualian tetap per berkas dan per baris persis (pola `BARIS_F3`/`BARIS_F4` yang sudah ada) atau, untuk penulisan ulang besar, per berkas yang **terikat basis 40-hex tertentu** sehingga tidak berlaku lagi setelah basis berubah. Tanpa wildcard.
-- **P-fase (uji fase aktif):** allowlist path persis fase aktif + jangkar (diff wajib memuat berkas jangkar fase). Hanya berjalan bila `WA2A_FASE=<id>` dinyatakan eksplisit; id tak dikenal atau fase yang sudah ada di manifest H → GAGAL. Tanpa `WA2A_FASE`, output menyatakan "lingkup fase aktif tidak diklaim" — ini mode, bukan pelewatan karena diff kosong. Bukti PR fase wajib dijalankan dalam mode fase dan mode bukti.
-- Setelah fase merged, entri manifest H fase itu ditambahkan pada PR berikutnya (biasanya PR checkpoint) dengan SHA persis.
-
-**Perilaku yang diharapkan:**
-
-| Keadaan | I | H | P-global | P-fase |
-|---|---|---|---|---|
-| `main` bersih | jalan, lulus | 5 fase, 49 berkas tercatat, lulus | basis = HEAD → himpunan kosong, lulus | tidak diklaim |
-| Branch dokumentasi (mis. PR #28) | lulus | lulus | 2 berkas docs, bukan beku → lulus | tidak diklaim |
-| Branch fase baru (mis. 2a-G) | I-1 gagal sampai daftar disetujui diperbarui (X-1) | lulus | gagal bila menyentuh berkas beku tanpa pengecualian | `WA2A_FASE=G`: allowlist persis 2a-G + jangkar |
-| `origin/main` tidak ada / tanpa merge-base | — | — | **GAGAL** | **GAGAL** |
-| Clone dangkal tanpa commit H | — | **GAGAL** | — | — |
-
-### 5.3 Path dan asersi persis untuk PR perbaikan gate (terpisah)
-
-Berkas:
-1. `prisma/wa2a-lingkup.mjs` — **baru**: basis, himpunan perubahan, manifest H, mode `WA2A_FASE`/`WA2A_BASIS`/`WA2A_BUKTI`.
-2. `prisma/check-wa2a-message-policy.mjs` — S2 L219–263 diganti: H (F1), P-global, aturan tambah-saja `wa2-policy.ts` terhadap basis P; allowlist lama dipindah ke manifest H.
-3. `prisma/check-wa2a-template.mjs` — S2 L176–214 diganti: H (F2), P-global.
-4. `prisma/check-wa2a-message-f3.mjs` — L104 dan L110 dipin ke `cd276bb…`; S3 L140–186 diganti: H (F3), P-global; pengecualian baris F4 (L167–183) dinilai pada diff F4 historis.
-5. `prisma/check-wa2a-approval-f4.mjs` — S4 L166–182 diganti: H (F4) termasuk larangan L179–L181 pada diff historis F4; L180 diganti I-1; L182 diganti asersi H-3; tambah I-2.
-6. `docs/whatsapp/WA-2a-GATE-SCOPE-EVIDENCE.md` — **baru**: bukti uji positif/negatif.
-7. `docs/TAH-CURRENT-CHECKPOINT.md` — status gate.
-
-Opsional (keputusan G-D2): `prisma/check-wa2a-contact.mjs` S2 L100–151 dan `prisma/check-wa2a-access.mjs` S4 L86–143 memakai basis helper (gagal tertutup, `--no-renames`). Keduanya tidak memblokir dokumentasi saat ini. `prisma/check-wa2a-schema.mjs` (#26) tidak diubah.
-
-### 5.4 Uji negatif wajib pada PR perbaikan gate
-
-Dijalankan pada clone/worktree sekali pakai, bukan checkout kerja. Setiap kasus negatif harus menghasilkan exit ≠ 0 pada asersi yang disebut.
-
-| ID | Skenario | Harapan |
+| Lapis | Pertanyaan | Basis → target |
 |---|---|---|
-| N-01 | `main` bersih, mode bawaan | Lulus; H mencetak 5 fase / 49 berkas |
-| N-02 | Branch hanya dua dokumen (keadaan PR #28) | Lulus |
-| N-03 | Edit **unstaged** `wa2-gate.ts` | Gagal I-2 dan P-global |
-| N-04 | Edit **staged** `wa-template.ts` | Gagal I-2 dan P-global |
-| N-05 | Edit **ter-commit** `wa-access-resolver.ts` pada branch | Gagal P-global (via basis) dan I-2 |
-| N-06 | Berkas **untracked** `src/app/api/x/route.ts` yang mengimpor `@/services/whatsapp/wa-message.service` | Gagal I-1 |
-| N-07 | `git mv src/services/whatsapp/wa-freshness.ts` ke nama lain | Gagal (hapus terlihat dengan `--no-renames`; I-2 berkas hilang) |
-| N-08 | Hapus satu baris `wa2-policy.ts` | Gagal aturan tambah-saja |
-| N-09 | Ubah `src/services/communication/comm-policy.ts` | Gagal P-global |
-| N-10 | Hapus ref `origin/main` di clone uji | Gagal tertutup P |
-| N-11 | Clone `--depth 1` | Gagal H (commit tidak tersedia) |
-| N-12 | Hapus satu path dari manifest F4 | Gagal H-3 (tidak sama persis) |
-| N-13 | `WA2A_BASIS` SHA pendek atau bukan leluhur HEAD | Gagal |
-| N-14 | `WA2A_FASE=F4` | Gagal (fase sudah tercatat merged) |
-| N-15 | Mode fase: diff tanpa berkas jangkar; diff dengan path di luar allowlist | Keduanya gagal |
-| N-16 | Run lulus, lalu commit perubahan ilegal pada berkas beku, run ulang | Gagal (perubahan ter-commit tetap terlihat) |
-| N-17 | Ubah uji WA-2a lama di luar pengecualian terikat basis | Gagal P-global |
-| N-18 | Mutasi helper: fungsi diff selalu mengembalikan `[]` | Gagal H-3 |
+| **I — invarian kode** | Apakah kode sekarang memenuhi sifat beku? | isi working tree, tanpa diff |
+| **H — rekaman historis** | Apakah fase merged mengubah persis berkas tercatat? | `merge^1` → `merge^2` per fase, SHA 40-hex di manifest |
+| **P — perubahan berjalan** | Apakah perubahan belum merged menyentuh berkas beku? | `merge-base(HEAD, origin/main)` → working tree + untracked |
 
-### 5.5 Alasan, keterbatasan, dan alternatif yang ditolak
+Kode: helper `prisma/wa2a-lingkup.mjs`; data: `prisma/wa2a-lingkup-manifest.json` (fase, `i1`, `i2`, `pGlobal`, `faseAktif`, `pengecualian`); uji helper: `prisma/check-wa2a-lingkup.mjs`. Keenam uji fase memanggil helper dan menambahkan asersi historis khusus fasenya.
 
-Alasan: memisahkan "kode sekarang aman" (I), "fase lama benar lingkupnya" (H), dan "perubahan berjalan tidak menyentuh berkas beku" (P) menghilangkan kebutuhan menambah path ke empat allowlist di setiap fase, mempertahankan bukti fase lama secara deterministik, dan menjaga larangan F4 tanpa route/UI sebagai invarian yang harus diubah secara sadar.
+**H.** Manifest mencatat F1 #23 (4 berkas), F2 #24 (3), F3 #25 (16), PR26 #26 (4), F4 #27 (22) — total 49. Per fase: commit tersedia (bila tidak → gagal "riwayat tidak tersedia"), induk merge = basis/kepala tercatat, tree merge = tree kepala, diff `--no-renames` **sama persis** dengan manifest dan tidak kosong. Setiap uji fase juga menulis ulang daftar lingkupnya sendiri secara literal dan memastikan manifest sama dengannya, sehingga perusakan manifest saja tidak cukup. Larangan khusus fase dinilai pada diff fasenya: F4 tanpa `src/app/`/`src/components/`, tanpa berkas beku L179, `wa2-policy.ts` tanpa baris dihapus; pengecualian baris K3 F4 (kontak/consent) dan pengecualian baris F3/F4 2C/2E dibuktikan pada diff PR #25/#27. F3 membandingkan badan fungsi WA-1 dan klausa resolver dengan basis F3 tetap `cd276bb…`, bukan `main:`. Fungsi diff yang sama dipakai H dan P; mutasi yang mengosongkannya membuat semua rekaman H gagal.
 
-Keterbatasan:
-- H bergantung pada ketersediaan commit; clone dangkal gagal (gagal tertutup, bukan lulus).
-- Kesegaran `origin/main` tidak diverifikasi offline.
-- Berkas ter-ignore tidak terlihat oleh P.
-- Pengecualian terikat basis harus diperbarui bila basis branch berubah sebelum merge.
-- Di `main` sendiri P hanya menjaga perubahan belum di-commit (sama dengan semantik #26); perlindungan sesudah merge untuk berkas paling kritis berasal dari I-2.
+**P.** Basis `merge-base(HEAD, refs/remotes/origin/main)`; ref tidak ada atau merge-base tidak ditemukan → gagal tertutup. Override `WA2A_BASIS` hanya SHA 40-hex yang ada dan merupakan leluhur HEAD. Himpunan perubahan = `git diff --no-renames --name-only <basis>` (ter-commit sejak basis, staged, unstaged, hapus; rename = hapus + tambah) + `git ls-files --others --exclude-standard`. Denylist `pGlobal`: awalan WA-1/TAH/intake/migrasi/rollback/uji WA-1-TAH-validator, path persis schema, PRD-WA-1, 12 uji WA-2a yang ada pada basis, dan semua berkas I-2; tambah-saja: `wa-lock.ts`, `wa2-policy.ts`. Uji 2C/2E memakai basis yang sama dengan denylist `BEKU` masing-masing.
 
-Alternatif yang ditolak: (a) menambah semua path baru ke allowlist F1–F4 setiap fase — utang berulang dan L180 tetap memblokir route sah; (b) hanya mengganti basis diff ke SHA merge fase — menghapus pemeriksaan perubahan berjalan dan tidak menjaga larangan F4 setelah fase berikutnya; (c) melewati pemeriksaan bila diff kosong — melemahkan gate.
+**Pengecualian G-D4:** hanya tuple `{basis, path, blob}`; berlaku bila basis P = basis tuple **dan** `git hash-object` berkas = blob tuple. Setelah merge, branch baru memiliki basis lain sehingga tuple tidak berlaku lagi; edit lanjutan mengubah blob. PR gate sendiri memakai enam tuple berbasis `f304918` untuk enam uji yang ditulis ulang.
+
+**I-1.** Grafik impor seluruh `src/**` (`.ts/.tsx/.js/.jsx/.mjs/.cjs`): alias `@/*` (satu-satunya alias di `tsconfig.json`), relatif, `index`, `from` pada `import`/`export … from`/`import type`, `import()` dan `require()` literal; komentar dan string biasa dibuang lebih dulu. Berkas di `src/app/**` dan `src/components/**` yang mencapai `src/services/whatsapp/` langsung atau lewat perantara harus **sama persis** dengan `i1.diizinkan` (saat ini kosong). Rantai pertama dicetak (mis. `page.tsx → src/lib/x.ts → wa-phone.ts`). Pemindai yang sama menemukan 18 perujuk transitif modul WA-1 sebagai kontrol tidak hampa.
+
+**I-2 — 15 berkas beku (blob Git baseline `f304918`):**
+
+| Berkas (`src/services/whatsapp/`) | Alasan | Blob |
+|---|---|---|
+| `wa2-gate.ts` | gerbang WA-2 (inti awal) | `fff6cc527881307e70ffb20b185b55aa2f9f472b` |
+| `wa-template.ts` | template v1 (inti awal) | `bb6acd73239be96498f7bd365c75c00a601cd338` |
+| `wa-access-resolver.ts` | resolver akses (inti awal; diubah F3) | `481b600886d0bbefb8676d1f46a97b79dd6c2c21` |
+| `wa-freshness.ts` | freshness D6 (inti awal; ditambah F3) | `a1fbc9ba4e62c06e65c79d1d2dd1d73cfb3ced0f` |
+| `wa-message-policy.ts` | kebijakan pesan (F1, diubah F3) | `f67fb659e3cdb3498b699c424caeb0158fcbf8e5` |
+| `wa-message.service.ts` | draft/preview (F3, diubah F4) | `53273c42bd4ce64d62e915d650c32abce3ba2181` |
+| `wa-schedule-confirmation.service.ts` | konfirmasi jadwal (F3) | `bb13beb2c6806dc516e2d9c1b1fd11d3e6e2e294` |
+| `wa1-bridge.ts` | adapter WA-1 satu-satunya (F3, diubah F4) | `972789f825781573fdba2202181db7da4c08d6c6` |
+| `wa-approval-def.ts` | definisi beku CLIENT_WA_UPDATE (F1, diubah F4) | `c513f06025cdb8800a84f1c22791b07ba7d438f3` |
+| `wa-approval-stop.ts` | penghentian approval tertaut (F4) | `2be550a7be457e6106d2d5f368d5744e11dabd45` |
+| `wa-message-approval.service.ts` | approval pesan klien (F4) | `372b6bbc1a7621d672473dc0f1d58445c34baf48` |
+| `wa-message-check.ts` | pemeriksaan kontak/akses/freshness (F4) | `9e3b779890ce4898c7b92c527ecf590b9a605501` |
+| `wa-consent.service.ts` | consent; baris K3 ditambah F4 | `45d87783cad4741dec310a57a1d7a741a8a72bef` |
+| `wa-contact.service.ts` | kontak; baris K3 ditambah F4 | `56180de37ac13e85f9d8d9b45f1e6d51de5e6c8f` |
+| `wa-grant.service.ts` | grant; hold K3 ditambah F4 | `8eb7c111973e1c0946e11f4cb12d92f598cf3ec7` |
+
+Aturan pemilihan: empat berkas inti awal + setiap berkas `src/services/whatsapp/` yang ditambah/diubah oleh diff F3 atau F4, kecuali `wa2-policy.ts` (aturan tambah-saja, diperluas per fase). Tidak dibekukan dengan hash: `wa-lock.ts` (tambah-saja), `wa-phone.ts`, `wa-voyage-view.ts`, `wa-db-error.ts` (tidak diubah F3/F4), dan `src/services/ops/voyage-event.service.ts` (domain operasional; K1 dijaga asersi isi F4 S2). Hash = `git hash-object` (menerapkan `.gitattributes` dan filter seperti `git add`); kelima belas berkas tanpa atribut `text`/`eol`/`filter` dan `core.autocrlf` tidak diset; blob = blob tree HEAD.
+
+**Mode.** `WA2A_FASE=<id>`: P-fase dengan `faseAktif[id].izin` (allowlist persis) dan `jangkar`; id fase merged atau tak dikenal → gagal. Tanpa `WA2A_FASE`, output menyatakan "lingkup fase aktif TIDAK diklaim". `WA2A_BUKTI=1`: working tree wajib bersih (`git status --porcelain=v1 --untracked-files=all` kosong) dan mencetak HEAD, basis, `origin/main`, blob helper dan blob manifest; nilai lain → gagal. Fase baru: entri `faseAktif` ditambahkan di PR fase; sesudah merge, entri dipindah ke `fase` dengan SHA persis pada PR berikutnya dan divalidasi lapis H (commit bukan merge atau induk salah → gagal).
+
+### 5.3 Path PR gate (12, sesuai izin)
+
+1. `prisma/wa2a-lingkup.mjs` — baru
+2. `prisma/wa2a-lingkup-manifest.json` — baru
+3. `prisma/check-wa2a-lingkup.mjs` — baru
+4. `prisma/check-wa2a-message-policy.mjs`
+5. `prisma/check-wa2a-template.mjs`
+6. `prisma/check-wa2a-message-f3.mjs`
+7. `prisma/check-wa2a-approval-f4.mjs`
+8. `prisma/check-wa2a-contact.mjs`
+9. `prisma/check-wa2a-access.mjs`
+10. `docs/whatsapp/WA-2a-GATE-SCOPE-EVIDENCE.md` — baru
+11. `docs/whatsapp/WA-2a-NEXT-PHASE-DRAFT.md`
+12. `docs/TAH-CURRENT-CHECKPOINT.md`
+
+### 5.4 Skenario uji helper (`check-wa2a-lingkup.mjs`, clone sementara)
+
+**Positif (9):** P-01 clone bersih; P-02 branch dokumentasi ter-commit; P-03 komentar/string menyerupai impor; P-04 tambah-saja hanya menambah; P-05 tuple pengecualian tepat; P-06 mode fase dengan allowlist + jangkar; P-07 perujuk yang tercantum di `i1.diizinkan`; P-08 mode bukti tree bersih; P-09 CRLF + `*.ts text` dinormalkan `hash-object`.
+
+**Negatif (29 asersi):** N-01 unstaged; N-02 staged; N-03 committed; N-04 untracked di WA-1; N-05 `git rm`; N-06 hapus tanpa stage; N-07 `git mv`; N-08 tambah-saja dilanggar; N-09 impor langsung alias; N-10 impor relatif dari komponen; N-11 impor transitif; N-12 `import()` literal; N-13 `origin/main` hilang; N-14 clone `--depth 1`; N-15a JSON rusak; N-15b SHA pendek/path berpola/pengecualian berfield lebih; N-15c path dihapus dari rekaman; N-15d fase dengan commit bukan merge; N-16 basis pendek/tidak ada/bukan leluhur; N-17a fase merged/tak dikenal; N-17b jangkar hilang; N-17c path di luar allowlist; N-18a/N-18b pengecualian basis/blob salah; N-19 mutasi helper `daftarDiff → []`; N-20 mode bukti tree kotor/nilai salah; N-21 perubahan ilegal di-commit sesudah run lulus; N-22 CRLF tanpa atribut; N-23 uji WA-2a lama diubah tanpa pengecualian.
+
+Daftar N-01..N-18 versi rancangan sebelumnya berisi 18 skenario: **2 positif dan 16 negatif**; daftar di atas menggantikannya.
+
+### 5.5 Keterbatasan
+
+- **Deteksi impor:** tidak terdeteksi `import()`/`require()` dengan ekspresi terhitung (dihitung dan dilaporkan sebagai info), pemuatan lewat `fs`/`eval`, alias di luar `tsconfig.json`, dan kode hasil generate. Pemindai tidak mem-parse regex literal; regex yang memuat tanda kutip dapat mengacaukan tokenisasi. Akses tabel WA-2a di luar `src/services/whatsapp/` tetap dijaga terpisah oleh `check-wa2a-schema` S3.
+- **Integritas manifest:** manifest tidak dapat melindungi dirinya sendiri. Daftar lingkup literal di uji fase membatasi perusakan rekaman H, tetapi menambah tuple pengecualian atau mengubah `i1`/`i2` di manifest tetap hanya tertangkap oleh review owner pada diff PR.
+- **Riwayat:** H memerlukan commit fase; clone dangkal gagal tertutup.
+- **Basis:** kesegaran `origin/main` terhadap GitHub tidak diperiksa (uji offline). Di `main` sendiri P hanya menjaga perubahan belum di-commit; perlindungan sesudah merge untuk berkas paling kritis berasal dari I-2.
+- **Berkas ter-ignore** tidak terlihat oleh P.
+- **Tuple terikat basis** harus diperbarui bila basis branch berubah sebelum merge.
 
 ## 6. Preflight 2a-G
 
@@ -682,7 +648,7 @@ Berkas diubah (2):
 
 | Path | Alasan |
 |---|---|
-| `prisma/check-wa2a-approval-f4.mjs` | hanya asersi I-1 (daftar perujuk WA-2 dari `src/app`) diganti ke 12 path route/halaman di atas — pengecualian X-1, perlu keputusan owner; bergantung pada PR perbaikan gate (§5) |
+| `prisma/wa2a-lingkup-manifest.json` | `i1.diizinkan` diisi 12 path route/halaman di atas (pengecualian X-1) dan entri `faseAktif.G` (allowlist persis 2a-G + jangkar) untuk mode `WA2A_FASE=G` — perlu keputusan owner; bergantung pada PR gate (§5) merged |
 | `docs/TAH-CURRENT-CHECKPOINT.md` | status 2a-G |
 
 Total 24 path. Tidak ada perubahan `package.json`, lockfile, schema, migrasi, `Sidebar.tsx`, `(app)/layout.tsx`, service F3/F4, `wa2-gate.ts`, atau berkas WA-1/TAH/V3. Komponen client tidak mengimpor `@/services/*` (tipe DTO dideklarasikan lokal), sehingga daftar I-1 hanya memuat 10 route dan 2 halaman.
@@ -691,8 +657,8 @@ Total 24 path. Tidak ada perubahan `package.json`, lockfile, schema, migrasi, `S
 
 | ID | Guard / asersi | Dampak 2a-G | Usulan | Keputusan owner? |
 |---|---|---|---|---|
-| X-1 | `check-wa2a-approval-f4.mjs` I-1 (pengganti L180; ada setelah PR gate) | gagal sampai daftar diperbarui | ganti daftar kosong → 12 path persis (§6.11) | **ya** |
-| X-0 | Bila PR gate **tidak** disetujui: allowlist F1–F4 + F4 L180/L182 | 24 path ditolak empat uji; L180 menolak semua route | tidak direkomendasikan; menuntut menambah 24 path ke empat allowlist dan melemahkan L180 | **ya** (jalur alternatif) |
+| X-1 | `prisma/wa2a-lingkup-manifest.json` `i1.diizinkan` (asersi I-1 di helper, pengganti F4 L180) | I-1 gagal sampai daftar diperbarui | ganti daftar kosong → 12 path persis (§6.11); tambah `faseAktif.G` | **ya** |
+| X-0 | Jalur lama allowlist F1–F4 + F4 L180/L182 | tidak berlaku lagi bila PR gate merged (owner memilih G-D1) | — | tidak |
 | — | `check-comm-policy.mjs` L637–674: berkas yang memuat teks `services/communication` di luar foldernya = PERSIS daftar WA-1 + adapter | tidak terdampak bila berkas baru tidak memuat teks itu (termasuk komentar) | dipatuhi, dikunci `g-static` | tidak |
 | — | `check-comm-ui.mjs` menu Sidebar | tidak terdampak bila Sidebar tidak diubah | link Sidebar = keputusan terpisah kelak (pengecualian khusus `Sidebar.tsx`, mungkin `(app)/layout.tsx`) | ya, bila diminta |
 | — | `check-tah-policy.mjs` L615–642: `src/app` dan `src/components` tidak boleh memuat `TahApprovalRequest`/`tahApprovalRequest`, `services/tah`, `../tah/` | route/UI tidak boleh menyebut nama itu atau mengimpor `tah-policy` (mis. `MIN_CATATAN`) | data approval disajikan read service WA-2 dengan nama netral (`approval`); batas catatan dari pesan galat server | tidak (TAH beku) |
@@ -710,7 +676,7 @@ Total 24 path. Tidak ada perubahan `package.json`, lockfile, schema, migrasi, `S
 |---|---|
 | G-01 | **`check-wa2a-g-prod.mjs`** (pola `check-comm-e2e` mode produksi): fixture dibuat lebih dulu dengan service pada proses non-produksi di PostgreSQL loopback sekali pakai; lalu `next build` + `next start` lokal (`NODE_ENV=production`) dengan flag WA-2 **sengaja `true`**, tenant di allowlist, perangkap egress `prisma/wa1-egress-trap.mjs`. Untuk 11 metode-path: sesi ADMIN sah + Origin benar + JSON sah → 403 `WA2_ENV_NOT_ALLOWED`; permintaan sama dengan content-type salah, body > 16 KB, dan Origin salah → **tetap** 403 `WA2_ENV_NOT_ALLOWED` (membuktikan gerbang mendahului CSRF/body); GET halaman → 404. Snapshot sebelum/sesudah: jumlah baris dan jumlah `version` WaClientMessage, TahApprovalRequest, AuditLog, CommunicationCandidate tidak berubah; state/versi pesan fixture tidak berubah; tanpa `[WA1-EGRESS] BLOCKED`, ada `TRAP-AKTIF`. Kontrol positif: fixture yang sama pada `next dev` (`g-api`) menghasilkan 200. Di `g-api`: flag `false` → 403 `WA2_DISABLED` pada 11 metode-path; tenant di luar allowlist → 404. Konteks sistem tidak dapat dihasilkan lewat HTTP (`requireTenant` tidak pernah mengisi `system`): dibuktikan uji DB F4 + asersi statis bahwa route hanya memakai `withTenant`. Tanpa akses produksi nyata. |
 | G-02 | `g-api`: matriks {tanpa sesi, OPERATOR, ADMIN, MANAJER_OPERASI, ADMIN tenant lain} × 11 metode-path; ID tenant B dari sesi tenant A → 404; `tenantId`/`role`/`userId` di body diabaikan (baris tercatat memakai sesi); Origin hilang/salah → 403; content-type salah, body > 16 KB, JSON array → 400; query `take` = 0, 51, `abc` → 400. |
-| G-03 | `g-api` + `g-ui`: `body`, `fields`, `language`, `snapshotFingerprint` di detail sama byte-per-byte dengan baris DB; nomor sesuai pola `^\+\d{2}••••\d{4}$`; nomor utuh fixture tidak muncul di JSON, HTML, maupun log respons. |
+| G-03 | `g-api` + `g-ui`: untuk setiap field yang **diizinkan** kontrak detail (§6.7) — `body`, `language`, `templateId`, `templateVersion`, `snapshotFingerprint`, dan kunci `fields` yang diizinkan (`keluarga`, `kategoriWajib`, `vesselName`, `voyageNumber`, `portName`, `perubahan` atau `occurredAt`/`timezone`/`eventLocalTime`) — nilai respons sama persis dengan snapshot tersimpan di DB; himpunan kunci respons = allowlist; field terlarang tidak keluar: `fields.grant`, `recipientE164Snapshot`, `logicalMessageKey`, `activeKey`, `successKey`, `sourceFingerprint`, `partyIdSnapshot`, `grantIdSnapshot`, `consentStateVersion`, ID pencatat bukti; nomor sesuai pola `^\+\d{2}••••\d{4}$`; nomor utuh fixture tidak muncul di JSON, HTML, maupun log respons. Tidak menuntut seluruh objek `fields` DB identik dengan respons, karena kontrak mewajibkan penyaringan. |
 | G-04 | Alur draft → preview → request → approve; draft → preview → request → reject (catatan wajib); cancel dari DRAFT, PREVIEWED, PENDING_APPROVAL, APPROVED, NEEDS_REVIEW; `hasil` sesuai §6.1. |
 | G-05 | Pengguna berbeda U1 (draft), U2 (request), U3 (pencatat konfirmasi), U4 (checker). Lewat API langsung: U1 approve/reject → 403 `CHECKER_IS_MAKER`; U2 → 403 `SELF_APPROVAL_FORBIDDEN`; U3 → 403 `CHECKER_IS_EVIDENCE_RECORDER`; U4 → `DISETUJUI` / `DITOLAK_PEMUTUS`; pemratinjau sebagai checker boleh; OPERATOR → 403. |
 | G-06 | Setelah request: consent dicabut, grant dicabut, konfirmasi jadwal baru, sumber berubah, TTL lewat (ubah `expiresAt` hanya di DB sekali pakai). Hasil dan status (`DITAHAN`/`DIBLOKIR`/`KEDALUWARSA`, NEEDS_REVIEW/BLOCKED/EXPIRED, kode alasan) dikunci sesuai nilai aktual service, bukan diasumsikan. UI menampilkan kode dan status tersebut. Regresi `check-wa2a-approval-f4-db.mjs` termasuk M21/M22 tetap lulus. |
@@ -737,7 +703,7 @@ Hanya nama variabel; tanpa nilai rahasia. Semua lokal/loopback.
 
 | Tahap | Isi | Bergantung pada | Batas |
 |---|---|---|---|
-| T0 | PR perbaikan gate (§5.3–§5.4) | persetujuan rancangan §5 + izin implementasi gate | hanya path §5.3 |
+| T0 | PR perbaikan gate (§5.3–§5.4) | rancangan §5 disetujui owner; implementasi diizinkan; merge = keputusan terpisah | hanya 12 path §5.3 |
 | T1 | `wa-message-read.service.ts`, `wa2-access.ts`, `g-static` (bagian baca), `g-api` (bagian baca) | T0 merged; persetujuan §6 (kontrak, path, X-1) | tanpa route mutasi/UI |
 | T2 | Route #1–#11, X-1, `g-api` penuh, `g-prod` | T1 direview | berhenti di APPROVED |
 | T3 | Halaman, komponen, `seed-wa2a-g-demo.mjs`, `g-ui` | T2 direview | tanpa Sidebar |
@@ -769,7 +735,7 @@ Usulan pengemasan: T0 satu PR; T1–T2 satu PR API; T3–T4 satu PR UI. Setiap t
 |---|---|---|
 | G-01 | Flag OFF, tenant di luar allowlist, konteks sistem, dan mode produksi ditolak sebelum mutasi | Uji route mode produksi lokal + uji API negatif; tidak ada mutasi atau egress |
 | G-02 | Sesi/peran/tenant ditegakkan untuk seluruh read dan mutasi | Matriks akses; ID lintas tenant tidak dapat dibaca/diubah |
-| G-03 | Preview sesuai snapshot yang tersimpan | Perbandingan isi satu bahasa, sumber, penerima tersamar dan fingerprint |
+| G-03 | Preview sesuai snapshot yang tersimpan, tanpa kebocoran field terlarang | Field respons yang diizinkan = snapshot tersimpan; field terlarang (mis. `fields.grant`, nomor utuh) tidak keluar; penerima tersamar |
 | G-04 | Request/approve/reject/cancel mengikuti state machine F3/F4 | E2E alur berhasil dan penolakan bisnis, termasuk alasan wajib |
 | G-05 | Maker-checker ditegakkan server untuk approve dan reject | Uji pembuat draft, peminta dan pencatat bukti; larangan tidak hanya tombol UI |
 | G-06 | Perubahan sumber/consent/grant/bukti serta expiry ditangani | Status dan kode alasan aktual tampil tepat; regresi waktu keputusan F4 tetap lulus |
@@ -785,18 +751,18 @@ Suite yang tidak dijalankan harus disebutkan bersama alasannya. Tidak ada klaim 
 ## 9. Urutan persetujuan
 
 1. Owner memutuskan merge dokumentasi PR #28.
-2. Owner memutuskan rancangan gate §5 (G-D1..G-D4), lalu izin implementasi PR gate.
+2. Rancangan gate §5 disetujui owner (G-D1..G-D4) dan diimplementasikan di PR gate; owner memutuskan merge PR gate.
 3. Owner memutuskan definisi/scope 2a-G §6 (D-G1..D-G9).
 4. Owner memberi izin implementasi per tahap §6.15.
 5. Keputusan owner atas merge, penerimaan fase, checkpoint dan langkah berikutnya. Merge tidak berarti deploy atau izin Send.
 
 ## 10. Keputusan owner yang masih terbuka
 
-**Gate (§5):**
-- G-D1: setujui rancangan tiga lapis I/H/P (rekomendasi) atau pilih jalur X-0.
-- G-D2: ikutkan 2C/2E (`check-wa2a-contact.mjs`, `check-wa2a-access.mjs`) ke helper basis, atau biarkan.
-- G-D3: daftar berkas I-2 (empat berkas) cukup, atau diperluas ke service F3/F4.
-- G-D4: pengecualian terikat basis 40-hex untuk penulisan ulang uji, atau hanya pengecualian per baris.
+**Gate (§5):** keputusan rancangan selesai; yang tersisa: review dan keputusan merge PR gate.
+- G-D1: **disetujui** — tiga lapis I/H/P termasuk deteksi impor transitif.
+- G-D2: **disetujui** — 2C/2E memakai basis helper.
+- G-D3: **disetujui** — I-2 diperluas ke berkas pendukung F3/F4; daftar terverifikasi 15 berkas (§5.2).
+- G-D4: **disetujui** — pengecualian hanya tuple basis, path, blob akhir.
 
 **2a-G (§6):**
 - D-G1: prefix `/api/automation/client-messages` dan 11 metode-path §6.4.
@@ -805,7 +771,7 @@ Suite yang tidak dijalankan harus disebutkan bersama alasannya. Tidak ada klaim 
 - D-G4: tanpa link Sidebar pada 2a-G.
 - D-G5: kontak/consent/grant/konfirmasi hanya melalui setup lokal sintetis.
 - D-G6: tanpa schema/migrasi; bila perlu → STOP.
-- D-G7: pengecualian X-1 (daftar perujuk I-1 = 12 path).
+- D-G7: pengecualian X-1 di manifest (`i1.diizinkan` = 12 path; `faseAktif.G`).
 - D-G8: konteks sinyal cukup dengan ekspor bridge yang ada (tanpa ekspor baru).
 - D-G9: tanpa mode nomor utuh di 2a-G.
 
