@@ -6,7 +6,7 @@
 
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { execFileSync } from 'node:child_process'
+import { git, lapisLingkup } from './wa2a-lingkup.mjs'
 import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
@@ -101,15 +101,17 @@ cek('tak ada berkas WA-2 yang menyebut nama tabel komunikasi WA-1 (pagar check-c
 // F4 (pengecualian E1, sisi WA-2): pembuat TahApprovalRequest di WA-2 = TEPAT service approval F4.
 cek('pembuat TahApprovalRequest di WA-2 = PERSIS wa-message-approval.service.ts (F4)', berkasWa.filter((f) => /tahApprovalRequest\.create/.test(readFileSync(join(dirWa, f), 'utf8'))).join() === 'wa-message-approval.service.ts')
 const svcWa1 = baca('src/services/communication/communication.service.ts')
-const svcWa1Main = execFileSync('git', ['show', 'main:src/services/communication/communication.service.ts'], { cwd: AKAR, encoding: 'utf8' })
+// Pembanding = main SEBELUM F3 (basis merge PR #25), bukan `main:` — sesudah merge `main:` membandingkan berkas dengan dirinya sendiri.
+const BASIS_F3 = 'cd276bb296acf898b5bd8558c6711b9361178736'
+const svcWa1Main = git(AKAR, ['show', `${BASIS_F3}:src/services/communication/communication.service.ts`])
 const potong = (s, awal) => s.slice(s.indexOf(awal), s.indexOf('\n}\n', s.indexOf(awal)) + 2)
-cek('WA-1: badan siapkanCandidate IDENTIK dengan main (gerbang WA-1 tetap di jalur WA-1)', sha(potong(svcWa1, 'export async function siapkanCandidate(')) === sha(potong(svcWa1Main, 'export async function siapkanCandidate(')))
-cek('WA-1: badan siapkanDalamTx IDENTIK dengan main (hanya kata `export` ditambahkan)', sha(potong(svcWa1, 'export async function siapkanDalamTx(').replace(/^export /, '')) === sha(potong(svcWa1Main, 'async function siapkanDalamTx(')))
+cek('WA-1: badan siapkanCandidate IDENTIK dengan basis F3 (gerbang WA-1 tetap di jalur WA-1)', sha(potong(svcWa1, 'export async function siapkanCandidate(')) === sha(potong(svcWa1Main, 'export async function siapkanCandidate(')))
+cek('WA-1: badan siapkanDalamTx IDENTIK dengan basis F3 (hanya kata `export` ditambahkan)', sha(potong(svcWa1, 'export async function siapkanDalamTx(').replace(/^export /, '')) === sha(potong(svcWa1Main, 'async function siapkanDalamTx(')))
 cek('WA-1: process.env tetap hanya di gerbang WA-1 (sekali)', [...svcWa1.matchAll(/process\.env/g)].length === 1)
 const res = baca('src/services/whatsapp/wa-access-resolver.ts')
-const resMain = execFileSync('git', ['show', 'main:src/services/whatsapp/wa-access-resolver.ts'], { cwd: AKAR, encoding: 'utf8' })
+const resMain = git(AKAR, ['show', `${BASIS_F3}:src/services/whatsapp/wa-access-resolver.ts`])
 const klausa = (s) => [...s.matchAll(/(FROM "[\s\S]*?FOR SHARE(?: OF g, v)?)`/g)].map((m) => m[1])
-cek('D-GRANT: kriteria akses resolver (FROM … WHERE … FOR SHARE) IDENTIK dengan main — hanya kolom SELECT ditambah', klausa(res).join('\n') === klausa(resMain).join('\n') && klausa(res).length === 4)
+cek('D-GRANT: kriteria akses resolver (FROM … WHERE … FOR SHARE) IDENTIK dengan basis F3 — hanya kolom SELECT ditambah', klausa(res).join('\n') === klausa(resMain).join('\n') && klausa(res).length === 4)
 
 bagian('[S2] Service draft/preview/konfirmasi — gerbang, urutan kunci, audit')
 const ms = tanpaKomentar(baca('src/services/whatsapp/wa-message.service.ts'))
@@ -137,34 +139,24 @@ cek('SQL mentah F3 selalu bersaring "tenantId" & berparameter (fragmen klausa ku
 const F3SRC = ['wa-message.service.ts', 'wa-schedule-confirmation.service.ts', 'wa-freshness.ts', 'wa1-bridge.ts'].map((f) => tanpaKomentar(readFileSync(join(dirWa, f), 'utf8'))).join('\n')
 cek('tanpa process.env / LLM / jaringan / console di modul F3', !/process\.env|openrouter|lib\/ai|anthropic|fetch\(|node:(http|https|net|tls|dns)|console\./.test(F3SRC))
 
-bagian('[S3] Lingkup F3')
-const berubah = execFileSync('git', ['diff', '--name-only', 'main'], { cwd: AKAR, encoding: 'utf8' }).trim().split('\n').filter(Boolean)
-const baru = execFileSync('git', ['ls-files', '--others', '--exclude-standard'], { cwd: AKAR, encoding: 'utf8' }).trim().split('\n').filter(Boolean)
-const BOLEH = new Set([
+// Gate lingkup I/H/P (prisma/wa2a-lingkup.mjs, keputusan owner G-D1..G-D4): lingkup F3 dibuktikan dari rekaman
+// merge PR #25; pengecualian baris K3 F4 dibuktikan pada diff historis PR #27; perubahan berjalan dijaga P.
+bagian('[S3] Lingkup F3 — rekaman historis (H), perubahan berjalan (P), invarian (I)')
+const L = lapisLingkup(AKAR, { fase: ['F3'], env: process.env })
+for (const i of L.info) console.log(`  ℹ️  ${i}`)
+for (const h of L.hasil) cek(h.nama, h.ok, h.detail)
+const F3H = L.manifest?.fase?.F3
+const F4H = L.manifest?.fase?.F4
+cek('H F3: basis manifest = basis pembanding WA-1/resolver di atas', F3H?.basis === BASIS_F3)
+// Lingkup F3 asli (16 path persis yang disetujui owner untuk PR #25) — independen dari manifest.
+const LINGKUP_F3 = [
   'src/services/communication/communication.service.ts', 'src/services/whatsapp/wa1-bridge.ts', 'src/services/whatsapp/wa2-policy.ts', 'src/services/whatsapp/wa-message-policy.ts',
   'src/services/whatsapp/wa-freshness.ts', 'src/services/whatsapp/wa-access-resolver.ts', 'src/services/whatsapp/wa-schedule-confirmation.service.ts', 'src/services/whatsapp/wa-message.service.ts',
   'prisma/check-comm-policy.mjs', 'prisma/check-wa2a-contact.mjs', 'prisma/check-wa2a-access.mjs', 'prisma/check-wa2a-message-policy.mjs', 'prisma/check-wa2a-template.mjs',
   'prisma/check-wa2a-message-f3.mjs', 'prisma/check-wa2a-message-f3-db.mjs', 'docs/whatsapp/WA-2a-F3-EVIDENCE.md',
-  // Perbaikan uji 2B (Stage A F4, PR terpisah) — path persis, tanpa wildcard.
-  'prisma/check-wa2a-schema.mjs',
-  // F4 (pengecualian E4 disetujui owner) — path persis, tanpa wildcard.
-  'src/services/whatsapp/wa-message-approval.service.ts',
-  'src/services/whatsapp/wa-approval-stop.ts',
-  'src/services/whatsapp/wa-message-check.ts',
-  'src/services/whatsapp/wa-approval-def.ts',
-  'src/services/whatsapp/wa-contact.service.ts',
-  'src/services/whatsapp/wa-consent.service.ts',
-  'src/services/whatsapp/wa-grant.service.ts',
-  'src/services/ops/voyage-event.service.ts',
-  'prisma/check-wa2a-approval-f4.mjs',
-  'prisma/check-wa2a-approval-f4-db.mjs',
-  'docs/whatsapp/WA-2a-F4-EVIDENCE.md',
-  // F4 perbaikan pra-merge #2 — uji HTTP route VoyageEvent (path persis).
-  'prisma/check-voyage-event-api.mjs',
-])
-const semua = [...new Set([...berubah, ...baru])]
-cek('hanya berkas F3 yang disetujui (path persis) yang berubah/baru', semua.every((f) => BOLEH.has(f)), semua.filter((f) => !BOLEH.has(f)).join(', ') || `${semua.length} berkas`)
-// F4 (pengecualian E4b disetujui owner): wa-contact/wa-consent.service.ts HANYA boleh berubah pada baris K3 persis.
+].sort()
+cek('H F3: rekaman manifest = lingkup F3 yang disetujui (path persis)', F3H?.berkas.join() === LINGKUP_F3.join(), `${F3H?.berkas.length ?? 0} berkas`)
+// F4 (pengecualian E4b disetujui owner): wa-contact/wa-consent.service.ts HANYA berubah pada baris K3 persis — dibuktikan pada diff PR #27.
 const BARIS_F4 = {
   "src/services/whatsapp/wa-contact.service.ts": {
     hapus: [],
@@ -175,15 +167,17 @@ const BARIS_F4 = {
     tambah: ["import { hentikanApprovalPesanDitahan } from './wa-approval-stop'", "        await hentikanApprovalPesanDitahan(ctx, tx, { contactId: id }, 'CONSENT_NOT_GRANTED')", "      await hentikanApprovalPesanDitahan(ctx, tx, { contactId: id }, 'CONSENT_NOT_GRANTED')"],
   },
 }
-const diffSesuaiF4 = (f) => {
+const diffSesuaiF4 = (f, dari, ke) => {
   const a = Object.hasOwn(BARIS_F4, f) ? BARIS_F4[f] : null
-  if (!a || baru.includes(f)) return false
-  const isi = execFileSync('git', ['diff', '--no-renames', '-U0', 'main', '--', f], { cwd: AKAR, encoding: 'utf8' }).split('\n').filter((l) => /^[-+]/.test(l) && !/^(---|\+\+\+) (a\/|b\/|\/dev\/null)/.test(l))
+  if (!a) return false
+  const isi = git(AKAR, ['diff', '--no-renames', '-U0', dari, ke, '--', f]).split('\n').filter((l) => /^[-+]/.test(l) && !/^(---|\+\+\+) (a\/|b\/|\/dev\/null)/.test(l))
   return isi.filter((l) => l.startsWith('-')).map((l) => l.slice(1)).join('\n') === a.hapus.join('\n') && isi.filter((l) => l.startsWith('+')).map((l) => l.slice(1)).join('\n') === a.tambah.join('\n')
 }
-cek('tanpa migrasi / schema / rollback / V3 / TAH / template v1 / service 2a-C (kecuali baris K3 F4 persis)', !semua.some((f) => /^prisma\/(migrations|rollback)\/|^prisma\/schema\.prisma$|^src\/services\/(tah|intake)\/|wa-template\.ts$|wa2-gate\.ts$|wa-lock\.ts$/.test(f) || (/wa-(contact|consent)\.service\.ts$/.test(f) && !diffSesuaiF4(f))))
-const diffPol = execFileSync('git', ['diff', 'main', '--', 'src/services/whatsapp/wa2-policy.ts'], { cwd: AKAR, encoding: 'utf8' })
-cek('wa2-policy.ts hanya ditambah', !/^-(?!--)/m.test(diffPol))
+const LARANGAN_F3 = /^prisma\/(migrations|rollback)\/|^prisma\/schema\.prisma$|^src\/services\/(tah|intake)\/|wa-template\.ts$|wa2-gate\.ts$|wa-lock\.ts$/
+cek('H F3: diff F3 tanpa migrasi / schema / rollback / V3 / TAH / template v1 / gerbang & kunci 2C / service kontak-consent', F3H !== undefined && !F3H.berkas.some((f) => LARANGAN_F3.test(f) || /wa-(contact|consent)\.service\.ts$/.test(f)))
+cek('H F4: service kontak/consent pada diff PR #27 berubah HANYA pada baris K3 persis (pengecualian E4b)', F4H !== undefined && ['src/services/whatsapp/wa-contact.service.ts', 'src/services/whatsapp/wa-consent.service.ts'].every((f) => F4H.berkas.includes(f) && diffSesuaiF4(f, F4H.basis, F4H.kepala)) && !F4H.berkas.some((f) => LARANGAN_F3.test(f)))
+const diffPolF3 = F3H ? git(AKAR, ['diff', '--no-renames', F3H.basis, F3H.kepala, '--', 'src/services/whatsapp/wa2-policy.ts']) : ''
+cek('H F3: wa2-policy.ts hanya ditambah pada diff F3', diffPolF3.length > 0 && !/^-(?!--)/m.test(diffPolF3))
 
 console.log(`\n${gagal === 0 ? '✅ SEMUA LULUS' : '❌ ADA YANG GAGAL'} — lulus ${lulus}, gagal ${gagal}`)
 process.exit(gagal === 0 ? 0 : 1)

@@ -4,7 +4,7 @@
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { execFileSync } from 'node:child_process'
+import { git, lapisLingkup, pengecualianCocok } from './wa2a-lingkup.mjs'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 
@@ -83,9 +83,16 @@ cek('E-3: validUntil dihitung dari waktu PERSETUJUAN, maksimum 12 bulan', /const
 cek('tanpa process.env / console / impor WA-1/TAH/AI/jaringan', !/process\.env|console\.|from '\.\.\/(communication|tah|intake)\/|lib\/ai|fetch\(/.test(isi.grant + isi.resolver + isi.view))
 cek('wa-lock: kunciGrant FOR UPDATE + tahanPesanGrant bersaring tenantId', /FROM "WaPrincipalAccessGrant" WHERE "id" = \$\{grantId\} AND "tenantId" = \$\{tenantId\} FOR UPDATE/.test(isi.lock) && /WHERE "tenantId" = \$\{tenantId\} AND "grantIdSnapshot" = \$\{grantId\}/.test(isi.lock))
 
-bagian('[S4] Lingkup Step 2E')
-const berubah = execFileSync('git', ['diff', '--name-only', 'main'], { cwd: AKAR, encoding: 'utf8' }).trim().split('\n').filter(Boolean)
-const baru = execFileSync('git', ['ls-files', '--others', '--exclude-standard'], { cwd: AKAR, encoding: 'utf8' }).trim().split('\n').filter(Boolean)
+// Gate lingkup I/H/P (prisma/wa2a-lingkup.mjs, keputusan owner G-D2): basis = merge-base(HEAD, origin/main) GAGAL
+// TERTUTUP, perubahan = ter-commit + staged + unstaged + untracked dengan --no-renames (rename = hapus + tambah).
+// Pengecualian baris F3/F4 di bawah kini DIBUKTIKAN pada diff historis PR #25/#27 (H); perubahan berjalan pada
+// berkas beku hanya boleh lewat tuple manifest (basis, path, blob) — bukan izin permanen.
+bagian('[S4] Lingkup Step 2E — berkas beku (P), pengecualian historis (H), invarian (I)')
+const L = lapisLingkup(AKAR, { fase: [], env: process.env })
+for (const i of L.info) console.log(`  ℹ️  ${i}`)
+for (const h of L.hasil) cek(h.nama, h.ok, h.detail)
+const F3H = L.manifest?.fase?.F3
+const F4H = L.manifest?.fase?.F4
 const BEKU = [/^src\/services\/communication\//, /^src\/services\/tah\//, /^src\/services\/intake\//, /^docs\/whatsapp\/PRD-WA-1\.md$/, /^prisma\/check-(comm|tah|validator)/, /^prisma\/migrations\//, /^prisma\/schema\.prisma$/, /^prisma\/rollback\//, /^src\/services\/whatsapp\/wa-(contact|consent)\.service\.ts$/, /^src\/services\/whatsapp\/wa2-gate\.ts$/]
 // WA-2a Step 2F F3 — pengecualian lingkup yang DISETUJUI owner (D2), per berkas & per BARIS, tanpa wildcard:
 //   communication.service.ts: `export` pada siapkanDalamTx + fungsi baru muatCandidateDalamTx (+ dok);
@@ -106,10 +113,10 @@ const BARIS_F3 = {
       b === "cek('Step 2I: perujuk modul komunikasi di luar foldernya = PERSIS 11 route API + 5 berkas server UI + 2 komponen client + 1 adapter WA-2', perujuk.sort().join() === [...harapRute, ...UI_SERVER, ...UI_CLIENT, ...WA2_ADAPTER].sort().join(), perujuk.join(', '))",
   },
 }
-const diffSesuaiF3 = (f) => {
+const diffSesuaiF3 = (f, dari, ke) => {
   const a = BARIS_F3[f]
   if (!a) return false
-  const d = execFileSync('git', ['diff', '-U0', 'main', '--', f], { cwd: AKAR, encoding: 'utf8' }).split('\n').filter((l) => /^[-+](?![-+]{2} )/.test(l))
+  const d = git(AKAR, ['diff', '-U0', dari, ke, '--', f]).split('\n').filter((l) => /^[-+](?![-+]{2} )/.test(l))
   const hapus = d.filter((l) => l.startsWith('-')).map((l) => l.slice(1).trim())
   const tambah = d.filter((l) => l.startsWith('+')).map((l) => l.slice(1).trim())
   return hapus.join('\n') === a.hapus.join('\n') && tambah.length > 0 && tambah.every(a.tambah)
@@ -131,16 +138,22 @@ const BARIS_F4 = {
     tambah: ["import { hentikanApprovalPesanDitahan } from './wa-approval-stop'", "        await hentikanApprovalPesanDitahan(ctx, tx, { contactId: id }, 'CONSENT_NOT_GRANTED')", "      await hentikanApprovalPesanDitahan(ctx, tx, { contactId: id }, 'CONSENT_NOT_GRANTED')"],
   },
 }
-const diffSesuaiF4 = (f) => {
+const diffSesuaiF4 = (f, dari, ke) => {
   const a = Object.hasOwn(BARIS_F4, f) ? BARIS_F4[f] : null
-  if (!a || baru.includes(f)) return false
-  const isi = execFileSync('git', ['diff', '--no-renames', '-U0', 'main', '--', f], { cwd: AKAR, encoding: 'utf8' }).split('\n').filter((l) => /^[-+]/.test(l) && !/^(---|\+\+\+) (a\/|b\/|\/dev\/null)/.test(l))
+  if (!a) return false
+  const isi = git(AKAR, ['diff', '--no-renames', '-U0', dari, ke, '--', f]).split('\n').filter((l) => /^[-+]/.test(l) && !/^(---|\+\+\+) (a\/|b\/|\/dev\/null)/.test(l))
   return isi.filter((l) => l.startsWith('-')).map((l) => l.slice(1)).join('\n') === a.hapus.join('\n') && isi.filter((l) => l.startsWith('+')).map((l) => l.slice(1)).join('\n') === a.tambah.join('\n')
 }
-cek('tanpa perubahan WA-1/TAH/V3/schema/migrasi dan service kontak/consent 2a-C (kecuali baris F3/F4 yang disetujui persis)', [...berubah, ...baru].every((f) => !BEKU.some((r) => r.test(f)) || diffSesuaiF3(f) || diffSesuaiF4(f)), [...berubah, ...baru].filter((f) => BEKU.some((r) => r.test(f))).join(', ') || '(tanpa berkas beku)')
-cek('pengecualian F3/F4 tidak dipakai untuk berkas beku lain', [...berubah, ...baru].filter((f) => BEKU.some((r) => r.test(f))).every((f) => f in BARIS_F3 || f in BARIS_F4))
-const lockDiff = execFileSync('git', ['diff', 'main', '--', 'src/services/whatsapp/wa-lock.ts', 'src/services/whatsapp/wa2-policy.ts'], { cwd: AKAR, encoding: 'utf8' })
-cek('wa-lock.ts & wa2-policy.ts hanya ditambah (tanpa baris dihapus)', !/^-(?!--)/m.test(lockDiff))
+const bekuDi = (daftar) => daftar.filter((f) => BEKU.some((r) => r.test(f))).sort()
+const bekuF3 = bekuDi(F3H?.berkas ?? [])
+const bekuF4 = bekuDi(F4H?.berkas ?? [])
+cek('H F3: berkas beku pada diff PR #25 = PERSIS berkas pengecualian F3, berubah HANYA pada baris yang disetujui', F3H !== undefined && bekuF3.length > 0 && bekuF3.join() === Object.keys(BARIS_F3).sort().join() && bekuF3.every((f) => diffSesuaiF3(f, F3H.basis, F3H.kepala)), bekuF3.join(', '))
+cek('H F4: berkas beku pada diff PR #27 = PERSIS berkas pengecualian F4, berubah HANYA pada baris yang disetujui', F4H !== undefined && bekuF4.length > 0 && bekuF4.join() === Object.keys(BARIS_F4).sort().join() && bekuF4.every((f) => diffSesuaiF4(f, F4H.basis, F4H.kepala)), bekuF4.join(', '))
+const basisP = L.basis?.ok ? L.basis.sha : null
+const bekuBerjalan = L.perubahan ? bekuDi(L.perubahan.semua) : null
+cek('P: tidak ada perubahan WA-1 / TAH / Validator V3 / schema / migrasi / service kontak-consent 2a-C / gerbang terhadap basis (ter-commit, staged, unstaged, untracked, hapus, rename) di luar tuple pengecualian manifest', bekuBerjalan !== null && bekuBerjalan.every((f) => pengecualianCocok(L.manifest, basisP, f, AKAR)), bekuBerjalan === null ? 'basis tidak dapat ditentukan — GAGAL TERTUTUP' : bekuBerjalan.join(', ') || '(tanpa berkas beku)')
+const lockDiff = basisP ? git(AKAR, ['diff', '--no-renames', basisP, '--', 'src/services/whatsapp/wa-lock.ts', 'src/services/whatsapp/wa2-policy.ts']) : null
+cek('wa-lock.ts & wa2-policy.ts hanya ditambah terhadap basis (tanpa baris dihapus)', lockDiff !== null && !/^-(?!--)/m.test(lockDiff), lockDiff === null ? 'basis tidak dapat ditentukan — GAGAL TERTUTUP' : '')
 
 console.log(`\n${gagal === 0 ? '✅ SEMUA LULUS' : '❌ ADA YANG GAGAL'} — lulus ${lulus}, gagal ${gagal}`)
 process.exit(gagal === 0 ? 0 : 1)

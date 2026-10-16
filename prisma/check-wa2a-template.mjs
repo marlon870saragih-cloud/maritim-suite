@@ -6,7 +6,7 @@
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { execFileSync } from 'node:child_process'
+import { lapisLingkup } from './wa2a-lingkup.mjs'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 
@@ -174,44 +174,15 @@ cek('tanpa normalisasi diam-diam (replace pada nilai data selain pengisian token
 cek('berkas sumber tanpa karakter kontrol/pemisah baris mentah (regex ditulis sebagai escape)', !/[\u0000-\u0008\u000b-\u001f\u2028\u2029\u200b-\u200f\u202a-\u202e\ufeff]/.test(baca('src/services/whatsapp/wa-template.ts')))
 
 // ======================================================================= S2
-bagian('[S2] Lingkup F2')
-const berubah = execFileSync('git', ['diff', '--name-only', 'main'], { cwd: AKAR, encoding: 'utf8' }).trim().split('\n').filter(Boolean)
-const baru = execFileSync('git', ['ls-files', '--others', '--exclude-standard'], { cwd: AKAR, encoding: 'utf8' }).trim().split('\n').filter(Boolean)
-const BOLEH = new Set([
-  'src/services/whatsapp/wa-template.ts', 'prisma/check-wa2a-template.mjs', 'prisma/check-wa2a-message-policy.mjs',
-  // F3 (penyesuaian lingkup disetujui owner) — path persis, tanpa wildcard. Modul F1 yang diperluas F3:
-  'src/services/whatsapp/wa2-policy.ts', 'src/services/whatsapp/wa-message-policy.ts',
-  'src/services/communication/communication.service.ts',
-  'src/services/whatsapp/wa1-bridge.ts',
-  'src/services/whatsapp/wa-freshness.ts',
-  'src/services/whatsapp/wa-access-resolver.ts',
-  'src/services/whatsapp/wa-schedule-confirmation.service.ts',
-  'src/services/whatsapp/wa-message.service.ts',
-  'prisma/check-comm-policy.mjs',
-  'prisma/check-wa2a-contact.mjs',
-  'prisma/check-wa2a-access.mjs',
-  'prisma/check-wa2a-message-f3.mjs',
-  'prisma/check-wa2a-message-f3-db.mjs',
-  'docs/whatsapp/WA-2a-F3-EVIDENCE.md',
-  // Perbaikan uji 2B (Stage A F4, PR terpisah) — path persis, tanpa wildcard.
-  'prisma/check-wa2a-schema.mjs',
-  // F4 (pengecualian E4 disetujui owner) — path persis, tanpa wildcard.
-  'src/services/whatsapp/wa-message-approval.service.ts',
-  'src/services/whatsapp/wa-approval-stop.ts',
-  'src/services/whatsapp/wa-message-check.ts',
-  'src/services/whatsapp/wa-approval-def.ts',
-  'src/services/whatsapp/wa-contact.service.ts',
-  'src/services/whatsapp/wa-consent.service.ts',
-  'src/services/whatsapp/wa-grant.service.ts',
-  'src/services/ops/voyage-event.service.ts',
-  'prisma/check-wa2a-approval-f4.mjs',
-  'prisma/check-wa2a-approval-f4-db.mjs',
-  'docs/whatsapp/WA-2a-F4-EVIDENCE.md',
-  // F4 perbaikan pra-merge #2 — uji HTTP route VoyageEvent (path persis).
-  'prisma/check-voyage-event-api.mjs',
-])
-const semua = [...new Set([...berubah, ...baru])]
-cek('hanya berkas F2 (+ penyesuaian lingkup F1 & berkas F3 yang disetujui) yang berubah/baru', semua.every((f) => BOLEH.has(f)), semua.join(', ') || '(bersih)')
+// Gate lingkup I/H/P (prisma/wa2a-lingkup.mjs, keputusan owner G-D1..G-D4): lingkup F2 dibuktikan dari rekaman
+// merge PR #24, bukan dari `git diff main` yang hanya bermakna di branch F2.
+bagian('[S2] Lingkup F2 — rekaman historis (H), perubahan berjalan (P), invarian (I)')
+const L = lapisLingkup(AKAR, { fase: ['F2'], env: process.env })
+for (const i of L.info) console.log(`  ℹ️  ${i}`)
+for (const h of L.hasil) cek(h.nama, h.ok, h.detail)
+// Lingkup F2 asli (template + uji + penyesuaian lingkup F1) — ditulis ulang di sini, independen dari manifest.
+const LINGKUP_F2 = ['prisma/check-wa2a-message-policy.mjs', 'prisma/check-wa2a-template.mjs', 'src/services/whatsapp/wa-template.ts']
+cek('H F2: rekaman manifest = lingkup F2 yang disetujui (path persis)', L.manifest?.fase?.F2?.berkas.join() === LINGKUP_F2.join(), L.manifest?.fase?.F2?.berkas.join(', '))
 
 console.log(`\n${gagal === 0 ? '✅ SEMUA LULUS' : '❌ ADA YANG GAGAL'} — lulus ${lulus}, gagal ${gagal}`)
 process.exit(gagal === 0 ? 0 : 1)

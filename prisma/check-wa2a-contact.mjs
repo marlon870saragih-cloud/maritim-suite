@@ -7,11 +7,12 @@
 //   P2. gerbang WA-2a (flag, produksi) & masa berlaku verifikasi (gagal tertutup).
 //   S1. bentuk kode: satu pembaca process.env, SQL mentah selalu menyaring tenantId, tanpa data
 //       voyage/kapal, tanpa impor WA-1/TAH/Validator/AI/jaringan, tanpa console.*.
-//   S2. lingkup: berkas beku tidak berubah terhadap main.
+//   S2. lingkup (prisma/wa2a-lingkup.mjs): berkas beku tidak berubah terhadap basis gagal-tertutup; pengecualian
+//       baris F3/F4 dibuktikan pada diff historis PR #25/#27.
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { execFileSync } from 'node:child_process'
+import { git, lapisLingkup, pengecualianCocok } from './wa2a-lingkup.mjs'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 
@@ -98,9 +99,16 @@ cek('galat DB dipetakan tanpa teks mentah (tidak meneruskan e.message)', !/confl
 cek('AuditLog tidak memuat bukti/nomor utuh (hanya samaran & sidik)', svc.every((f) => [...isi[f].matchAll(/catatAudit\([\s\S]*?\}, \{\}, tx\)/g)].every((m) => !/bukti[,}]|evidence|e164[,}]|nomor\.e164[,}]|catatan[,}]|alasan: alasan|sidikAlasan: alasan/.test(m[0].replace(/sidikBukti\([^)]*\)|sidikBukti: sidik\w*\([^)]*\)|samarkanNomor\([^)]*\)/g, '')))))
 
 // ============================================================================ S2
-bagian('[S2] Lingkup Step 2C')
-const berubah = execFileSync('git', ['diff', '--name-only', 'main'], { cwd: AKAR, encoding: 'utf8' }).trim().split('\n').filter(Boolean)
-const baru = execFileSync('git', ['ls-files', '--others', '--exclude-standard'], { cwd: AKAR, encoding: 'utf8' }).trim().split('\n').filter(Boolean)
+// Gate lingkup I/H/P (prisma/wa2a-lingkup.mjs, keputusan owner G-D2): basis = merge-base(HEAD, origin/main) GAGAL
+// TERTUTUP, perubahan = ter-commit + staged + unstaged + untracked dengan --no-renames (rename = hapus + tambah).
+// Pengecualian baris F3/F4 di bawah kini DIBUKTIKAN pada diff historis PR #25/#27 (H); perubahan berjalan pada
+// berkas beku hanya boleh lewat tuple manifest (basis, path, blob) — bukan izin permanen.
+bagian('[S2] Lingkup Step 2C — berkas beku (P), pengecualian historis (H), invarian (I)')
+const L = lapisLingkup(AKAR, { fase: [], env: process.env })
+for (const i of L.info) console.log(`  ℹ️  ${i}`)
+for (const h of L.hasil) cek(h.nama, h.ok, h.detail)
+const F3H = L.manifest?.fase?.F3
+const F4H = L.manifest?.fase?.F4
 const BEKU = [/^src\/services\/communication\//, /^src\/services\/tah\//, /^src\/services\/intake\//, /^docs\/whatsapp\/PRD-WA-1\.md$/, /^prisma\/check-(comm|tah|validator)/, /^prisma\/migrations\//, /^prisma\/schema\.prisma$/, /^prisma\/rollback\//]
 // WA-2a Step 2F F3 — pengecualian lingkup yang DISETUJUI owner (D2), per berkas & per BARIS, tanpa wildcard:
 //   communication.service.ts: `export` pada siapkanDalamTx + fungsi baru muatCandidateDalamTx (+ dok);
@@ -121,10 +129,10 @@ const BARIS_F3 = {
       b === "cek('Step 2I: perujuk modul komunikasi di luar foldernya = PERSIS 11 route API + 5 berkas server UI + 2 komponen client + 1 adapter WA-2', perujuk.sort().join() === [...harapRute, ...UI_SERVER, ...UI_CLIENT, ...WA2_ADAPTER].sort().join(), perujuk.join(', '))",
   },
 }
-const diffSesuaiF3 = (f) => {
+const diffSesuaiF3 = (f, dari, ke) => {
   const a = BARIS_F3[f]
   if (!a) return false
-  const d = execFileSync('git', ['diff', '-U0', 'main', '--', f], { cwd: AKAR, encoding: 'utf8' }).split('\n').filter((l) => /^[-+](?![-+]{2} )/.test(l))
+  const d = git(AKAR, ['diff', '-U0', dari, ke, '--', f]).split('\n').filter((l) => /^[-+](?![-+]{2} )/.test(l))
   const hapus = d.filter((l) => l.startsWith('-')).map((l) => l.slice(1).trim())
   const tambah = d.filter((l) => l.startsWith('+')).map((l) => l.slice(1).trim())
   return hapus.join('\n') === a.hapus.join('\n') && tambah.length > 0 && tambah.every(a.tambah)
@@ -138,14 +146,20 @@ const BARIS_F4 = {
     tambah: ["  // WA-2a Step 2F F4 (pengecualian E1 disetujui owner): + TEPAT satu pembuat WA-2 ber-TTL (CLIENT_WA_UPDATE) — bukan wildcard.", "  cek('Step 2D R1: pembuat TahApprovalRequest = PERSIS service approval WA-1 + service approval pesan klien WA-2 (F4)', pembuatApproval.sort().join() === ['src/services/communication/communication-approval.service.ts', 'src/services/whatsapp/wa-message-approval.service.ts'].join(), pembuatApproval.join())"],
   },
 }
-const diffSesuaiF4 = (f) => {
+const diffSesuaiF4 = (f, dari, ke) => {
   const a = Object.hasOwn(BARIS_F4, f) ? BARIS_F4[f] : null
-  if (!a || baru.includes(f)) return false
-  const isi = execFileSync('git', ['diff', '--no-renames', '-U0', 'main', '--', f], { cwd: AKAR, encoding: 'utf8' }).split('\n').filter((l) => /^[-+]/.test(l) && !/^(---|\+\+\+) (a\/|b\/|\/dev\/null)/.test(l))
+  if (!a) return false
+  const isi = git(AKAR, ['diff', '--no-renames', '-U0', dari, ke, '--', f]).split('\n').filter((l) => /^[-+]/.test(l) && !/^(---|\+\+\+) (a\/|b\/|\/dev\/null)/.test(l))
   return isi.filter((l) => l.startsWith('-')).map((l) => l.slice(1)).join('\n') === a.hapus.join('\n') && isi.filter((l) => l.startsWith('+')).map((l) => l.slice(1)).join('\n') === a.tambah.join('\n')
 }
-cek('tidak ada perubahan WA-1 / TAH / Validator V3 / schema / migrasi (kecuali baris F3/F4 yang disetujui persis)', [...berubah, ...baru].every((f) => !BEKU.some((r) => r.test(f)) || diffSesuaiF3(f) || diffSesuaiF4(f)), [...berubah, ...baru].filter((f) => BEKU.some((r) => r.test(f))).join(', ') || '(tanpa berkas beku)')
-cek('pengecualian F3/F4 tidak dipakai untuk berkas beku lain', [...berubah, ...baru].filter((f) => BEKU.some((r) => r.test(f))).every((f) => f in BARIS_F3 || f in BARIS_F4))
+const bekuDi = (daftar) => daftar.filter((f) => BEKU.some((r) => r.test(f))).sort()
+const bekuF3 = bekuDi(F3H?.berkas ?? [])
+const bekuF4 = bekuDi(F4H?.berkas ?? [])
+cek('H F3: berkas beku pada diff PR #25 = PERSIS berkas pengecualian F3, berubah HANYA pada baris yang disetujui', F3H !== undefined && bekuF3.length > 0 && bekuF3.join() === Object.keys(BARIS_F3).sort().join() && bekuF3.every((f) => diffSesuaiF3(f, F3H.basis, F3H.kepala)), bekuF3.join(', '))
+cek('H F4: berkas beku pada diff PR #27 = PERSIS berkas pengecualian F4, berubah HANYA pada baris yang disetujui', F4H !== undefined && bekuF4.length > 0 && bekuF4.join() === Object.keys(BARIS_F4).sort().join() && bekuF4.every((f) => diffSesuaiF4(f, F4H.basis, F4H.kepala)), bekuF4.join(', '))
+const basisP = L.basis?.ok ? L.basis.sha : null
+const bekuBerjalan = L.perubahan ? bekuDi(L.perubahan.semua) : null
+cek('P: tidak ada perubahan WA-1 / TAH / Validator V3 / schema / migrasi terhadap basis (ter-commit, staged, unstaged, untracked, hapus, rename) di luar tuple pengecualian manifest', bekuBerjalan !== null && bekuBerjalan.every((f) => pengecualianCocok(L.manifest, basisP, f, AKAR)), bekuBerjalan === null ? 'basis tidak dapat ditentukan — GAGAL TERTUTUP' : bekuBerjalan.join(', ') || '(tanpa berkas beku)')
 
 console.log(`\n${gagal === 0 ? '✅ SEMUA LULUS' : '❌ ADA YANG GAGAL'} — lulus ${lulus}, gagal ${gagal}`)
 process.exit(gagal === 0 ? 0 : 1)
