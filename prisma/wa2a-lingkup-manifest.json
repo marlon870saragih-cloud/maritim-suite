@@ -92,14 +92,53 @@
       ]
     }
   },
-  "faseAktif": {},
+  "faseAktif": {
+    "G": {
+      "izin": [
+        "docs/TAH-CURRENT-CHECKPOINT.md",
+        "docs/whatsapp/WA-2a-G-EVIDENCE.md",
+        "prisma/check-wa2a-g-api.mjs",
+        "prisma/check-wa2a-g-prod.mjs",
+        "prisma/check-wa2a-g-static.mjs",
+        "prisma/check-wa2a-lingkup.mjs",
+        "prisma/wa2a-lingkup-manifest.json",
+        "src/app/api/automation/client-messages/[id]/cancel/route.ts",
+        "src/app/api/automation/client-messages/[id]/history/route.ts",
+        "src/app/api/automation/client-messages/[id]/preview/route.ts",
+        "src/app/api/automation/client-messages/[id]/request-approval/route.ts",
+        "src/app/api/automation/client-messages/[id]/route.ts",
+        "src/app/api/automation/client-messages/approvals/[id]/approve/route.ts",
+        "src/app/api/automation/client-messages/approvals/[id]/reject/route.ts",
+        "src/app/api/automation/client-messages/candidates/contacts/route.ts",
+        "src/app/api/automation/client-messages/candidates/signals/route.ts",
+        "src/app/api/automation/client-messages/route.ts",
+        "src/services/whatsapp/wa-message-read.service.ts",
+        "src/services/whatsapp/wa2-access.ts"
+      ],
+      "jangkar": [
+        "prisma/check-wa2a-g-api.mjs",
+        "src/services/whatsapp/wa-message-read.service.ts"
+      ]
+    }
+  },
   "i1": {
     "akar": [
       "src/app",
       "src/components"
     ],
     "sasaran": "src/services/whatsapp/",
-    "diizinkan": []
+    "diizinkan": [
+      "src/app/api/automation/client-messages/[id]/cancel/route.ts",
+      "src/app/api/automation/client-messages/[id]/history/route.ts",
+      "src/app/api/automation/client-messages/[id]/preview/route.ts",
+      "src/app/api/automation/client-messages/[id]/request-approval/route.ts",
+      "src/app/api/automation/client-messages/[id]/route.ts",
+      "src/app/api/automation/client-messages/approvals/[id]/approve/route.ts",
+      "src/app/api/automation/client-messages/approvals/[id]/reject/route.ts",
+      "src/app/api/automation/client-messages/candidates/contacts/route.ts",
+      "src/app/api/automation/client-messages/candidates/signals/route.ts",
+      "src/app/api/automation/client-messages/route.ts"
+    ]
   },
   "i2": {
     "src/services/whatsapp/wa-access-resolver.ts": "481b600886d0bbefb8676d1f46a97b79dd6c2c21",
@@ -192,6 +231,11 @@
       "basis": "f3049187334d4665eb276b125f6a1e9918da41bb",
       "path": "prisma/wa2a-lingkup.mjs",
       "blob": "0b12116a9c6674913d691ba3753b28c8ca61b9f1"
+    },
+    {
+      "basis": "6a064ea585321440d0cf71812465419495f230a8",
+      "path": "prisma/check-wa2a-lingkup.mjs",
+      "blob": "6bd86699fe2999ea07703385ac5d0a15b0d45386"
     }
   ]
 }

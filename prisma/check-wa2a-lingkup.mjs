@@ -4,7 +4,8 @@
 //
 // Lapis:
 //   R. repo nyata — manifest sah, rekaman H kelima fase, blob I-2 = blob tree HEAD & tanpa atribut pengubah isi,
-//      pemindai I-1 tidak hampa (menemukan perujuk modul WA-1 yang diketahui).
+//      pemindai I-1 tidak hampa (menemukan perujuk modul WA-1 yang diketahui); perujuk WA-2 = 10 route API 2a-G
+//      yang disetujui owner (daftar LITERAL di uji ini, bukan diturunkan dari pemindai atau manifest).
 //   S. skenario pada CLONE SEMENTARA (git clone --shared ke direktori tmp; repo kerja tidak disentuh):
 //      kontrol positif (P-xx) dan negatif (N-xx) — committed/staged/unstaged/untracked, hapus, rename,
 //      impor langsung/transitif, ref & riwayat hilang, manifest/basis tidak sah, mode fase, pengecualian,
@@ -55,7 +56,15 @@ const auto = L.git(AKAR, ['config', '--get', 'core.autocrlf'], { boleh: true })?
 console.log(`  ℹ️  core.autocrlf=${auto ?? '(tidak diset)'} — hash-object menerapkan konversi yang sama dengan git add`)
 const kom = L.perujukTransitif(AKAR, M.i1.akar, 'src/services/communication/').perujuk
 cek('I-1 tidak hampa: pemindai yang sama menemukan perujuk modul WA-1 yang diketahui (route & halaman Komunikasi)', ['src/app/api/automation/communications/candidates/route.ts', 'src/app/(app)/automation/communications/page.tsx', 'src/app/(app)/layout.tsx'].every((f) => kom[f]) && Object.keys(kom).length >= 18, `${Object.keys(kom).length} perujuk transitif WA-1`)
-cek('I-1 repo nyata: perujuk service WA-2 = daftar manifest (kosong)', Object.keys(L.perujukTransitif(AKAR, M.i1.akar, M.i1.sasaran).perujuk).join() === M.i1.diizinkan.join())
+// X-1 tahap API 2a-G (keputusan owner): TEPAT sepuluh route API; tanpa halaman/komponen UI. Daftar ditulis ulang
+// di sini supaya ekspektasi tidak diambil dari pemindai yang diuji maupun dari manifest yang diperiksa.
+const R2G = 'src/app/api/automation/client-messages/'
+const DISETUJUI_I1 = ['route.ts', 'candidates/signals/route.ts', 'candidates/contacts/route.ts', '[id]/route.ts', '[id]/history/route.ts', '[id]/preview/route.ts', '[id]/request-approval/route.ts', '[id]/cancel/route.ts', 'approvals/[id]/approve/route.ts', 'approvals/[id]/reject/route.ts'].map((r) => R2G + r).sort()
+const IZIN_G = [...DISETUJUI_I1, 'src/services/whatsapp/wa-message-read.service.ts', 'src/services/whatsapp/wa2-access.ts', 'prisma/check-wa2a-g-static.mjs', 'prisma/check-wa2a-g-api.mjs', 'prisma/check-wa2a-g-prod.mjs', 'prisma/check-wa2a-lingkup.mjs', 'prisma/wa2a-lingkup-manifest.json', 'docs/whatsapp/WA-2a-G-EVIDENCE.md', 'docs/TAH-CURRENT-CHECKPOINT.md'].sort()
+const JANGKAR_G = ['prisma/check-wa2a-g-api.mjs', 'src/services/whatsapp/wa-message-read.service.ts']
+const perujukNyata = Object.keys(L.perujukTransitif(AKAR, M.i1.akar, M.i1.sasaran).perujuk).sort()
+cek('I-1 repo nyata: perujuk service WA-2 = PERSIS 10 route API 2a-G yang disetujui (literal; tanpa halaman/komponen)', perujukNyata.join() === DISETUJUI_I1.join() && DISETUJUI_I1.length === 10, perujukNyata.filter((f) => !DISETUJUI_I1.includes(f)).concat(DISETUJUI_I1.filter((f) => !perujukNyata.includes(f)).map((f) => `hilang: ${f}`)).join(', ') || `${perujukNyata.length} perujuk`)
+cek('X-1 manifest: i1.diizinkan = 10 route literal; faseAktif hanya G dengan izin 19 path persis dan jangkar read service + uji API', [...M.i1.diizinkan].sort().join() === DISETUJUI_I1.join() && Object.keys(M.faseAktif).join() === 'G' && [...M.faseAktif.G.izin].sort().join() === IZIN_G.join() && IZIN_G.length === 19 && [...M.faseAktif.G.jangkar].sort().join() === JANGKAR_G.join())
 const sp = L.ekstrakSpecifier("// import a from '@/x'\n/* from '@/y' */ const s = \"from '@/z'\"; import b from './b'; export * from '../c'; const d = await import('@/d'); require('e'); import('@/' + n); obj.import('f'); Array.from('g')")
 cek('ekstrakSpecifier: komentar/string biasa diabaikan; from/import()/require literal terbaca; import() non-literal dihitung', sp.spec.join() === './b,../c,@/d,e' && sp.dinamis === 1, `${sp.spec.join()} | dinamis=${sp.dinamis}`)
 
@@ -156,7 +165,7 @@ try {
   skenario('P-07', 'kontrol positif: perujuk yang tercantum di i1.diizinkan (mekanisme X-1) → lulus', () => {
     tulis('src/app/api/uji-wa2/route.ts', "import { samarkanNomor } from '@/services/whatsapp/wa-phone'\nexport const GET = () => samarkanNomor('')\n")
     const m2 = salin(M)
-    m2.i1.diizinkan = ['src/app/api/uji-wa2/route.ts']
+    m2.i1.diizinkan = [...DISETUJUI_I1, 'src/app/api/uji-wa2/route.ts']
     const r = nilai({}, m2)
     return [semuaOk(r), ringkas(r)]
   })
@@ -356,16 +365,17 @@ try {
   })
 
   // ------------------------------------------------------------------ temuan review PR #29
-  const RUTE_ID = 'src/app/api/automation/client-messages/[id]/route.ts'
+  // Path sintetis (bukan route nyata 2a-G) supaya fixture tidak menimpa berkas yang sudah ada.
+  const RUTE_ID = 'src/app/api/uji-sintetis/[id]/route.ts'
   const isiRute = "import { samarkanNomor } from '@/services/whatsapp/wa-phone'\nexport const GET = () => Response.json(samarkanNomor(''))\n"
-  const mG = () => Object.assign(salin(M), { faseAktif: { G: { izin: [RUTE_ID], jangkar: [RUTE_ID] } }, i1: { ...M.i1, diizinkan: [RUTE_ID] } })
+  const mG = () => Object.assign(salin(M), { faseAktif: { G: { izin: [RUTE_ID], jangkar: [RUTE_ID] } }, i1: { ...M.i1, diizinkan: [...DISETUJUI_I1, RUTE_ID] } })
   skenario('P-10', 'T1: berkas route literal `[id]` + manifest sintetis (faseAktif.G, i1.diizinkan) → semua lapis lulus', () => {
     tulis(RUTE_ID, isiRute)
     const r = nilai({ WA2A_FASE: 'G' }, mG())
     return [semuaOk(r) && r.perubahan.semua.join() === RUTE_ID, ringkas(r)]
   })
   skenario('N-24', 'T1: route `abc/route.ts` dengan manifest `[id]` → allowlist, jangkar, dan I-1 gagal (`[id]` bukan wildcard)', () => {
-    tulis('src/app/api/automation/client-messages/abc/route.ts', isiRute)
+    tulis('src/app/api/uji-sintetis/abc/route.ts', isiRute)
     const r = nilai({ WA2A_FASE: 'G' }, mG())
     return [gagalPada(r, 'allowlist') && gagalPada(r, 'jangkar') && gagalPada(r, 'I-1'), ringkas(r)]
   })
@@ -377,10 +387,12 @@ try {
     tulis(`src/lib/${x}.ts`, urutanA === 'siklus-dulu' ? `import './${y}'\nimport '../services/whatsapp/wa2-gate'\n` : `import '../services/whatsapp/wa2-gate'\nimport './${y}'\n`)
     return Object.keys(L.perujukTransitif(K, M.i1.akar, M.i1.sasaran).perujuk).sort()
   }
+  // Harapan = 10 route 2a-G yang disetujui (literal, BUKAN keluaran pemindai) + route fixture yang ditambahkan skenario.
+  const harapSiklus = [...DISETUJUI_I1, 'src/app/a/route.ts', 'src/app/b/route.ts'].sort().join()
   skenario('N-25a', 'T2: reproduksi siklus (a.ts impor ./b dulu) → KEDUA route ditemukan, I-1 gagal', () => {
     const d = siklus('siklus-dulu')
     const r = nilai()
-    return [d.join() === 'src/app/a/route.ts,src/app/b/route.ts' && gagalPada(r, 'I-1'), d.join(', ')]
+    return [d.join() === harapSiklus && gagalPada(r, 'I-1'), d.join(', ')]
   })
   skenario('P-11', 'T2: variasi urutan impor dan urutan pemindaian (nama dibalik) → himpunan sama', () => {
     const v1 = siklus('siklus-dulu')
@@ -390,15 +402,15 @@ try {
     const v3 = siklus('siklus-dulu', ['z', 'b']).map((f) => f.replace('/z/', '/a/')).sort()
     pulih()
     const v4 = siklus('siklus-dulu', ['b', 'a']).sort()
-    return [[v2, v3, v4].every((v) => v.join() === v1.join()) && v1.length === 2, `${v1.join()} | ${v2.join()} | ${v3.join()} | ${v4.join()}`]
+    return [[v1, v2, v3, v4].every((v) => v.join() === harapSiklus), `${v1.join()} | ${v2.join()} | ${v3.join()} | ${v4.join()}`]
   })
   skenario('N-25b', 'T2: hanya route A diizinkan → route B tetap membuat I-1 gagal', () => {
     siklus('siklus-dulu')
     const m2 = salin(M)
-    m2.i1.diizinkan = ['src/app/a/route.ts']
+    m2.i1.diizinkan = [...DISETUJUI_I1, 'src/app/a/route.ts']
     const r = nilai({}, m2)
     const d = r.hasil.find((h) => h.nama.startsWith('I-1'))?.detail ?? ''
-    return [gagalPada(r, 'I-1') && d.includes('src/app/b/route.ts') && !d.includes('tak disetujui: src/app/a/'), d]
+    return [gagalPada(r, 'I-1') && d.includes('src/app/b/route.ts') && !d.includes('tak disetujui: src/app/a/') && !d.includes(`tak disetujui: ${R2G}`) && (d.match(/tak disetujui:/g) ?? []).length === 1, d]
   })
   skenario('P-12', 'T2: siklus tanpa jalur ke WA-2 → tanpa temuan palsu', () => {
     tulis('src/app/c/route.ts', "import '../../lib/c'\n")
@@ -415,7 +427,8 @@ try {
     const kode = `const L = await import(${JSON.stringify(pathToFileURL(join(AKAR, L.JALUR_HELPER)).href)}); const r = L.perujukTransitif(${JSON.stringify(K)}, ['src/app', 'src/components'], 'src/services/whatsapp/'); console.log(JSON.stringify(Object.keys(r.perujuk)))`
     const t0 = Date.now()
     const out = execFileSync(process.execPath, ['--input-type=module', '-e', kode], { encoding: 'utf8', timeout: 60_000 })
-    return [JSON.parse(out).length === 0, `selesai ${Date.now() - t0} ms; temuan ${out.trim()}`]
+    // Cincin/diri tidak menjangkau WA-2: temuan = PERSIS 10 route 2a-G yang disetujui (literal), tanpa page cincin.
+    return [JSON.parse(out).sort().join() === DISETUJUI_I1.join(), `selesai ${Date.now() - t0} ms; temuan ${JSON.parse(out).length} berkas`]
   })
   const HELPER = L.JALUR_HELPER
   skenario('N-26a', 'T3: perubahan helper tanpa pengecualian → P-global gagal', () => {
