@@ -123,6 +123,11 @@ cek('perbaikan #1: SEMUA syarat waktu (TTL + revalidasi penuh) memakai jam keput
   const f = svc.slice(svc.indexOf('export async function setujuiPesanKlien'), svc.indexOf('export async function tolakPesanKlien'))
   return /approvalWaKlienKedaluwarsa\(\{ status: 'PENDING', expiresAt: s\.a\.expiresAt as Date \}, akhir\)/.test(f) && /revalidasiPesan\(ctx, tx, s\.m, akhir\)/.test(f) && /decidedAt: akhir/.test(f) && /approvedAt: akhir/.test(f) && f.indexOf('revalidasiPesan(ctx, tx, s.m, akhir)') < f.indexOf('tahApprovalRequest.updateMany')
 })())
+cek('temuan P2: tolak memeriksa TTL ulang dengan jam SESUDAH kunci approval dan memakai jam itu untuk semua timestamp', (() => {
+  const f = svc.slice(svc.indexOf('export async function tolakPesanKlien'), svc.indexOf('export type HasilBatalPesanKlien'))
+  const i = ['const k = await kunciUlang(ctx, tx, s)', 'const akhir = new Date()', "approvalWaKlienKedaluwarsa({ status: 'PENDING', expiresAt: s.a.expiresAt as Date }, akhir)) return kedaluwarsakan(ctx, tx, s, akhir)", 'tahApprovalRequest.updateMany', 'waClientMessage.updateMany'].reduce((acc, x) => [...acc, f.indexOf(x, acc.length ? acc[acc.length - 1] + 1 : 0)], [])
+  return i.every((x) => x > -1) && /decidedAt: akhir, decisionNote: catatan, finalizedAt: akhir/.test(f) && /finalizedAt: akhir, version/.test(f.slice(f.indexOf('waClientMessage.updateMany'))) && !/(decidedAt|finalizedAt): sekarang/.test(f)
+})())
 cek('penghenti approval = hentikanApprovalTertaut WA-1 (lewat bridge), subjek diperiksa, baris dikunci FOR UPDATE', /from '\.\/wa1-bridge'/.test(stop) && /hentikanApprovalTertaut\(ctx, tx, a\.id, mode, alasan\)/.test(stop) && /a\.subjectType !== SUBJEK_APPROVAL_PESAN_KLIEN \|\| a\.subjectId !== messageId/.test(stop) && /FROM "TahApprovalRequest"\s+WHERE "id" = \$\{approvalRequestId\} AND "tenantId" = \$\{tenantId\} FOR UPDATE/.test(stop))
 const rawSemua = [...SEMUA_F4.matchAll(/\$queryRaw(?:<[^>]*>)?\(Prisma\.sql`([\s\S]*?)`\)/g)].map((m) => m[1])
 cek('SQL mentah F4 & modul pemeriksaan selalu menyaring "tenantId" (parameter Prisma.sql, tanpa Unsafe)', rawSemua.length >= 8 && rawSemua.every((q) => /"tenantId" = \$\{(ctx\.)?tenantId\}/.test(q)) && !/Unsafe/.test(SEMUA_F4), `${rawSemua.length} pernyataan`)

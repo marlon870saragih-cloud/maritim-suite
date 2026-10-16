@@ -432,6 +432,64 @@ try {
   await kasusTahan('BATAS BELUM TERLEWATI (konfirmasi segar, verifikasi/grant/TTL jauh) walau menunggu kunci', async () => ({ p: await siapPending(A, { jenis: 'jadwal' }), batas: null }), 'DISETUJUI', undefined)
   await kasusTahan('BATAS BELUM TERLEWATI (milestone segar, grant jauh) walau menunggu kunci', async () => ({ p: await siapPending(A, { jenis: 'ALL_FAST' }), batas: null }), 'DISETUJUI', undefined)
 
+  bagian('[TR] Tolak — TTL pada jam keputusan sesudah kunci approval (temuan review P2)')
+  // Transaksi lain memegang baris TahApprovalRequest FOR UPDATE TANPA mengubah status/version → tolakPesanKlien
+  // lolos pemeriksaan awal (TTL belum habis), lalu MENUNGGU di kunciUlang. TTL dijadwalkan habis ±1,2 s sesudah
+  // tolak mulai; kunci dilepas ±3 s (sebelum timeout transaksi service 5 s). Uji memvalidasi dirinya sendiri.
+  const tahanApproval = async (p, { expTunda = null, keputusanLain = false } = {}) => {
+    let hasil
+    let mulai
+    const r = await adm.$transaction(async (tx) => {
+      await tx.$queryRawUnsafe('SELECT "id" FROM "TahApprovalRequest" WHERE "id" = $1 FOR UPDATE', p.aid)
+      if (expTunda !== null) await tx.$executeRawUnsafe('UPDATE "TahApprovalRequest" SET "expiresAt" = $2 WHERE "id" = $1', p.aid, new Date(Date.now() + expTunda))
+      const exp = (await tx.tahApprovalRequest.findFirst({ where: { id: p.aid }, select: { expiresAt: true } })).expiresAt
+      return { exp }
+    }).then(async ({ exp }) => {
+      // TTL dipasang & di-commit dulu (tolak harus melihatnya), lalu kunci dipegang di transaksi kedua.
+      return adm.$transaction(async (tx) => {
+        await tx.$queryRawUnsafe('SELECT "id" FROM "TahApprovalRequest" WHERE "id" = $1 FOR UPDATE', p.aid)
+        mulai = Date.now()
+        const jalan = tolak(A, p).then((h) => { hasil = h }, (e) => { hasil = { galat: String(e?.details?.code ?? e?.message ?? e).slice(0, 120) } })
+        await tidur(TAHAN)
+        const menunggu = hasil === undefined
+        if (keputusanLain) {
+          // Keputusan lain selesai selama penolak menunggu: approval & pesan APPROVED (status + version berubah).
+          await tx.tahApprovalRequest.update({ where: { id: p.aid }, data: { status: 'APPROVED', executionStatus: 'NOT_STARTED', decidedByUserId: A.checker2Ctx.userId, decidedAt: new Date(), version: { increment: 1 } } })
+          await tx.waClientMessage.update({ where: { id: p.mid }, data: { state: 'APPROVED', approvedByUserId: A.checker2Ctx.userId, approvedAt: new Date(), version: { increment: 1 } } })
+        }
+        return { jalan, menunggu, exp, lepas: Date.now() }
+      }, { timeout: 30_000 })
+    })
+    await r.jalan
+    return { hasil, menunggu: r.menunggu, exp: r.exp, mulai, lepas: r.lepas }
+  }
+  {
+    const p = await siapPending(A)
+    const t = await tahanApproval(p, { expTunda: SISA * 2 })
+    const a = await approval(p.aid)
+    const sah = t.menunggu && t.mulai < t.exp.getTime() - 300 && t.lepas > t.exp.getTime() + 300
+    cek('P2: TTL habis selama tolak menunggu kunci approval → KEDALUWARSA (approval & pesan EXPIRED), BUKAN REJECTED', sah && t.hasil?.hasil === 'KEDALUWARSA' && (await keadaan(p)) === 'EXPIRED/EXPIRED/NOT_APPLICABLE' && a.decisionNote === null, `menunggu=${t.menunggu} segarAwal=${t.mulai < t.exp.getTime() - 300} lewatAkhir=${t.lepas > t.exp.getTime() + 300} hasil=${JSON.stringify(t.hasil)} keadaan=${await keadaan(p)}`)
+  }
+  {
+    const p = await siapPending(A)
+    const t = await tahanApproval(p)
+    const a = await approval(p.aid)
+    const m = await pesan(p.mid)
+    cek('P2: TTL BELUM habis sesudah menunggu → DITOLAK_PEMUTUS normal; decidedAt/finalizedAt = jam SESUDAH kunci dilepas', t.menunggu && t.hasil?.hasil === 'DITOLAK_PEMUTUS' && (await keadaan(p)) === 'REJECTED/REJECTED/NOT_APPLICABLE' && a.decidedAt.getTime() >= t.lepas - 50 && a.finalizedAt.getTime() === a.decidedAt.getTime() && m.finalizedAt.getTime() === a.decidedAt.getTime(), `menunggu=${t.menunggu} hasil=${JSON.stringify(t.hasil)} decidedAt−lepas=${a.decidedAt.getTime() - t.lepas} ms`)
+  }
+  {
+    const p = await siapPending(A)
+    await adm.tahApprovalRequest.update({ where: { id: p.aid }, data: { expiresAt: new Date(Date.now() - 1) } })
+    const h = await tolak(A, p)
+    cek('P2: sudah kedaluwarsa SEBELUM pemanggilan → KEDALUWARSA (EXPIRED)', h.hasil === 'KEDALUWARSA' && (await keadaan(p)) === 'EXPIRED/EXPIRED/NOT_APPLICABLE')
+  }
+  {
+    const p = await siapPending(A)
+    const t = await tahanApproval(p, { expTunda: SISA * 2, keputusanLain: true })
+    const a = await approval(p.aid)
+    cek('P2: keputusan lain (APPROVED) selesai selama menunggu → SUDAH_DIPUTUSKAN, tidak ditimpa REJECTED/EXPIRED', t.menunggu && t.hasil?.hasil === 'SUDAH_DIPUTUSKAN' && t.hasil?.status === 'APPROVED' && (await keadaan(p)) === 'APPROVED/APPROVED/NOT_STARTED' && a.decidedByUserId === A.checker2Ctx.userId, `hasil=${JSON.stringify(t.hasil)} keadaan=${await keadaan(p)}`)
+  }
+
   bagian('[E] Kedaluwarsa (K11)')
   const pe = await siapPending(A)
   await adm.tahApprovalRequest.update({ where: { id: pe.aid }, data: { expiresAt: new Date(Date.now() - 1) } })

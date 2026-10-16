@@ -409,15 +409,19 @@ export async function tolakPesanKlien(ctx: TenantContext, input: { approvalReque
       if (awal) return awal
       const k = await kunciUlang(ctx, tx, s)
       if (!k.ok) return k.selesai
+      // Jam keputusan diambil SESUDAH kunci approval (penantian bisa melewati TTL): TTL diperiksa ulang dengan jam ini
+      // dan jam ini pula yang dipakai untuk semua timestamp penolakan.
+      const akhir = new Date()
+      if (approvalWaKlienKedaluwarsa({ status: 'PENDING', expiresAt: s.a.expiresAt as Date }, akhir)) return kedaluwarsakan(ctx, tx, s, akhir)
       if (!transisiKeputusanSah('PENDING', 'REJECTED') || !transisiPesanKlienSah('PENDING_APPROVAL', 'REJECTED')) throw new Error('[wa2f4] transisi penolakan tidak sah.')
       const na = await tx.tahApprovalRequest.updateMany({
         where: { id: s.a.id, status: 'PENDING', version: s.a.version },
-        data: { status: 'REJECTED', decidedByUserId: ctx.userId, decidedAt: sekarang, decisionNote: catatan, finalizedAt: sekarang, version: { increment: 1 } },
+        data: { status: 'REJECTED', decidedByUserId: ctx.userId, decidedAt: akhir, decisionNote: catatan, finalizedAt: akhir, version: { increment: 1 } },
       })
       if (na.count !== 1) throw bentrok()
       const nm = await tx.waClientMessage.updateMany({
         where: { id: s.m.id, state: 'PENDING_APPROVAL', version: s.m.version, approvalRequestId: s.a.id },
-        data: { state: 'REJECTED', reasonCode: 'APPROVAL_REJECTED', activeKey: null, finalizedAt: sekarang, version: { increment: 1 } },
+        data: { state: 'REJECTED', reasonCode: 'APPROVAL_REJECTED', activeKey: null, finalizedAt: akhir, version: { increment: 1 } },
       })
       if (nm.count !== 1) throw bentrok()
       await catatAudit(ctx, { tableName: TABEL_APPROVAL, recordId: s.a.id, action: 'UPDATE', oldValue: { status: 'PENDING' }, newValue: { peristiwa: 'WA2_APPROVAL_DITOLAK_PEMUTUS', status: 'REJECTED', messageId: s.m.id, sidikCatatan: sidikBukti(catatan) } }, {}, tx)

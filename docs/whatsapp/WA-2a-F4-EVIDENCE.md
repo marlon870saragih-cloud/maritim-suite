@@ -2,7 +2,7 @@
 
 | Item | Nilai |
 |---|---|
-| Status | **Perbaikan pra-merge #1 & #2 selesai — menunggu review akhir owner** (PR #27 OPEN, belum di-merge) |
+| Status | **Perbaikan pra-merge #1, #2, dan temuan P2 selesai — menunggu keputusan owner** (PR #27 OPEN, belum di-merge, BUKAN accepted) |
 | Persetujuan | K1–K11 (preflight F4), pengecualian uji E1–E7 per baris persis, perubahan terbatas `wa-contact/wa-consent/wa-grant/wa-message.service.ts` + `ops/voyage-event.service.ts` |
 | Basis | `main` @ `0ad92516959e8b89e4f0945baccc03e8145a32d6` (PR #26 perbaikan uji 2B merged), working tree bersih sebelum mulai |
 | Cakupan | Service layer saja. Berhenti di **APPROVED** — tanpa Send, provider, route API, UI, LLM, migrasi |
@@ -212,3 +212,59 @@ Penambahan path persis `prisma/check-voyage-event-api.mjs` ke daftar lingkup F1/
 ### 6.3 Gate ulang sesudah kedua perbaikan
 
 F4 statis 60/0 · F4 DB 117/0 · F3 54/0 & 72/0 · F1 90/0 · F2 51/0 · 2B 130/0 · 2C 29/0 & 67/0 · 2E 28/0 & 68/0 · comm-policy 326/0 · comm-schema 85/0 · comm prepare/read/approval/cancel/send 98/0, 42/0, 95/0, 73/0, 118/0 (jumlah send bervariasi 117–121, juga di `main`) · TAH 322/0 & 98/0 · V3 226/0 · tsc & eslint bersih · `migrate diff` tanpa perbedaan · `git diff main` atas WA-1/TAH/schema/migrasi/route = kosong. Baseline `check-validator-remediasi` 61/9 tetap (identik `main`). Suite HTTP WA-1 (comm-api/e2e/ui) tidak dijalankan ulang: perbaikan tidak menyentuh WA-1, route, auth, atau UI (hasil sebelumnya 43/0, 108/0, 55/0).
+
+## 7. Temuan review P2 — TTL pada `tolakPesanKlien` sesudah kunci approval (16 Okt 2026)
+
+> Angka di §3 dan §6 adalah hasil **historis** pada kode sebelum perbaikan ini. Hasil yang dijalankan ulang untuk perbaikan ini ada di §7.3.
+
+### 7.1 Hipotesis, reproduksi, akar masalah
+
+**Hipotesis (review statis):** `tolakPesanKlien` mengambil `sekarang`, memeriksa kedaluwarsa, menunggu `kunciUlang` (kunci baris approval FOR UPDATE), lalu menulis REJECTED dengan `sekarang` lama tanpa memeriksa TTL lagi.
+
+**Reproduksi deterministik (`[TR]` di `check-wa2a-approval-f4-db`):**
+1. Approval PENDING; `expiresAt` dipasang & di-commit ±2,4 s ke depan.
+2. Transaksi lain memegang baris `TahApprovalRequest` **FOR UPDATE tanpa mengubah status/version**.
+3. `tolakPesanKlien` dimulai sebelum TTL habis (lolos pemeriksaan awal), lalu menunggu di `kunciUlang`.
+4. Kunci dilepas ±3 s kemudian — **sesudah** TTL habis, **sebelum** timeout transaksi service (5 s).
+5. Uji memvalidasi dirinya: penolak **benar-benar menunggu**, bukti segar saat mulai, TTL lewat saat dilepas.
+
+**Hasil pada kode lama (`dea3738`, service tidak diubah):** hipotesis **TERBUKTI** oleh eksekusi DB:
+
+| Kasus | Kode lama | Sesudah perbaikan |
+|---|---|---|
+| TTL habis selama tolak menunggu kunci approval | `DITOLAK_PEMUTUS`, keadaan `REJECTED/REJECTED` ❌ | `KEDALUWARSA`, approval **EXPIRED**, pesan **EXPIRED** ✅ |
+| TTL belum habis sesudah menunggu | REJECTED, tetapi `decidedAt` **−2999 ms** dari pelepasan kunci (jam lama) ❌ | REJECTED normal; `decidedAt` = `finalizedAt` (approval & pesan) = jam sesudah kunci (+5 ms) ✅ |
+| Sudah kedaluwarsa sebelum pemanggilan | KEDALUWARSA ✅ | KEDALUWARSA ✅ |
+| Keputusan lain (APPROVED) selesai selama menunggu | `SUDAH_DIPUTUSKAN`, tidak ditimpa ✅ | `SUDAH_DIPUTUSKAN`, tidak ditimpa ✅ |
+
+**Akar masalah:** jam keputusan penolakan diambil sebelum penantian kunci approval; jalur setuju sudah diperbaiki (§6.1), jalur tolak belum.
+
+### 7.2 Perubahan (minimal, satu fungsi)
+
+`src/services/whatsapp/wa-message-approval.service.ts` — `tolakPesanKlien`: sesudah `kunciUlang` → `akhir = new Date()`; bila `approvalWaKlienKedaluwarsa(…, akhir)` → jalur `kedaluwarsakan` yang sudah ada; `decidedAt`, `finalizedAt` approval dan `finalizedAt` pesan memakai `akhir`. Maker-checker, `proposalHash`, isolasi tenant, urutan kunci, audit atomik, dan perilaku keputusan final **tidak berubah**. Penolakan tidak membutuhkan revalidasi bukti (menolak selalu aman), jadi hanya TTL yang dinilai ulang.
+
+Uji statis baru: urutan `kunciUlang` → `akhir` → TTL(`akhir`) → tulis approval → tulis pesan, dan tidak ada timestamp penolakan yang memakai `sekarang`.
+
+Mutasi baru: **M21** (cek TTL sesudah kunci dihapus) dan **M22** (timestamp memakai jam lama) → keduanya **tertangkap** (statis 1 + DB 1 masing-masing). Total mutasi F4 kini **21/22 tertangkap** (M16 tetap mutan ekuivalen). Mutasi M1–M20 **tidak** dijalankan ulang di putaran ini (hasil historis).
+
+### 7.3 Gate yang dijalankan sekarang
+
+Lingkungan: kode = HEAD `dea3738` + perubahan kerja P2 (di-commit sesudahnya, SHA di deskripsi PR); Node v22.22.0; PostgreSQL 16.15 loopback sekali pakai (`migrate deploy`), data sintetis, jaring egress aktif pada suite DB WA-2.
+
+| Suite | Hasil sekarang |
+|---|---|
+| `check-wa2a-approval-f4` (statis) | **61/0** |
+| `check-wa2a-approval-f4-db` | **121/0** (dua jalan berturut-turut) — termasuk egress = 0 dan invarian approval liar |
+| F3 statis / DB | 54/0, 72/0 |
+| F1 / F2 | 90/0, 51/0 |
+| 2B (statis + DB) | 130/0 |
+| 2C statis / DB · 2E statis / DB | 29/0, 67/0 · 28/0, 68/0 |
+| WA-1: comm-policy / comm-schema | 326/0, 85/0 |
+| WA-1 DB: prepare / read / approval / cancel / send | 98/0, 42/0, 95/0, 73/0, 120/0 (jumlah send bervariasi 117–121 juga di `main`) |
+| TAH policy / ledger · Validator V3 | 322/0, 98/0 · 226/0 |
+| `tsc --noEmit` · eslint (berkas terkait) | bersih · bersih |
+| `prisma migrate diff` | No difference detected |
+| `git diff main` atas WA-1 / TAH / schema / migrasi / `src/app` | 0 path; tidak ada jalur Send/provider/`successKey` baru |
+| `check-validator-remediasi` | 61/9 — **baseline historis**, identik `main`, tidak diperbaiki |
+
+**Tidak dijalankan ulang (hasil historis, tidak berubah oleh P2):** HTTP route VoyageEvent (cabang 27/0, `main` 25/0, transkrip identik), `check-automation-api` 104/0, `check-owner-guard` 26/0 — `voyage-event.service.ts` dan route tidak berubah sejak itu; HTTP WA-1 comm-api/e2e/ui 43/0, 108/0, 55/0 — WA-1, route, auth, UI tidak disentuh. **Tidak ada CI/check-run** pada repo ini; tidak ada klaim "CI hijau".
