@@ -196,11 +196,17 @@ async function dunia(id, nama, peran = Object.keys(PERAN)) {
 }
 const voyage = (w) =>
   adm.voyage.create({ data: { tenantId: w.t.id, vesselId: w.kapal.id, portId: w.port.id, voyageNumber: uid('VYG'), dataOrigin: 'NYATA', status: 'CONFIRMED', customerId: w.C1.id, principalId: w.P1.id, eta: new Date(`${ETA_BARU}T00:00:00Z`), etd: new Date(`${ETD_BARU}T00:00:00Z`) } })
-async function jadwal(w) {
+/** Sinyal ETA_CHANGED dengan voyage & sumber (grup) sendiri. reviewState/detectedAt opsional (bawaan DB: OPEN, now()). */
+async function jadwal(w, { reviewState, detectedAt } = {}) {
   const v = await voyage(w)
   const a = await adm.auditLog.create({ data: { tenantId: w.t.id, tableName: 'Voyage', recordId: v.id, action: 'UPDATE', oldValue: { peristiwa: 'UBAH_TANGGAL', eta: ETA_LAMA }, newValue: { peristiwa: 'UBAH_TANGGAL', medan: ['eta'], eta: ETA_BARU }, createdAt: new Date(Date.now() - JAM) } })
-  const s = await adm.monitoringSignal.create({ data: { tenantId: w.t.id, voyageId: v.id, kind: 'ETA_CHANGED', severity: 'INFO', dedupeKey: uid(), sourceType: 'AUDIT_LOG', sourceRef: a.id, explanation: 'uji', recommendation: 'uji', after: { eta: ETA_BARU } } })
+  const s = await adm.monitoringSignal.create({ data: { tenantId: w.t.id, voyageId: v.id, kind: 'ETA_CHANGED', severity: 'INFO', dedupeKey: uid(), sourceType: 'AUDIT_LOG', sourceRef: a.id, explanation: 'uji', recommendation: 'uji', after: { eta: ETA_BARU }, ...(reviewState ? { reviewState } : {}), ...(detectedAt ? { detectedAt } : {}) } })
   return { v, a, s }
+}
+/** Sinyal berstatus layak tetapi jenis kejadian tak didukung klasifikasiSinyal (voyage sendiri). */
+async function sinyalTakDidukung(w, kind, reviewState) {
+  const v = await voyage(w)
+  return adm.monitoringSignal.create({ data: { tenantId: w.t.id, voyageId: v.id, kind, severity: 'WARNING', dedupeKey: uid(), sourceType: 'SYSTEM', sourceRef: null, explanation: 'uji', recommendation: 'uji', reviewState } })
 }
 async function kontak(w, { optIn = true, partyType = 'CUSTOMER', partyId = w.C1.id } = {}) {
   const r = await KT.buatKontak(w.ctx.maker, { partyType, partyId, nomor: nomorBaru(), displayName: 'PIC uji', language: 'ID' })
@@ -354,6 +360,57 @@ try {
     cek('draft ke kontak tanpa opt-in → 400 (penilaian ulang service), tanpa baris', dTanpa.status === 400 && dTanpa.json?.error?.details?.code !== undefined && (await adm.waClientMessage.count({ where: { contactId: cTanpaOptIn } })) === 0, ringkas(dTanpa))
 
     // ======================================================================== F
+    // ======================================================================== S
+    bagian('[S] Kandidat sinyal — reviewState (D-13: hanya OPEN/ACKNOWLEDGED), sebelum batas jumlah')
+    const kandidat = async (w, q = '') => {
+      const r = await api(w.sesi.maker, 'GET', `${P}/candidates/signals${q}`)
+      return { r, ids: (r.json?.data?.items ?? []).map((i) => i.id) }
+    }
+    // Grup terpisah: setiap sinyal punya voyage & sumber sendiri, agar kelayakan grup tak tercampur.
+    const st = {}
+    for (const rs of ['OPEN', 'ACKNOWLEDGED', 'DISMISSED', 'EXPIRED']) st[rs] = await jadwal(A, { reviewState: rs })
+    const kSt = await kandidat(A, '?take=50')
+    cek('OPEN & ACKNOWLEDGED (ETA_CHANGED) muncul sebagai kandidat', ok(kSt.r) && kSt.ids.includes(st.OPEN.s.id) && kSt.ids.includes(st.ACKNOWLEDGED.s.id), ringkas(kSt.r))
+    cek('DISMISSED & EXPIRED (ETA_CHANGED) TIDAK muncul', ok(kSt.r) && !kSt.ids.includes(st.DISMISSED.s.id) && !kSt.ids.includes(st.EXPIRED.s.id), ['DISMISSED', 'EXPIRED'].filter((x) => kSt.ids.includes(st[x].s.id)).join(',') || 'tersaring')
+    const rsDi = (await kandidat(A, '?take=50')).r.json?.data?.items?.find((i) => i.id === st.ACKNOWLEDGED.s.id)?.reviewState
+    cek('item kandidat membawa reviewState apa adanya (ACKNOWLEDGED)', rsDi === 'ACKNOWLEDGED', String(rsDi))
+    const td1 = await sinyalTakDidukung(A, 'DATA_STALE', 'OPEN')
+    const td2 = await sinyalTakDidukung(A, 'VOYAGE_STATUS_CHANGED', 'ACKNOWLEDGED')
+    const kTd = await kandidat(A, '?take=50')
+    cek('status layak + jenis tak didukung (DATA_STALE OPEN, VOYAGE_STATUS_CHANGED ACKNOWLEDGED) → tetap tersaring', ok(kTd.r) && !kTd.ids.includes(td1.id) && !kTd.ids.includes(td2.id))
+    const vOpen = await kandidat(A, `?voyageId=${st.OPEN.v.id}`)
+    const vDis = await kandidat(A, `?voyageId=${st.DISMISSED.v.id}`)
+    const vExp = await kandidat(A, `?voyageId=${st.EXPIRED.v.id}`)
+    const vTd = await kandidat(A, `?voyageId=${td1.voyageId}`)
+    cek('filter voyage tetap berlaku: voyage OPEN → tepat sinyalnya; voyage DISMISSED/EXPIRED/tak didukung → kosong', vOpen.ids.join() === st.OPEN.s.id && ok(vDis.r) && vDis.ids.length === 0 && ok(vExp.r) && vExp.ids.length === 0 && ok(vTd.r) && vTd.ids.length === 0)
+    // Jendela: 1 sinyal layak LAMA di tenant B + 7 sinyal tidak layak (DISMISSED/EXPIRED) yang LEBIH BARU.
+    // Implementasi lama (take=1 → memindai 5 baris terbaru lalu menyaring) mengembalikan daftar kosong.
+    const lama = await jadwal(B, { reviewState: 'OPEN', detectedAt: new Date(Date.now() - 10 * 24 * JAM) })
+    const baruTakLayak = []
+    for (let i = 0; i < 7; i++) baruTakLayak.push((await jadwal(B, { reviewState: i % 2 ? 'EXPIRED' : 'DISMISSED', detectedAt: new Date(Date.now() - (i + 1) * 60_000) })).s.id)
+    const nB = await adm.monitoringSignal.count({ where: { tenantId: ID_B } })
+    const kWin = await kandidat(B, '?take=1')
+    cek('take=1: 7 sinyal tidak layak yang lebih baru TIDAK menutupi 1 sinyal layak yang lebih lama', ok(kWin.r) && kWin.ids.length === 1 && kWin.ids[0] === lama.s.id, `${nB} sinyal di tenant B; hasil ${JSON.stringify(kWin.ids)}`)
+    const kWin2 = await kandidat(B, '?take=50')
+    cek('tenant B: tanpa sinyal tidak layak; urutan stabil detectedAt turun', ok(kWin2.r) && !kWin2.ids.some((x) => baruTakLayak.includes(x)) && kWin2.ids.includes(lama.s.id) && (kWin2.r.json.data.items ?? []).every((x, i, a) => i === 0 || a[i - 1].detectedAt >= x.detectedAt))
+    cek('isolasi tenant: A tak melihat sinyal B; B tak melihat sinyal A', !(await kandidat(A, '?take=50')).ids.includes(lama.s.id) && !kWin2.ids.includes(st.OPEN.s.id) && !kWin2.ids.includes(st.ACKNOWLEDGED.s.id))
+    cek('voyage tenant B lewat sesi A → kosong (bukan bocor)', ok((await kandidat(A, `?voyageId=${lama.v.id}`)).r) && (await kandidat(A, `?voyageId=${lama.v.id}`)).ids.length === 0)
+    // Kandidat diambil lalu status berubah menjadi tidak layak → draft tetap ditolak service (penilaian ulang).
+    for (const ke of ['DISMISSED', 'EXPIRED']) {
+      const x = await sumber(A)
+      const sebelum = await kandidat(A, `?voyageId=${x.v.id}`)
+      await adm.monitoringSignal.update({ where: { id: x.s.id }, data: { reviewState: ke } })
+      const n0 = await adm.waClientMessage.count({ where: { tenantId: ID_A } })
+      const d = await api(A.sesi.maker, 'POST', P, { signalId: x.s.id, contactId: x.cid })
+      const sesudah = await kandidat(A, `?voyageId=${x.v.id}`)
+      cek(`kandidat OPEN lalu menjadi ${ke} → POST draft 400 SOURCE_INVALID, 0 pesan baru; kandidat hilang`, sebelum.ids.join() === x.s.id && galat(d, 400, 'VALIDATION', 'SOURCE_INVALID') && d.json.error.details?.sumber === `SIGNAL_${ke}` && (await adm.waClientMessage.count({ where: { tenantId: ID_A } })) === n0 && sesudah.ids.length === 0, `${ringkas(d)} sumber=${d.json?.error?.details?.sumber}`)
+    }
+    const xa = await sumber(A)
+    await adm.monitoringSignal.update({ where: { id: xa.s.id }, data: { reviewState: 'ACKNOWLEDGED' } })
+    const dAck = await api(A.sesi.maker, 'POST', P, { signalId: xa.s.id, contactId: xa.cid })
+    cek('kandidat ACKNOWLEDGED → draft tetap dinilai ulang service dan berhasil (ACK bukan approval)', (await kandidat(A, `?voyageId=${xa.v.id}`)).ids.join() === xa.s.id && ok(dAck, 'DRAFT_DIBUAT'), ringkas(dAck))
+    await api(A.sesi.maker, 'POST', `${P}/${dAck.json?.messageId}/cancel`, { alasan: 'Bersihkan uji ACK.' })
+
     bagian('[F] Alur utama: draft → preview → minta approval → setujui (BERHENTI di APPROVED) → batal')
     const f = await sumber(A)
     const n0 = await adm.waClientMessage.count({ where: { tenantId: ID_A } })

@@ -160,6 +160,10 @@ const terpilih = INTERNAL.filter((f) => new RegExp(`\\b${f}\\s*:\\s*true`).test(
 cek('field internal tidak dipilih (logicalMessageKey/activeKey/successKey/sourceFingerprint/consentStateVersion/grant/idempotency/basis/proposal)', terpilih.length === 0, terpilih.join(', '))
 cek('fields pesan disaring allowlist MEDAN_FIELDS (tanpa recipient/grant/sumber)', /const MEDAN_FIELDS = \[[^\]]*\]/.test(svc) && !/MEDAN_FIELDS = \[[^\]]*(recipient|e164|grant|source|consent)/i.test(svc) && /fields: fieldsDiizinkan\(m\.fields\)/.test(svc))
 cek('label pengiriman tetap "BELUM DIKIRIM" di detail', /LABEL_PENGIRIMAN = 'BELUM DIKIRIM/.test(svc) && /labelPengiriman: LABEL_PENGIRIMAN/.test(svc))
+const badanSinyal = svc.slice(svc.indexOf('export async function kandidatSinyalPesanKlien'), svc.indexOf('export async function kandidatKontakPesanKlien'))
+const qSinyal = badanSinyal.match(/tx\.monitoringSignal\.findMany\(\{([\s\S]*?)\n\s*\}\)/)?.[1] ?? ''
+cek('kandidat sinyal: reviewState disaring DI QUERY (where, sebelum take) dengan STATUS_SINYAL_LAYAK', /where:[^\n]*reviewState: \{ in: \[\.\.\.STATUS_SINYAL_LAYAK\] \}/.test(qSinyal) && qSinyal.indexOf('reviewState: { in:') < qSinyal.indexOf('take:'), qSinyal.split('\n')[1]?.trim() ?? 'query tak ditemukan')
+cek('kandidat sinyal: filter voyage, klasifikasi kejadian, urutan stabil, dan batas jumlah tetap (tenant via forTenant, dicek di atas)', /\.\.\.\(voyageId \? \{ voyageId \} : \{\}\)/.test(qSinyal) && /orderBy: \[\{ detectedAt: 'desc' \}, \{ id: 'desc' \}\]/.test(qSinyal) && /take: Math\.min\(take \* 5, 250\)/.test(qSinyal) && /klasifikasiSinyal\(s as unknown as SinyalMasuk\)/.test(badanSinyal) && /kategoriWajibUntuk\(k\.nilai\.keluarga\)/.test(badanSinyal) && /if \(items\.length === take\) break/.test(badanSinyal))
 cek('kelayakan kontak memakai pemeriksaan F3/F4 yang sama (periksaKontak/periksaAkses) + consent OPT_IN', /periksaKontak\(t, ctx,/.test(svc) && /periksaAkses\(t, ctx,/.test(svc) && /'OPT_IN'/.test(svc))
 cek('aksi SETUJUI/TOLAK hanya bila otorisasi checker F4 lolos (petunjuk; service tetap menilai ulang)', /otorisasiCheckerBuktiWaKlien\(/.test(svc) && /if \(oto\.ok\) aksi\.push\('SETUJUI', 'TOLAK'\)/.test(svc))
 cek('impor WA-1 hanya lewat ./wa1-bridge', ![...svc.matchAll(/from\s+'([^']+)'/g)].some((m) => /communication|tah/.test(m[1])) && /from '\.\/wa1-bridge'/.test(svc))
@@ -233,6 +237,11 @@ const val = [
   ['signalId hilang', () => RS.kandidatKontakPesanKlien(ctx(), {})],
 ]
 for (const [n, f] of val) cek(`validasi masukan (tanpa DB): ${n} → VALIDATION`, (await kodeDari(f)) === 'VALIDATION')
+// D-13: status sinyal layak di layanan baca = kebijakan Prepare WA-1 (kelayakanSinyal), dicek atas fungsi asli.
+const CP = jiti('../src/services/communication/comm-policy.ts')
+const layakSvc = RS.STATUS_SINYAL_LAYAK ?? []
+const semuaStatus = ['OPEN', 'ACKNOWLEDGED', 'DISMISSED', 'EXPIRED', 'BARU_TAK_DIKENAL', '']
+cek('STATUS_SINYAL_LAYAK = PERSIS status yang lolos kelayakanSinyal (OPEN, ACKNOWLEDGED)', layakSvc.length === 2 && semuaStatus.every((x) => CP.kelayakanSinyal(x).ok === layakSvc.includes(x)), JSON.stringify(layakSvc))
 for (const k of Object.keys(process.env)) if (!(k in asli)) delete process.env[k]
 Object.assign(process.env, asli)
 
