@@ -8,13 +8,15 @@
 //       satu-satunya sumber kind/kelas/peran/TTL, idempotensi WA2:, SQL ber-tenant, urutan approval → pesan.
 //   S2. K1 — SEMUA jalur tulis VoyageEvent mengunci Voyage FOR NO KEY UPDATE dalam transaksi.
 //   S3. K3 — setiap hold kontak/consent/grant menghentikan approval tertaut SEBELUM menahan pesan.
-//   S4. lingkup — hanya berkas F4 (path persis); WA-1/TAH/V3/schema/migrasi tidak berubah.
+//   S4. lingkup (prisma/wa2a-lingkup.mjs) — rekaman PR #27 = allowlist F4 persis; larangan route/UI = invarian I-1;
+//       perubahan berjalan dijaga terhadap basis gagal-tertutup.
 
 import { readFileSync, readdirSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
+import { lapisLingkup } from './wa2a-lingkup.mjs'
 
 const AKAR = fileURLToPath(new URL('..', import.meta.url))
 const baca = (rel) => readFileSync(join(AKAR, rel), 'utf8')
@@ -164,22 +166,30 @@ cek('tidak ada pemanggil hold lain di src (semua tercakup)', semuaSrc.filter((f)
 cek('pemilih pesan hold = kriteria tahanPesan* (contactId / grantIdSnapshot), status PENDING_APPROVAL/APPROVED ber-approval', /"contactId" = \$\{kunci\.contactId\}/.test(stop) && /"grantIdSnapshot" = \$\{kunci\.grantId\}/.test(stop) && /"state" IN \('PENDING_APPROVAL', 'APPROVED'\)/.test(stop))
 
 // ============================================================================ S4
-bagian('[S4] Lingkup F4')
-const berubah = execFileSync('git', ['diff', '--no-renames', '--name-only', 'main'], { cwd: AKAR, encoding: 'utf8' }).trim().split('\n').filter(Boolean)
-const baru = execFileSync('git', ['ls-files', '--others', '--exclude-standard'], { cwd: AKAR, encoding: 'utf8' }).trim().split('\n').filter(Boolean)
-const BOLEH = new Set([
+// Gate lingkup I/H/P (prisma/wa2a-lingkup.mjs, keputusan owner G-D1..G-D4). Asersi lama "pemindai menemukan
+// berkas F4" (`semua.includes(SVC)`) gagal di main bersih karena diff terhadap main kosong; kini lingkup F4
+// dibuktikan dari rekaman merge PR #27 yang wajib SAMA PERSIS dan tidak kosong (H). Larangan "tanpa route/UI"
+// dipertahankan sebagai invarian I-1 lintas fase (perujuk service WA-2 dari src/app & src/components, transitif).
+bagian('[S4] Lingkup F4 — rekaman historis (H), perubahan berjalan (P), invarian (I)')
+const L = lapisLingkup(AKAR, { fase: ['F4'], env: process.env })
+for (const i of L.info) console.log(`  ℹ️  ${i}`)
+for (const h of L.hasil) cek(h.nama, h.ok, h.detail)
+const F4H = L.manifest?.fase?.F4
+// Allowlist F4 yang disetujui owner (path persis, termasuk pengecualian check-voyage-event-api.mjs) — independen dari manifest.
+const BOLEH = [
   'src/services/whatsapp/wa-message-approval.service.ts', 'src/services/whatsapp/wa-approval-stop.ts', 'src/services/whatsapp/wa-message-check.ts',
   'src/services/whatsapp/wa-approval-def.ts', 'src/services/whatsapp/wa2-policy.ts', 'src/services/whatsapp/wa1-bridge.ts', 'src/services/whatsapp/wa-message.service.ts',
   'src/services/whatsapp/wa-contact.service.ts', 'src/services/whatsapp/wa-consent.service.ts', 'src/services/whatsapp/wa-grant.service.ts', 'src/services/ops/voyage-event.service.ts',
   'prisma/check-comm-policy.mjs', 'prisma/check-wa2a-contact.mjs', 'prisma/check-wa2a-access.mjs', 'prisma/check-wa2a-message-f3.mjs', 'prisma/check-wa2a-message-policy.mjs',
   'prisma/check-wa2a-template.mjs', 'prisma/check-wa2a-schema.mjs', 'prisma/check-wa2a-approval-f4.mjs', 'prisma/check-wa2a-approval-f4-db.mjs', 'docs/whatsapp/WA-2a-F4-EVIDENCE.md', 'prisma/check-voyage-event-api.mjs',
-])
-const semua = [...new Set([...berubah, ...baru])]
-cek('hanya berkas F4 yang disetujui (path persis) yang berubah/baru', semua.every((f) => BOLEH.has(f)), semua.filter((f) => !BOLEH.has(f)).join(', ') || `${semua.length} berkas`)
-cek('WA-1 (src/services/communication), TAH, intake, V3, schema, migrasi, rollback, template v1, gerbang & kunci 2C: TIDAK berubah', !semua.some((f) => /^src\/services\/(communication|tah|intake)\/|^prisma\/(migrations|rollback)\/|^prisma\/schema\.prisma$|check-validator|wa-template\.ts$|wa2-gate\.ts$|wa-lock\.ts$|wa-access-resolver\.ts$|wa-freshness\.ts$/.test(f)))
-cek('tanpa route API / UI baru (F4 hanya service)', !semua.some((f) => /^src\/app\//.test(f)))
-cek('wa2-policy.ts hanya ditambah (tanpa baris dihapus)', !/^-(?!--)/m.test(execFileSync('git', ['diff', 'main', '--', 'src/services/whatsapp/wa2-policy.ts'], { cwd: AKAR, encoding: 'utf8' })))
-cek('relatif: pemindai lingkup bekerja (menemukan berkas F4)', semua.includes(SVC) && relative(AKAR, join(AKAR, SVC)) === SVC)
+].sort()
+const semuaF4 = F4H?.berkas ?? []
+cek('H F4: rekaman manifest = allowlist F4 yang disetujui (path persis, memuat service approval)', semuaF4.join() === BOLEH.join() && semuaF4.includes(SVC), `${semuaF4.length} berkas`)
+cek('H F4: WA-1 (src/services/communication), TAH, intake, V3, schema, migrasi, rollback, template v1, gerbang & kunci 2C TIDAK berubah pada diff PR #27', semuaF4.length > 0 && !semuaF4.some((f) => /^src\/services\/(communication|tah|intake)\/|^prisma\/(migrations|rollback)\/|^prisma\/schema\.prisma$|check-validator|wa-template\.ts$|wa2-gate\.ts$|wa-lock\.ts$|wa-access-resolver\.ts$|wa-freshness\.ts$/.test(f)))
+cek('H F4: tanpa route API / UI pada diff PR #27 (F4 hanya service)', semuaF4.length > 0 && !semuaF4.some((f) => /^src\/app\/|^src\/components\//.test(f)))
+const diffPolF4 = F4H ? execFileSync('git', ['diff', '--no-renames', F4H.basis, F4H.kepala, '--', 'src/services/whatsapp/wa2-policy.ts'], { cwd: AKAR, encoding: 'utf8' }) : ''
+cek('H F4: wa2-policy.ts hanya ditambah pada diff PR #27 (tanpa baris dihapus)', diffPolF4.length > 0 && !/^-(?!--)/m.test(diffPolF4))
+// Larangan route/UI lintas fase = asersi I-1 di atas (daftar persis di manifest `i1.diizinkan`; pengecualian X-1 2a-G mengubahnya di sana).
 void readdirSync
 
 console.log(`\n${gagal === 0 ? '✅ SEMUA LULUS' : '❌ ADA YANG GAGAL'} — lulus ${lulus}, gagal ${gagal}`)

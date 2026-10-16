@@ -1,0 +1,197 @@
+{
+  "versi": 1,
+  "keterangan": "Gate lingkup WA-2a I/H/P (keputusan owner G-D1..G-D4, 16 Okt 2026). Path persis, tanpa pola. Ubah hanya lewat PR yang ditinjau owner; manifest tidak dapat melindungi dirinya sendiri.",
+  "fase": {
+    "F1": {
+      "pr": 23,
+      "merge": "e5f86768cdb9ed412668652af83d95fd2ece07ae",
+      "basis": "b805f839014069e83d5aed43ffa94e749bd02a31",
+      "kepala": "c5c041e0a17997f54b8f242d41a4d596deecce3b",
+      "berkas": [
+        "prisma/check-wa2a-message-policy.mjs",
+        "src/services/whatsapp/wa-approval-def.ts",
+        "src/services/whatsapp/wa-message-policy.ts",
+        "src/services/whatsapp/wa2-policy.ts"
+      ]
+    },
+    "F2": {
+      "pr": 24,
+      "merge": "cd276bb296acf898b5bd8558c6711b9361178736",
+      "basis": "e5f86768cdb9ed412668652af83d95fd2ece07ae",
+      "kepala": "217e39d49443da39bc5e8aa2961ed46f7f89845f",
+      "berkas": [
+        "prisma/check-wa2a-message-policy.mjs",
+        "prisma/check-wa2a-template.mjs",
+        "src/services/whatsapp/wa-template.ts"
+      ]
+    },
+    "F3": {
+      "pr": 25,
+      "merge": "2cec0ce6980987ea24cdea986971a2bbc9dde387",
+      "basis": "cd276bb296acf898b5bd8558c6711b9361178736",
+      "kepala": "a7fedf7898d810d307e4de2ce4692a1c49ef78f8",
+      "berkas": [
+        "docs/whatsapp/WA-2a-F3-EVIDENCE.md",
+        "prisma/check-comm-policy.mjs",
+        "prisma/check-wa2a-access.mjs",
+        "prisma/check-wa2a-contact.mjs",
+        "prisma/check-wa2a-message-f3-db.mjs",
+        "prisma/check-wa2a-message-f3.mjs",
+        "prisma/check-wa2a-message-policy.mjs",
+        "prisma/check-wa2a-template.mjs",
+        "src/services/communication/communication.service.ts",
+        "src/services/whatsapp/wa-access-resolver.ts",
+        "src/services/whatsapp/wa-freshness.ts",
+        "src/services/whatsapp/wa-message-policy.ts",
+        "src/services/whatsapp/wa-message.service.ts",
+        "src/services/whatsapp/wa-schedule-confirmation.service.ts",
+        "src/services/whatsapp/wa1-bridge.ts",
+        "src/services/whatsapp/wa2-policy.ts"
+      ]
+    },
+    "PR26": {
+      "pr": 26,
+      "merge": "0ad92516959e8b89e4f0945baccc03e8145a32d6",
+      "basis": "2cec0ce6980987ea24cdea986971a2bbc9dde387",
+      "kepala": "46acda9b1224c14aac4c7967b706acbdf2e94064",
+      "berkas": [
+        "prisma/check-wa2a-message-f3.mjs",
+        "prisma/check-wa2a-message-policy.mjs",
+        "prisma/check-wa2a-schema.mjs",
+        "prisma/check-wa2a-template.mjs"
+      ]
+    },
+    "F4": {
+      "pr": 27,
+      "merge": "5e58237c393a6115d3c55a5c1382dd3c5826a976",
+      "basis": "0ad92516959e8b89e4f0945baccc03e8145a32d6",
+      "kepala": "d665216acf85803092771a2b01bced5131cbe927",
+      "berkas": [
+        "docs/whatsapp/WA-2a-F4-EVIDENCE.md",
+        "prisma/check-comm-policy.mjs",
+        "prisma/check-voyage-event-api.mjs",
+        "prisma/check-wa2a-access.mjs",
+        "prisma/check-wa2a-approval-f4-db.mjs",
+        "prisma/check-wa2a-approval-f4.mjs",
+        "prisma/check-wa2a-contact.mjs",
+        "prisma/check-wa2a-message-f3.mjs",
+        "prisma/check-wa2a-message-policy.mjs",
+        "prisma/check-wa2a-schema.mjs",
+        "prisma/check-wa2a-template.mjs",
+        "src/services/ops/voyage-event.service.ts",
+        "src/services/whatsapp/wa-approval-def.ts",
+        "src/services/whatsapp/wa-approval-stop.ts",
+        "src/services/whatsapp/wa-consent.service.ts",
+        "src/services/whatsapp/wa-contact.service.ts",
+        "src/services/whatsapp/wa-grant.service.ts",
+        "src/services/whatsapp/wa-message-approval.service.ts",
+        "src/services/whatsapp/wa-message-check.ts",
+        "src/services/whatsapp/wa-message.service.ts",
+        "src/services/whatsapp/wa1-bridge.ts",
+        "src/services/whatsapp/wa2-policy.ts"
+      ]
+    }
+  },
+  "faseAktif": {},
+  "i1": {
+    "akar": [
+      "src/app",
+      "src/components"
+    ],
+    "sasaran": "src/services/whatsapp/",
+    "diizinkan": []
+  },
+  "i2": {
+    "src/services/whatsapp/wa-access-resolver.ts": "481b600886d0bbefb8676d1f46a97b79dd6c2c21",
+    "src/services/whatsapp/wa-approval-def.ts": "c513f06025cdb8800a84f1c22791b07ba7d438f3",
+    "src/services/whatsapp/wa-approval-stop.ts": "2be550a7be457e6106d2d5f368d5744e11dabd45",
+    "src/services/whatsapp/wa-consent.service.ts": "45d87783cad4741dec310a57a1d7a741a8a72bef",
+    "src/services/whatsapp/wa-contact.service.ts": "56180de37ac13e85f9d8d9b45f1e6d51de5e6c8f",
+    "src/services/whatsapp/wa-freshness.ts": "a1fbc9ba4e62c06e65c79d1d2dd1d73cfb3ced0f",
+    "src/services/whatsapp/wa-grant.service.ts": "8eb7c111973e1c0946e11f4cb12d92f598cf3ec7",
+    "src/services/whatsapp/wa-message-approval.service.ts": "372b6bbc1a7621d672473dc0f1d58445c34baf48",
+    "src/services/whatsapp/wa-message-check.ts": "9e3b779890ce4898c7b92c527ecf590b9a605501",
+    "src/services/whatsapp/wa-message-policy.ts": "f67fb659e3cdb3498b699c424caeb0158fcbf8e5",
+    "src/services/whatsapp/wa-message.service.ts": "53273c42bd4ce64d62e915d650c32abce3ba2181",
+    "src/services/whatsapp/wa-schedule-confirmation.service.ts": "bb13beb2c6806dc516e2d9c1b1fd11d3e6e2e294",
+    "src/services/whatsapp/wa-template.ts": "bb6acd73239be96498f7bd365c75c00a601cd338",
+    "src/services/whatsapp/wa1-bridge.ts": "972789f825781573fdba2202181db7da4c08d6c6",
+    "src/services/whatsapp/wa2-gate.ts": "fff6cc527881307e70ffb20b185b55aa2f9f472b"
+  },
+  "pGlobal": {
+    "awalan": [
+      "src/services/communication/",
+      "src/services/tah/",
+      "src/services/intake/",
+      "prisma/migrations/",
+      "prisma/rollback/",
+      "prisma/check-comm-",
+      "prisma/check-tah-",
+      "prisma/check-validator"
+    ],
+    "persis": [
+      "docs/whatsapp/PRD-WA-1.md",
+      "prisma/check-voyage-event-api.mjs",
+      "prisma/check-wa2a-access-db.mjs",
+      "prisma/check-wa2a-access.mjs",
+      "prisma/check-wa2a-approval-f4-db.mjs",
+      "prisma/check-wa2a-approval-f4.mjs",
+      "prisma/check-wa2a-contact-db.mjs",
+      "prisma/check-wa2a-contact.mjs",
+      "prisma/check-wa2a-lingkup.mjs",
+      "prisma/check-wa2a-message-f3-db.mjs",
+      "prisma/check-wa2a-message-f3.mjs",
+      "prisma/check-wa2a-message-policy.mjs",
+      "prisma/check-wa2a-schema.mjs",
+      "prisma/check-wa2a-template.mjs",
+      "prisma/schema.prisma",
+      "prisma/wa2a-lingkup.mjs"
+    ],
+    "tambahSaja": [
+      "src/services/whatsapp/wa-lock.ts",
+      "src/services/whatsapp/wa2-policy.ts"
+    ]
+  },
+  "pengecualian": [
+    {
+      "basis": "f3049187334d4665eb276b125f6a1e9918da41bb",
+      "path": "prisma/check-wa2a-access.mjs",
+      "blob": "6585f23d5b4bd6998f608729e987a3e52f5d08ef"
+    },
+    {
+      "basis": "f3049187334d4665eb276b125f6a1e9918da41bb",
+      "path": "prisma/check-wa2a-approval-f4.mjs",
+      "blob": "a511cd34a698fa174303689b56fda0adc6f8d6cf"
+    },
+    {
+      "basis": "f3049187334d4665eb276b125f6a1e9918da41bb",
+      "path": "prisma/check-wa2a-contact.mjs",
+      "blob": "de33fe626a8f1c254aacb27f11431baee1401a2f"
+    },
+    {
+      "basis": "f3049187334d4665eb276b125f6a1e9918da41bb",
+      "path": "prisma/check-wa2a-lingkup.mjs",
+      "blob": "eaaae906ba7f0014c5ee150946c5543eb5b12b00"
+    },
+    {
+      "basis": "f3049187334d4665eb276b125f6a1e9918da41bb",
+      "path": "prisma/check-wa2a-message-f3.mjs",
+      "blob": "4b2c19134800ce2d0c64c0f1ee8505126a22ca26"
+    },
+    {
+      "basis": "f3049187334d4665eb276b125f6a1e9918da41bb",
+      "path": "prisma/check-wa2a-message-policy.mjs",
+      "blob": "118eced51c321296cb84a8e09f595094d3507320"
+    },
+    {
+      "basis": "f3049187334d4665eb276b125f6a1e9918da41bb",
+      "path": "prisma/check-wa2a-template.mjs",
+      "blob": "b2ae0eab54cd2cb01fb6c4793eca4cb42cfcedbd"
+    },
+    {
+      "basis": "f3049187334d4665eb276b125f6a1e9918da41bb",
+      "path": "prisma/wa2a-lingkup.mjs",
+      "blob": "0b12116a9c6674913d691ba3753b28c8ca61b9f1"
+    }
+  ]
+}
