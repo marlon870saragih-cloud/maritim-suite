@@ -50,7 +50,6 @@ export type RingkasanPesanKlien = {
 export type AksiPesanKlien = 'PRATINJAU' | 'MINTA_APPROVAL' | 'SETUJUI' | 'TOLAK' | 'BATALKAN' | 'BUAT_REVISI'
 
 export type DetailPesanKlien = Omit<RingkasanPesanKlien, 'konteks' | 'approval'> & {
-  contactId: string
   body: string
   fields: Record<string, unknown>
   snapshotFingerprint: string
@@ -99,7 +98,7 @@ const PILIH_PESAN = {
   partyTypeSnapshot: true, recipientE164Snapshot: true, approvalRequestId: true, createdAt: true, updatedAt: true, finalizedAt: true,
 } as const
 const PILIH_DETAIL = {
-  ...PILIH_PESAN, contactId: true, body: true, fields: true, snapshotFingerprint: true, freshnessVerdict: true, previewedAt: true,
+  ...PILIH_PESAN, body: true, fields: true, snapshotFingerprint: true, freshnessVerdict: true, previewedAt: true,
   approvedAt: true, createdByUserId: true,
 } as const
 
@@ -213,7 +212,6 @@ export async function detailPesanKlien(ctx: TenantContext, input: { messageId: u
     const r = ringkas(m, { voyageId: k.voyageId, keluarga: k.keluarga }, null)
     return {
       ...r,
-      contactId: m.contactId,
       body: m.body,
       fields: fieldsDiizinkan(m.fields),
       snapshotFingerprint: m.snapshotFingerprint,
