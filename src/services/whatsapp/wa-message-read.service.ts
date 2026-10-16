@@ -5,7 +5,7 @@
 //   • gerbangWa2(ctx) pernyataan pertama setiap fungsi publik (allowlist Automation → NOT_FOUND; peran
 //     ADMIN/MANAJER_OPERASI → FORBIDDEN; konteks sistem, flag OFF, dan produksi → FORBIDDEN).
 //   • Tenant HANYA dari ctx; semua bacaan lewat forTenant(ctx). Id tenant lain = NOT_FOUND.
-//   • Field allowlist (preflight §6.7): nomor selalu tersamar; tidak ada logicalMessageKey/activeKey/successKey,
+//   • Field allowlist (preflight §6.7 + OD-20 opsi B: `contactId` hanya di detail): nomor selalu tersamar; tidak ada logicalMessageKey/activeKey/successKey,
 //     sourceFingerprint, grant, consentStateVersion, ID pencatat bukti, maupun nilai audit mentah.
 //   • Kelayakan kandidat kontak memakai pemeriksaan F3/F4 yang sama (periksaKontak/periksaAkses) — hanya
 //     petunjuk; buatDraftPesanKlien tetap menilai ulang di transaksinya. aksiTersedia juga hanya petunjuk.
@@ -56,6 +56,8 @@ export type RingkasanPesanKlien = {
 export type AksiPesanKlien = 'PRATINJAU' | 'MINTA_APPROVAL' | 'SETUJUI' | 'TOLAK' | 'BATALKAN' | 'BUAT_REVISI'
 
 export type DetailPesanKlien = Omit<RingkasanPesanKlien, 'konteks' | 'approval'> & {
+  /** Opsi B (OD-20): ID kontak opak dari pesan yang dibaca dalam tenant ctx — untuk revisi dengan kontak yang sama. */
+  contactId: string
   body: string
   fields: Record<string, unknown>
   snapshotFingerprint: string
@@ -104,7 +106,7 @@ const PILIH_PESAN = {
   partyTypeSnapshot: true, recipientE164Snapshot: true, approvalRequestId: true, createdAt: true, updatedAt: true, finalizedAt: true,
 } as const
 const PILIH_DETAIL = {
-  ...PILIH_PESAN, body: true, fields: true, snapshotFingerprint: true, freshnessVerdict: true, previewedAt: true,
+  ...PILIH_PESAN, contactId: true, body: true, fields: true, snapshotFingerprint: true, freshnessVerdict: true, previewedAt: true,
   approvedAt: true, createdByUserId: true,
 } as const
 
@@ -218,6 +220,7 @@ export async function detailPesanKlien(ctx: TenantContext, input: { messageId: u
     const r = ringkas(m, { voyageId: k.voyageId, keluarga: k.keluarga }, null)
     return {
       ...r,
+      contactId: m.contactId,
       body: m.body,
       fields: fieldsDiizinkan(m.fields),
       snapshotFingerprint: m.snapshotFingerprint,

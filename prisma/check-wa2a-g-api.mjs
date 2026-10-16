@@ -439,10 +439,11 @@ try {
     cek('GET daftar?state=DRAFT → memuat pesan; penerima tersamar; kunci ringkasan persis', ok(ls) && it?.state === 'DRAFT' && !POLA_NOMOR.test(ls.teks) && /^\+\d{2}••••\d{4}$/.test(it.penerimaTersamar) && Object.keys(it).sort().join() === 'approval,createdAt,finalizedAt,id,konteks,language,partyType,penerimaTersamar,reasonCode,revision,state,templateId,templateVersion,updatedAt', it ? Object.keys(it).sort().join() : 'tak ada')
     const dt = await api(A.sesi.maker, 'GET', `${P}/${mid}`)
     cek('GET detail DRAFT → aksi PRATINJAU/BATALKAN/BUAT_REVISI; label BELUM DIKIRIM; sidik = sidik draft', ok(dt) && dt.json.data.aksiTersedia.join() === 'PRATINJAU,BATALKAN,BUAT_REVISI' && /^BELUM DIKIRIM/.test(dt.json.data.labelPengiriman) && dt.json.data.snapshotFingerprint === fp && dt.json.data.approval === null, dt.json?.data?.aksiTersedia?.join())
-    const KUNCI_DETAIL = 'aksiTersedia,approval,approvedAt,body,createdAt,fields,finalizedAt,freshness,id,konteks,labelPengiriman,language,partyType,penerimaTersamar,previewedAt,reasonCode,revision,snapshotFingerprint,state,templateId,templateVersion,updatedAt'
-    cek('detail: kunci tingkat atas PERSIS allowlist preflight §6.7 (tanpa contactId/ID pengguna/kunci internal)', ok(dt) && Object.keys(dt.json.data).sort().join() === KUNCI_DETAIL && Object.keys(dt.json.data.konteks).sort().join() === 'keluarga,signalIds,voyageId' && Object.keys(dt.json.data.freshness).sort().join() === 'aturan,buktiRingkas,status', Object.keys(dt.json?.data ?? {}).sort().join())
+    const KUNCI_DETAIL = 'aksiTersedia,approval,approvedAt,body,contactId,createdAt,fields,finalizedAt,freshness,id,konteks,labelPengiriman,language,partyType,penerimaTersamar,previewedAt,reasonCode,revision,snapshotFingerprint,state,templateId,templateVersion,updatedAt'
+    cek('detail: kunci tingkat atas PERSIS allowlist §6.7 + contactId (OD-20 opsi B), tanpa ID pengguna/kunci internal', ok(dt) && Object.keys(dt.json.data).sort().join() === KUNCI_DETAIL && Object.keys(dt.json.data.konteks).sort().join() === 'keluarga,signalIds,voyageId' && Object.keys(dt.json.data.freshness).sort().join() === 'aturan,buktiRingkas,status', Object.keys(dt.json?.data ?? {}).sort().join())
     cek('detail: konteks voyage & sinyal, freshness LOLOS dengan bukti ringkas (tanpa ID pencatat)', dt.json?.data?.konteks?.voyageId === f.v.id && dt.json.data.konteks.signalIds.includes(f.s.id) && dt.json.data.freshness.status === 'LOLOS' && dt.json.data.freshness.buktiRingkas.length >= 1 && !JSON.stringify(dt.json.data.freshness).includes(A.ctx.manajer.userId), JSON.stringify(dt.json?.data?.freshness))
     const mDb = await pesan(mid)
+    cek('opsi B: detail.contactId = contactId pesan tersimpan di tenant sesi (bukan nomor); daftar tanpa contactId', dt.json?.data?.contactId === mDb.contactId && mDb.tenantId === ID_A && mDb.contactId === f.cid && !POLA_NOMOR.test(dt.json.data.contactId) && it !== undefined && !('contactId' in it))
     cek('detail: body = body tersimpan; fields hanya allowlist', dt.json?.data?.body === mDb.body && Object.keys(dt.json.data.fields).every((x) => ['keluarga', 'kategoriWajib', 'vesselName', 'voyageNumber', 'portName', 'perubahan', 'occurredAt', 'timezone', 'eventLocalTime'].includes(x)))
     const pvSalah = await api(A.sesi.admin2, 'POST', `${P}/${mid}/preview`, { snapshotFingerprint: 'a'.repeat(64) })
     cek('preview sidik salah → 200 DITOLAK SNAPSHOT_MISMATCH; pesan tetap DRAFT', ok(pvSalah, 'DITOLAK') && pvSalah.json.alasan === 'SNAPSHOT_MISMATCH' && (await pesan(mid)).state === 'DRAFT')
@@ -507,12 +508,24 @@ try {
     cek('reject → DITOLAK_PEMUTUS; pesan REJECTED; approval REJECTED', ok(rj, 'DITOLAK_PEMUTUS') && (await pesan(j.mid)).state === 'REJECTED' && (await approval(j.aid)).status === 'REJECTED', ringkas(rj))
     const cj = await api(A.sesi.maker, 'POST', `${P}/${j.mid}/cancel`, { alasan: 'Batal setelah ditolak (uji).' })
     cek('cancel pesan REJECTED → 200 DITOLAK (hasil service), tanpa mutasi', ok(cj, 'DITOLAK') && (await pesan(j.mid)).state === 'REJECTED', ringkas(cj))
+    const dtJ = (await api(A.sesi.maker, 'GET', `${P}/${j.mid}`)).json?.data
+    cek('UI-04 basis: detail REJECTED (terminal) → aksiTersedia hanya BUAT_REVISI (tanpa aksi pengubah pesan terminal)', dtJ?.state === 'REJECTED' && dtJ.aksiTersedia.join() === 'BUAT_REVISI', dtJ?.aksiTersedia?.join())
+    const nJ = await adm.waClientMessage.count({ where: { tenantId: ID_A } })
+    const rvJ = await api(A.sesi.maker, 'POST', P, { signalId: dtJ?.konteks?.signalIds?.[0], contactId: dtJ?.contactId })
+    const mRvJ = rvJ.json?.messageId ? await pesan(rvJ.json.messageId) : null
+    cek('revisi dari status terminal (REJECTED) → hasil aktual service: DRAFT_DIBUAT pesan baru (kontak sama), pesan REJECTED tetap', ok(rvJ, 'DRAFT_DIBUAT') && rvJ.json.messageId !== j.mid && mRvJ?.contactId === j.cid && mRvJ?.state === 'DRAFT' && (await pesan(j.mid)).state === 'REJECTED' && (await adm.waClientMessage.count({ where: { tenantId: ID_A } })) === nJ + 1, `${ringkas(rvJ)} revision=${rvJ.json?.revision} revisiDigantikan=${rvJ.json?.revisiDigantikan}`)
+    const rvJ2 = await api(A.sesi.maker, 'POST', P, { signalId: dtJ?.konteks?.signalIds?.[0], contactId: dtJ?.contactId })
+    cek('revisi diulang (snapshot sama) → SUDAH_ADA pesan revisi yang sama, tanpa baris baru', ok(rvJ2, 'SUDAH_ADA') && rvJ2.json.messageId === rvJ.json?.messageId && (await adm.waClientMessage.count({ where: { tenantId: ID_A } })) === nJ + 1, ringkas(rvJ2))
+    await api(A.sesi.maker, 'POST', `${P}/${rvJ.json?.messageId}/cancel`, { alasan: 'Bersihkan revisi uji.' })
 
     // ======================================================================== V
     bagian('[V] Revisi, kedaluwarsa, perubahan freshness & consent — mengikuti service')
     const v1 = await alur(A, 'menunggu')
     await konfirmasi(A, v1.v, A.ctx.maker, 'Konfirmasi pengganti (uji sintetis).')
-    const rv = await api(A.sesi.admin2, 'POST', P, { signalId: v1.s.id, contactId: v1.cid })
+    // Revisi memakai kontrak detail (opsi B): signalIds[0] + contactId dari detail — kontak sama persis, tanpa memilih ulang.
+    const dtV = (await api(A.sesi.admin2, 'GET', `${P}/${v1.mid}`)).json?.data
+    const rv = await api(A.sesi.admin2, 'POST', P, { signalId: dtV?.konteks?.signalIds?.[0], contactId: dtV?.contactId })
+    cek('opsi B: revisi dari detail memakai contactId yang sama persis', dtV?.contactId === v1.cid && dtV?.aksiTersedia?.includes('BUAT_REVISI') && (await pesan(rv.json?.messageId))?.contactId === v1.cid)
     cek('revisi (bukti berubah) → DRAFT_DIBUAT revision 2, revisiDigantikan = lama; lama CANCELED + approval SUPERSEDED', ok(rv, 'DRAFT_DIBUAT') && rv.json.revision === 2 && rv.json.revisiDigantikan === v1.mid && (await pesan(v1.mid)).state === 'CANCELED' && (await approval(v1.aid)).status === 'SUPERSEDED', ringkas(rv))
     cek('keputusan atas approval yang digantikan → SUDAH_DIPUTUSKAN', ok(await api(A.sesi.checker, 'POST', `${P}/approvals/${v1.aid}/approve`, { proposalHash: v1.fp }), 'SUDAH_DIPUTUSKAN'))
     const e1 = await alur(A, 'menunggu')

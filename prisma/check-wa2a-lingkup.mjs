@@ -3,9 +3,9 @@
 // Jalankan: node prisma/check-wa2a-lingkup.mjs   (tanpa DB/jaringan; hanya git + berkas)
 //
 // Lapis:
-//   R. repo nyata — manifest sah, rekaman H kelima fase, blob I-2 = blob tree HEAD & tanpa atribut pengubah isi,
-//      pemindai I-1 tidak hampa (menemukan perujuk modul WA-1 yang diketahui); perujuk WA-2 = 10 route API 2a-G
-//      yang disetujui owner (daftar LITERAL di uji ini, bukan diturunkan dari pemindai atau manifest).
+//   R. repo nyata — manifest sah, rekaman H keenam fase (termasuk G = PR #31), blob I-2 = blob tree HEAD & tanpa atribut
+//      pengubah isi, pemindai I-1 tidak hampa (menemukan perujuk modul WA-1 yang diketahui); perujuk WA-2 = 10 route API
+//      2a-G + 2 halaman UI GUI yang disetujui owner (daftar LITERAL di uji ini, bukan dari pemindai atau manifest).
 //   S. skenario pada CLONE SEMENTARA (git clone --shared ke direktori tmp; repo kerja tidak disentuh):
 //      kontrol positif (P-xx) dan negatif (N-xx) — committed/staged/unstaged/untracked, hapus, rename,
 //      impor langsung/transitif, ref & riwayat hilang, manifest/basis tidak sah, mode fase, pengecualian,
@@ -43,7 +43,7 @@ if (!M) {
   process.exit(1)
 }
 const idFase = Object.keys(M.fase)
-cek('manifest mencatat F1, F2, F3, PR26, F4 dengan 49 berkas', idFase.join() === 'F1,F2,F3,PR26,F4' && idFase.reduce((n, k) => n + M.fase[k].berkas.length, 0) === 49, idFase.map((k) => `${k}:${M.fase[k].berkas.length}`).join(' '))
+cek('manifest mencatat F1, F2, F3, PR26, F4, G dengan 68 berkas (G = PR #31, 19 berkas)', idFase.join() === 'F1,F2,F3,PR26,F4,G' && idFase.reduce((n, k) => n + M.fase[k].berkas.length, 0) === 68, idFase.map((k) => `${k}:${M.fase[k].berkas.length}`).join(' '))
 for (const id of idFase) {
   const h = L.periksaRekaman(AKAR, id, M.fase[id])
   cek(`H ${id}: rekaman lulus pada repo nyata`, h.every((x) => x.ok), h.filter((x) => !x.ok).map((x) => `${x.nama}: ${x.detail}`).join('; '))
@@ -56,30 +56,36 @@ const auto = L.git(AKAR, ['config', '--get', 'core.autocrlf'], { boleh: true })?
 console.log(`  ℹ️  core.autocrlf=${auto ?? '(tidak diset)'} — hash-object menerapkan konversi yang sama dengan git add`)
 const kom = L.perujukTransitif(AKAR, M.i1.akar, 'src/services/communication/').perujuk
 cek('I-1 tidak hampa: pemindai yang sama menemukan perujuk modul WA-1 yang diketahui (route & halaman Komunikasi)', ['src/app/api/automation/communications/candidates/route.ts', 'src/app/(app)/automation/communications/page.tsx', 'src/app/(app)/layout.tsx'].every((f) => kom[f]) && Object.keys(kom).length >= 18, `${Object.keys(kom).length} perujuk transitif WA-1`)
-// X-1 tahap API 2a-G (keputusan owner): TEPAT sepuluh route API; tanpa halaman/komponen UI. Daftar ditulis ulang
-// di sini supaya ekspektasi tidak diambil dari pemindai yang diuji maupun dari manifest yang diperiksa.
+// X-1 2a-G (keputusan owner): sepuluh route API (PR #31, fase G merged) + dua halaman UI fase aktif GUI (OD-20).
+// Komponen client tidak merujuk service. Daftar ditulis ulang di sini supaya ekspektasi tidak diambil dari pemindai
+// yang diuji maupun dari manifest yang diperiksa.
 const R2G = 'src/app/api/automation/client-messages/'
-const DISETUJUI_I1 = ['route.ts', 'candidates/signals/route.ts', 'candidates/contacts/route.ts', '[id]/route.ts', '[id]/history/route.ts', '[id]/preview/route.ts', '[id]/request-approval/route.ts', '[id]/cancel/route.ts', 'approvals/[id]/approve/route.ts', 'approvals/[id]/reject/route.ts'].map((r) => R2G + r).sort()
-const IZIN_G = [...DISETUJUI_I1, 'src/services/whatsapp/wa-message-read.service.ts', 'src/services/whatsapp/wa2-access.ts', 'prisma/check-wa2a-g-static.mjs', 'prisma/check-wa2a-g-api.mjs', 'prisma/check-wa2a-g-prod.mjs', 'prisma/check-wa2a-lingkup.mjs', 'prisma/wa2a-lingkup-manifest.json', 'docs/whatsapp/WA-2a-G-EVIDENCE.md', 'docs/TAH-CURRENT-CHECKPOINT.md'].sort()
-const JANGKAR_G = ['prisma/check-wa2a-g-api.mjs', 'src/services/whatsapp/wa-message-read.service.ts']
+const RUTE_G = ['route.ts', 'candidates/signals/route.ts', 'candidates/contacts/route.ts', '[id]/route.ts', '[id]/history/route.ts', '[id]/preview/route.ts', '[id]/request-approval/route.ts', '[id]/cancel/route.ts', 'approvals/[id]/approve/route.ts', 'approvals/[id]/reject/route.ts'].map((r) => R2G + r).sort()
+const HALAMAN_GUI = ['src/app/(app)/automation/client-messages/page.tsx', 'src/app/(app)/automation/client-messages/[id]/page.tsx']
+const DISETUJUI_I1 = [...RUTE_G, ...HALAMAN_GUI].sort()
+const IZIN_G = [...RUTE_G, 'src/services/whatsapp/wa-message-read.service.ts', 'src/services/whatsapp/wa2-access.ts', 'prisma/check-wa2a-g-static.mjs', 'prisma/check-wa2a-g-api.mjs', 'prisma/check-wa2a-g-prod.mjs', 'prisma/check-wa2a-lingkup.mjs', 'prisma/wa2a-lingkup-manifest.json', 'docs/whatsapp/WA-2a-G-EVIDENCE.md', 'docs/TAH-CURRENT-CHECKPOINT.md'].sort()
+const IZIN_GUI = [...HALAMAN_GUI, 'src/components/automation/ClientMessageList.tsx', 'src/components/automation/ClientMessageWorkspace.tsx', 'src/components/automation/client-message-shared.tsx', 'prisma/check-wa2a-g-ui.mjs', 'prisma/seed-wa2a-g-demo.mjs', 'docs/whatsapp/WA-2a-G-UI-EVIDENCE.md', 'prisma/check-wa2a-g-static.mjs', 'prisma/check-wa2a-lingkup.mjs', 'prisma/wa2a-lingkup-manifest.json', 'docs/TAH-CURRENT-CHECKPOINT.md', 'src/services/whatsapp/wa-message-read.service.ts', 'prisma/check-wa2a-g-api.mjs'].sort()
+const JANGKAR_GUI = ['prisma/check-wa2a-g-ui.mjs', 'src/app/(app)/automation/client-messages/page.tsx']
 const perujukNyata = Object.keys(L.perujukTransitif(AKAR, M.i1.akar, M.i1.sasaran).perujuk).sort()
-cek('I-1 repo nyata: perujuk service WA-2 = PERSIS 10 route API 2a-G yang disetujui (literal; tanpa halaman/komponen)', perujukNyata.join() === DISETUJUI_I1.join() && DISETUJUI_I1.length === 10, perujukNyata.filter((f) => !DISETUJUI_I1.includes(f)).concat(DISETUJUI_I1.filter((f) => !perujukNyata.includes(f)).map((f) => `hilang: ${f}`)).join(', ') || `${perujukNyata.length} perujuk`)
-cek('X-1 manifest: i1.diizinkan = 10 route literal; faseAktif hanya G dengan izin 19 path persis dan jangkar read service + uji API', [...M.i1.diizinkan].sort().join() === DISETUJUI_I1.join() && Object.keys(M.faseAktif).join() === 'G' && [...M.faseAktif.G.izin].sort().join() === IZIN_G.join() && IZIN_G.length === 19 && [...M.faseAktif.G.jangkar].sort().join() === JANGKAR_G.join())
+cek('I-1 repo nyata: perujuk service WA-2 = PERSIS 10 route API 2a-G + 2 halaman GUI (literal; tanpa komponen)', perujukNyata.join() === DISETUJUI_I1.join() && DISETUJUI_I1.length === 12 && !perujukNyata.some((f) => f.startsWith('src/components/')), perujukNyata.filter((f) => !DISETUJUI_I1.includes(f)).concat(DISETUJUI_I1.filter((f) => !perujukNyata.includes(f)).map((f) => `hilang: ${f}`)).join(', ') || `${perujukNyata.length} perujuk`)
+cek('X-1 manifest: i1.diizinkan = 12 path literal; fase.G = 19 berkas IZIN_G; faseAktif hanya GUI dengan izin 14 path persis dan jangkar uji UI + halaman daftar', [...M.i1.diizinkan].sort().join() === DISETUJUI_I1.join() && [...(M.fase.G?.berkas ?? [])].sort().join() === IZIN_G.join() && IZIN_G.length === 19 && Object.keys(M.faseAktif).join() === 'GUI' && [...M.faseAktif.GUI.izin].sort().join() === IZIN_GUI.join() && IZIN_GUI.length === 14 && [...M.faseAktif.GUI.jangkar].sort().join() === [...JANGKAR_GUI].sort().join())
+cek('fase.G (PR #31) tercatat dengan nilai yang disetujui owner', M.fase.G?.pr === 31 && M.fase.G?.merge === 'fa0ad5992bba45967271cf943f12e146a95ed142' && M.fase.G?.basis === '6a064ea585321440d0cf71812465419495f230a8' && M.fase.G?.kepala === 'ec7fc9a72d535c20d1e5a527459c0cda29af0574')
+cek('mode fase: WA2A_FASE=G kini ditolak (fase sudah merged) — tidak bisa dipakai mengklaim lingkup baru', L.periksaModeFase(M, { WA2A_FASE: 'G' }, []).hasil.some((h) => !h.ok && /merged/.test(h.detail)))
 const sp = L.ekstrakSpecifier("// import a from '@/x'\n/* from '@/y' */ const s = \"from '@/z'\"; import b from './b'; export * from '../c'; const d = await import('@/d'); require('e'); import('@/' + n); obj.import('f'); Array.from('g')")
 cek('ekstrakSpecifier: komentar/string biasa diabaikan; from/import()/require literal terbaca; import() non-literal dihitung', sp.spec.join() === './b,../c,@/d,e' && sp.dinamis === 1, `${sp.spec.join()} | dinamis=${sp.dinamis}`)
 
-// Temuan review #1 (PR #29): segmen route dinamis Next.js adalah path LITERAL, bukan glob. Manifest SINTETIS
-// (fase G tidak diaktifkan di manifest produksi).
+// Temuan review #1 (PR #29): segmen route dinamis Next.js adalah path LITERAL, bukan glob. Manifest SINTETIS dengan id
+// fase aktif `SINTETIS` (id G sudah tercatat merged; validasiManifest menolak faseAktif ber-id fase merged).
 const PID = 'src/app/api/automation/client-messages/[id]/route.ts'
-const sintetis = (izin, jangkar, diizinkan) => Object.assign(salin(M), { faseAktif: { G: { izin, jangkar } }, i1: { ...M.i1, diizinkan } })
+const sintetis = (izin, jangkar, diizinkan) => Object.assign(salin(M), { faseAktif: { SINTETIS: { izin, jangkar } }, i1: { ...M.i1, diizinkan } })
 cek('T1: path literal `[id]` dan `[...slug]` diterima di faseAktif.izin/jangkar dan i1.diizinkan (manifest sintetis)', L.validasiManifest(sintetis([PID, 'src/app/x/[...slug]/page.tsx'], [PID], [PID])).length === 0, L.validasiManifest(sintetis([PID], [PID], [PID])).join('; '))
 const TIDAK_AMAN = ['src/app/*/route.ts', 'src/app/?.ts', 'src/app/{a,b}.ts', 'src/app/../x.ts', '../x.ts', './x.ts', '/abs/x.ts', 'src//x.ts', 'src\\x.ts', 'src/x\u0000.ts', '']
 cek('T1: path wildcard / traversal / absolut / segmen kosong / backslash / kontrol tetap ditolak', TIDAK_AMAN.every((p) => L.validasiManifest(sintetis([p], [p], [])).length > 0 && L.validasiManifest(sintetis([PID], [PID], [p])).length > 0), `${TIDAK_AMAN.length} path`)
 {
   const m2 = sintetis([PID], [PID], [])
-  const cocok = L.periksaModeFase(m2, { WA2A_FASE: 'G' }, [PID]).hasil.every((h) => h.ok)
-  const lain = L.periksaModeFase(m2, { WA2A_FASE: 'G' }, ['src/app/api/automation/client-messages/123/route.ts', PID]).hasil
-  const id2 = L.periksaModeFase(m2, { WA2A_FASE: 'G' }, ['src/app/api/automation/client-messages/[id2]/route.ts', PID]).hasil
+  const cocok = L.periksaModeFase(m2, { WA2A_FASE: 'SINTETIS' }, [PID]).hasil.every((h) => h.ok)
+  const lain = L.periksaModeFase(m2, { WA2A_FASE: 'SINTETIS' }, ['src/app/api/automation/client-messages/123/route.ts', PID]).hasil
+  const id2 = L.periksaModeFase(m2, { WA2A_FASE: 'SINTETIS' }, ['src/app/api/automation/client-messages/[id2]/route.ts', PID]).hasil
   cek('T1: `[id]` hanya cocok dengan string persis — `123/route.ts` dan `[id2]/route.ts` di luar allowlist', cocok && lain.some((h) => !h.ok && h.nama.includes('allowlist')) && id2.some((h) => !h.ok && h.nama.includes('allowlist')))
 }
 const awalanBuruk = salin(M)
@@ -368,15 +374,15 @@ try {
   // Path sintetis (bukan route nyata 2a-G) supaya fixture tidak menimpa berkas yang sudah ada.
   const RUTE_ID = 'src/app/api/uji-sintetis/[id]/route.ts'
   const isiRute = "import { samarkanNomor } from '@/services/whatsapp/wa-phone'\nexport const GET = () => Response.json(samarkanNomor(''))\n"
-  const mG = () => Object.assign(salin(M), { faseAktif: { G: { izin: [RUTE_ID], jangkar: [RUTE_ID] } }, i1: { ...M.i1, diizinkan: [...DISETUJUI_I1, RUTE_ID] } })
-  skenario('P-10', 'T1: berkas route literal `[id]` + manifest sintetis (faseAktif.G, i1.diizinkan) → semua lapis lulus', () => {
+  const mG = () => Object.assign(salin(M), { faseAktif: { SINTETIS: { izin: [RUTE_ID], jangkar: [RUTE_ID] } }, i1: { ...M.i1, diizinkan: [...DISETUJUI_I1, RUTE_ID] } })
+  skenario('P-10', 'T1: berkas route literal `[id]` + manifest sintetis (faseAktif.SINTETIS, i1.diizinkan) → semua lapis lulus', () => {
     tulis(RUTE_ID, isiRute)
-    const r = nilai({ WA2A_FASE: 'G' }, mG())
+    const r = nilai({ WA2A_FASE: 'SINTETIS' }, mG())
     return [semuaOk(r) && r.perubahan.semua.join() === RUTE_ID, ringkas(r)]
   })
   skenario('N-24', 'T1: route `abc/route.ts` dengan manifest `[id]` → allowlist, jangkar, dan I-1 gagal (`[id]` bukan wildcard)', () => {
     tulis('src/app/api/uji-sintetis/abc/route.ts', isiRute)
-    const r = nilai({ WA2A_FASE: 'G' }, mG())
+    const r = nilai({ WA2A_FASE: 'SINTETIS' }, mG())
     return [gagalPada(r, 'allowlist') && gagalPada(r, 'jangkar') && gagalPada(r, 'I-1'), ringkas(r)]
   })
   const siklus = (urutanA, nama = ['a', 'b']) => {
