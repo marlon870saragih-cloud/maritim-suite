@@ -17,6 +17,7 @@ import { catatAudit } from '../finance/audit'
 import { gerbangWa2 } from './wa2-gate'
 import { denganUlangWa2 } from './wa-db-error'
 import { kunciConsent, kunciKontak, tahanPesanTertunda, type TxMentah } from './wa-lock'
+import { hentikanApprovalPesanDitahan } from './wa-approval-stop'
 import { sidikBukti } from './wa-contact.service'
 import { KANAL_CONSENT, KANAL_REOPTIN_SAH, TUJUAN_CONSENT } from './wa2-policy'
 
@@ -98,6 +99,7 @@ export async function catatOptOut(ctx: TenantContext, contactId: unknown, input:
       const s = await kunciConsent(tx as unknown as TxMentah, ctx.tenantId, id, TUJUAN)
       if (s.status === 'OPT_OUT') {
         // Idempoten tanpa event baru — tetap tahan pesan tertunda sebagai pertahanan berlapis.
+        await hentikanApprovalPesanDitahan(ctx, tx, { contactId: id }, 'CONSENT_NOT_GRANTED')
         const pesanDitahan = await tahanPesanTertunda(tx as unknown as TxMentah, ctx.tenantId, id, 'CONSENT_NOT_GRANTED')
         return { hasil: 'SUDAH_OPT_OUT' as const, status: 'OPT_OUT' as const, version: s.version, eventId: null, pesanDitahan }
       }
@@ -107,6 +109,7 @@ export async function catatOptOut(ctx: TenantContext, contactId: unknown, input:
       })
       const n = await tx.waConsentState.updateMany({ where: { id: s.id, version: s.version }, data: { status: 'OPT_OUT', lastEventId: ev.id, version: { increment: 1 } } })
       if (n.count !== 1) throw new Error('WA2C_CONSENT_VERSION_LOST')
+      await hentikanApprovalPesanDitahan(ctx, tx, { contactId: id }, 'CONSENT_NOT_GRANTED')
       const pesanDitahan = await tahanPesanTertunda(tx as unknown as TxMentah, ctx.tenantId, id, 'CONSENT_NOT_GRANTED')
       await catatAudit(ctx, { tableName: TABEL, recordId: s.id, action: 'UPDATE', oldValue: { status: s.status, version: s.version }, newValue: { peristiwa: 'WA2_CONSENT_OPT_OUT', contactId: id, kanal, eventId: ev.id, sidikBukti: sidikBukti(bukti), pesanDitahan } }, {}, tx)
       return { hasil: 'DICATAT' as const, status: 'OPT_OUT' as const, version: s.version + 1, eventId: ev.id, pesanDitahan }

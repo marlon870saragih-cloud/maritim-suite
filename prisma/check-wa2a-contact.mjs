@@ -129,8 +129,23 @@ const diffSesuaiF3 = (f) => {
   const tambah = d.filter((l) => l.startsWith('+')).map((l) => l.slice(1).trim())
   return hapus.join('\n') === a.hapus.join('\n') && tambah.length > 0 && tambah.every(a.tambah)
 }
-cek('tidak ada perubahan WA-1 / TAH / Validator V3 / schema / migrasi (kecuali baris F3 yang disetujui persis)', [...berubah, ...baru].every((f) => !BEKU.some((r) => r.test(f)) || diffSesuaiF3(f)), [...berubah, ...baru].filter((f) => BEKU.some((r) => r.test(f))).join(', ') || '(tanpa berkas beku)')
-cek('pengecualian F3 tidak dipakai untuk berkas beku lain', [...berubah, ...baru].filter((f) => BEKU.some((r) => r.test(f))).every((f) => f in BARIS_F3))
+// WA-2a Step 2F F4 — pengecualian E5 yang DISETUJUI owner: per berkas & per BARIS PERSIS (tanpa trim, tanpa wildcard).
+//   check-comm-policy.mjs: asersi pembuat TahApprovalRequest = WA-1 + service approval WA-2 (E1);
+//   wa-contact/wa-consent.service.ts (K3): impor + panggilan hentikanApprovalPesanDitahan sebelum tahanPesanTertunda.
+const BARIS_F4 = {
+  "prisma/check-comm-policy.mjs": {
+    hapus: ["  cek('Step 2D R1: SATU-SATUNYA pembuat TahApprovalRequest = service approval WA (tanpa jalur NULL-TTL umum)', pembuatApproval.join() === 'src/services/communication/communication-approval.service.ts', pembuatApproval.join())"],
+    tambah: ["  // WA-2a Step 2F F4 (pengecualian E1 disetujui owner): + TEPAT satu pembuat WA-2 ber-TTL (CLIENT_WA_UPDATE) — bukan wildcard.", "  cek('Step 2D R1: pembuat TahApprovalRequest = PERSIS service approval WA-1 + service approval pesan klien WA-2 (F4)', pembuatApproval.sort().join() === ['src/services/communication/communication-approval.service.ts', 'src/services/whatsapp/wa-message-approval.service.ts'].join(), pembuatApproval.join())"],
+  },
+}
+const diffSesuaiF4 = (f) => {
+  const a = Object.hasOwn(BARIS_F4, f) ? BARIS_F4[f] : null
+  if (!a || baru.includes(f)) return false
+  const isi = execFileSync('git', ['diff', '--no-renames', '-U0', 'main', '--', f], { cwd: AKAR, encoding: 'utf8' }).split('\n').filter((l) => /^[-+]/.test(l) && !/^(---|\+\+\+) (a\/|b\/|\/dev\/null)/.test(l))
+  return isi.filter((l) => l.startsWith('-')).map((l) => l.slice(1)).join('\n') === a.hapus.join('\n') && isi.filter((l) => l.startsWith('+')).map((l) => l.slice(1)).join('\n') === a.tambah.join('\n')
+}
+cek('tidak ada perubahan WA-1 / TAH / Validator V3 / schema / migrasi (kecuali baris F3/F4 yang disetujui persis)', [...berubah, ...baru].every((f) => !BEKU.some((r) => r.test(f)) || diffSesuaiF3(f) || diffSesuaiF4(f)), [...berubah, ...baru].filter((f) => BEKU.some((r) => r.test(f))).join(', ') || '(tanpa berkas beku)')
+cek('pengecualian F3/F4 tidak dipakai untuk berkas beku lain', [...berubah, ...baru].filter((f) => BEKU.some((r) => r.test(f))).every((f) => f in BARIS_F3 || f in BARIS_F4))
 
 console.log(`\n${gagal === 0 ? '✅ SEMUA LULUS' : '❌ ADA YANG GAGAL'} — lulus ${lulus}, gagal ${gagal}`)
 process.exit(gagal === 0 ? 0 : 1)

@@ -243,6 +243,19 @@ const BOLEH = new Set([
   'docs/whatsapp/WA-2a-F3-EVIDENCE.md',
   // Perbaikan uji 2B (Stage A F4, PR terpisah) — path persis, tanpa wildcard.
   'prisma/check-wa2a-schema.mjs',
+  // F4 (pengecualian E4 disetujui owner) — path persis, tanpa wildcard.
+  'src/services/whatsapp/wa-message-approval.service.ts',
+  'src/services/whatsapp/wa-approval-stop.ts',
+  'src/services/whatsapp/wa-message-check.ts',
+  'src/services/whatsapp/wa-contact.service.ts',
+  'src/services/whatsapp/wa-consent.service.ts',
+  'src/services/whatsapp/wa-grant.service.ts',
+  'src/services/ops/voyage-event.service.ts',
+  'prisma/check-wa2a-approval-f4.mjs',
+  'prisma/check-wa2a-approval-f4-db.mjs',
+  'docs/whatsapp/WA-2a-F4-EVIDENCE.md',
+  // F4 perbaikan pra-merge #2 — uji HTTP route VoyageEvent (path persis).
+  'prisma/check-voyage-event-api.mjs',
 ])
 const semua = [...new Set([...berubah, ...baru])]
 cek('hanya berkas F1 (+ berkas F2/F3 yang disetujui) yang berubah/baru', semua.every((f) => BOLEH.has(f)), semua.join(', ') || '(bersih)')

@@ -164,7 +164,13 @@ const BEKU = [/^src\/services\/communication\//, /^src\/services\/tah\//, /^src\
 //   { hapus: ['baris lama persis', …], tambah: ['baris baru persis', …] }
 // Diff -U0 berkas terhadap basis harus SAMA PERSIS dengan entri (isi & urutan, tanpa trim). Berkas beku
 // untracked tidak pernah dikecualikan. Selain itu → ditolak.
-const BARIS_2B = {}
+// F4 (pengecualian E7 disetujui owner): asersi pembuat TahApprovalRequest (E1) — baris persis.
+const BARIS_2B = {
+  "prisma/check-comm-policy.mjs": {
+    hapus: ["  cek('Step 2D R1: SATU-SATUNYA pembuat TahApprovalRequest = service approval WA (tanpa jalur NULL-TTL umum)', pembuatApproval.join() === 'src/services/communication/communication-approval.service.ts', pembuatApproval.join())"],
+    tambah: ["  // WA-2a Step 2F F4 (pengecualian E1 disetujui owner): + TEPAT satu pembuat WA-2 ber-TTL (CLIENT_WA_UPDATE) — bukan wildcard.", "  cek('Step 2D R1: pembuat TahApprovalRequest = PERSIS service approval WA-1 + service approval pesan klien WA-2 (F4)', pembuatApproval.sort().join() === ['src/services/communication/communication-approval.service.ts', 'src/services/whatsapp/wa-message-approval.service.ts'].join(), pembuatApproval.join())"],
+  },
+}
 const diffSesuai2B = (f) => {
   const a = Object.hasOwn(BARIS_2B, f) ? BARIS_2B[f] : null
   if (!a || !BASIS || baru.includes(f) || a.hapus.length + a.tambah.length === 0) return false

@@ -19,6 +19,7 @@ import { gerbangWa2 } from './wa2-gate'
 import { normalisasiE164, samarkanNomor } from './wa-phone'
 import { adalahUnikNomorAktif, denganUlangWa2 } from './wa-db-error'
 import { cabutGrantAktif, kunciKontak, tahanPesanTertunda, type TxMentah } from './wa-lock'
+import { hentikanApprovalPesanDitahan } from './wa-approval-stop'
 import {
   ALASAN_CABUT_VERIFIKASI,
   BAHASA_KONTAK,
@@ -178,6 +179,7 @@ export async function cabutVerifikasi(ctx: TenantContext, contactId: unknown, in
         if (n.count !== 1) throw conflict('Kontak berubah bersamaan. Coba lagi.', { code: 'CONCURRENCY_CONFLICT' })
       }
       const grantDicabut = await cabutGrantAktif(tx as unknown as TxMentah, ctx.tenantId, id, ctx.userId, `VERIFICATION_REVOKED:${alasan}`)
+      await hentikanApprovalPesanDitahan(ctx, tx, { contactId: id }, 'CONTACT_INELIGIBLE')
       const pesanDitahan = await tahanPesanTertunda(tx as unknown as TxMentah, ctx.tenantId, id, 'CONTACT_INELIGIBLE')
       await catatAudit(ctx, { tableName: TABEL, recordId: id, action: 'UPDATE', oldValue: { verificationStatus: k.verificationStatus }, newValue: { peristiwa: 'WA2_VERIFIKASI_DICABUT', alasan, sidikCatatan: sidikBukti(catatan), grantDicabut, pesanDitahan } }, {}, tx)
       return { hasil: masihTerverifikasi || grantDicabut.length || pesanDitahan.length ? ('DICABUT' as const) : ('SUDAH_TIDAK_BERLAKU' as const), grantDicabut, pesanDitahan }
@@ -204,6 +206,7 @@ export async function nonaktifkanKontak(ctx: TenantContext, contactId: unknown, 
       })
       if (n.count !== 1) throw conflict('Kontak berubah bersamaan. Coba lagi.', { code: 'CONCURRENCY_CONFLICT' })
       const grantDicabut = await cabutGrantAktif(tx as unknown as TxMentah, ctx.tenantId, id, ctx.userId, 'CONTACT_DEACTIVATED')
+      await hentikanApprovalPesanDitahan(ctx, tx, { contactId: id }, 'CONTACT_INELIGIBLE')
       const pesanDitahan = await tahanPesanTertunda(tx as unknown as TxMentah, ctx.tenantId, id, 'CONTACT_INELIGIBLE')
       await catatAudit(ctx, { tableName: TABEL, recordId: id, action: 'UPDATE', oldValue: { status: 'ACTIVE' }, newValue: { peristiwa: 'WA2_KONTAK_DINONAKTIFKAN', nomor: samarkanNomor(k.e164), sidikAlasan: sidikBukti(alasan), grantDicabut, pesanDitahan } }, {}, tx)
       return { hasil: 'DICABUT' as const, grantDicabut, pesanDitahan }
