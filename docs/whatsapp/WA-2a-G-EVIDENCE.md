@@ -5,10 +5,48 @@
 | Status | **PR API siap direview — BELUM di-merge.** Merge memerlukan persetujuan owner terpisah |
 | Persetujuan | Owner 16 Oktober 2026: implementasi tahap API 2a-G (T1–T2) dalam **19 path persis**, pengecualian gate X-1, adaptasi uji helper gate. UI, Send, provider, webhook, LLM, dependency, deploy, flag di lingkungan nyata, DB nyata: **tidak diizinkan** dan tidak disentuh |
 | Basis | `main` @ `6a064ea585321440d0cf71812465419495f230a8` (merge PR #30), branch `feat/wa2a-g-api` |
-| **HEAD kode yang diuji** | `4d6f99528a1ef3a7f1f98808333df8f3a3f9288f` |
-| Commit sesudah HEAD uji | Hanya dokumentasi: berkas ini dan `docs/TAH-CURRENT-CHECKPOINT.md` (diverifikasi `git diff --name-only 4d6f995 HEAD`, dicatat di PR) |
+| **HEAD kode yang diuji — revisi 1 (terbaru)** | `ba617baa4d429f8ba031287bdfddf92d04462570` — perbaikan kandidat sinyal (§0) |
+| HEAD kode yang diuji — putaran awal (historis) | `4d6f99528a1ef3a7f1f98808333df8f3a3f9288f` — hasil §4–§7 berasal dari HEAD ini dan **tidak diklaim ulang** kecuali yang dijalankan lagi di §0 |
+| Commit sesudah HEAD uji | Hanya dokumentasi: berkas ini dan `docs/TAH-CURRENT-CHECKPOINT.md` (diverifikasi `git diff --name-only ba617ba HEAD`, dicatat di PR) |
 | Cakupan | Read service + 10 berkas route (11 metode-path) di `/api/automation/client-messages` di atas service F3/F4. Berhenti di **APPROVED**; tidak ada Send |
 | Produksi | Tidak disentuh. Mode produksi hanya diuji **lokal** (`next start` loopback, DB sekali pakai) |
+
+## 0. Revisi 1 — temuan kandidat sinyal (`reviewState`)
+
+**Temuan.** `kandidatSinyalPesanKlien` menyaring jenis kejadian (`klasifikasiSinyal`, `kategoriWajibUntuk`) tetapi tidak `reviewState`. Sinyal `DISMISSED`/`EXPIRED` ikut tampil, padahal Prepare (D-13, `kelayakanSinyal`) hanya menerima `OPEN`/`ACKNOWLEDGED` — kandidat itu pasti ditolak saat draft. Karena penyaringan terjadi sesudah query yang dibatasi `take × 5`, sinyal tidak layak juga memakan jendela pemindaian dan dapat menutupi kandidat layak yang lebih lama.
+
+**Perbaikan (`ba617ba`, hanya `wa-message-read.service.ts`).** Konstanta `STATUS_SINYAL_LAYAK = ['OPEN', 'ACKNOWLEDGED']` dan `where: { reviewState: { in: [...] }, ...(voyageId ? { voyageId } : {}) }` pada query, sebelum `take`. Filter tenant (`forTenant`), voyage, klasifikasi kejadian, urutan `detectedAt desc, id desc`, dan batas `min(take × 5, 250)` tidak berubah. Konstanta didefinisikan lokal karena bridge beku tidak mengekspor `kelayakanSinyal`; kesetaraannya dikunci uji statis atas fungsi WA-1 asli. Status sinyal tetap **petunjuk**: `buatDraftPesanKlien` menilai ulang seluruh prasyarat, termasuk kelayakan grup. Kebijakan Prepare, bridge, service F3/F4, schema, dan berkas beku tidak diubah.
+
+**Uji baru** (`c3696d0`, di-commit sebelum perbaikan):
+- `check-wa2a-g-api.mjs` bagian `[S]` (12 asersi). Setiap sinyal memakai voyage dan sumber (grup) sendiri. Kasus:
+  - OPEN/ACKNOWLEDGED muncul; DISMISSED/EXPIRED tidak; `reviewState` dibawa apa adanya.
+  - Status layak dengan jenis tak didukung (`DATA_STALE` OPEN, `VOYAGE_STATUS_CHANGED` ACKNOWLEDGED) tetap tersaring.
+  - Filter voyage.
+  - Jendela di tenant B: 1 sinyal OPEN berumur 10 hari + **7** sinyal DISMISSED/EXPIRED lebih baru, `take=1` (jendela lama = 5 baris).
+  - Urutan stabil; isolasi tenant dua arah; voyage tenant B lewat sesi A → kosong.
+  - Kandidat OPEN lalu diubah menjadi DISMISSED/EXPIRED → POST draft 400 `SOURCE_INVALID` dengan `sumber` = `SIGNAL_DISMISSED`/`SIGNAL_EXPIRED`, 0 pesan baru, kandidat hilang.
+  - Kandidat ACKNOWLEDGED → draft dinilai ulang dan berhasil.
+- `check-wa2a-g-static.mjs` (+3): filter status ada di `where` sebelum `take`; filter lain tetap; `STATUS_SINYAL_LAYAK` = PERSIS status yang lolos `kelayakanSinyal` (fungsi asli, termasuk status tak dikenal dan kosong).
+
+**Sebelum / sesudah** — clone bersih, HEAD diverifikasi, tree bersih sebelum dan sesudah, PostgreSQL 16 loopback sekali pakai, `next dev` loopback dengan perangkap egress:
+
+| Uji | Kode lama (HEAD `c3696d0` = uji baru + `src` identik `03dfb1b`) | Sesudah perbaikan (HEAD `ba617ba`) |
+|---|---|---|
+| `check-wa2a-g-static` (`WA2A_FASE=G WA2A_BUKTI=1`) | 128/3, exit 1 | **131/0**, exit 0 |
+| `check-wa2a-g-api` aktif | 98/6, exit 1 — DISMISSED/EXPIRED muncul; filter voyage; `take=1` mengembalikan sinyal DISMISSED terbaru; urutan/tak-layak di B; dua kasus "kandidat hilang" (service draft **sudah** menolak dengan benar pada kode lama) | **104/0**, exit 0 |
+| `check-wa2a-g-api` flag-mati | — | 22/0, exit 0 |
+| Helper `check-wa2a-lingkup` | — | 66/0, exit 0 |
+| Gate scope F1 · F2 · F3 · F4 · 2C · 2E (statis, `WA2A_FASE=G WA2A_BUKTI=1`) | — | 102/0 · 63/0 · 68/0 · 72/0 · 39/0 · 38/0, semua exit 0 |
+| `tsc --noEmit` · `next lint` | — | bersih · bersih (1 warning lama `ReceiptForm.tsx`), exit 0 · 0 |
+| Egress | — | `BLOCKED` = 0 di log kedua server; proses uji 0 egress |
+
+Baris bukti helper: `HEAD=ba617baa4d429f8ba031287bdfddf92d04462570 basis=6a064ea… origin/main=6a064ea… helper=0b12116a… manifest=a7adf0d2…` (helper dan manifest tidak berubah pada revisi ini).
+
+**Mutasi "setengah perbaikan"** (status disaring di loop **sesudah** query; clone terpisah, dikembalikan): `check-wa2a-g-api` 103/1 — hanya kasus jendela yang gagal (`take=1` → `[]`, sinyal layak lama tertutup 7 sinyal tidak layak); statis 126/2 (filter tidak di query). Ini membuktikan jumlah fixture cukup untuk menangkap efek penutupan jendela.
+
+**Tidak dijalankan ulang pada revisi ini** (hasil di §4 tetap historis dari `4d6f995`): uji DB F3/F4/2C/2E/2B, WA-1 policy/schema/DB/HTTP, TAH, V3, automation, intake, tenant-guard, validator-remediasi, `next build`, dan `check-wa2a-g-prod`. Alasannya: revisi hanya mengubah query baca kandidat sinyal (tanpa tulis, gerbang, route, atau modul lain), dan uji yang terdampak — static, API dev, flag-mati, gate scope, tsc, lint — sudah dijalankan ulang di atas.
+
+**Keterbatasan yang masih berlaku:** jendela pemindaian tetap `min(take × 5, 250)` baris terbaru. Sinyal berstatus layak tetapi jenis kejadiannya tidak didukung (mis. `DATA_STALE`) masih dapat memakan jendela dan menutupi kandidat layak yang lebih lama. Perubahan pagination/desain kandidat sengaja tidak dilakukan.
 
 ## 1. Berkas (17 berkas kode/uji + 2 dokumen = 19 path disetujui)
 
@@ -145,7 +183,7 @@ Cabang lain yang diuji lewat HTTP: tolak (catatan wajib 3–1000 → 400 `DECISI
 - **Merge PR API** — keputusan owner terpisah.
 - **UI 2a-G** belum dimulai. `contactId` tidak ada di detail (allowlist §6.7); revisi dari layar detail perlu kontak dipilih ulang lewat `candidates/contacts`, atau owner menambah `contactId` ke allowlist.
 - **Uji HTTP berjalan di `next dev`** untuk alur bisnis; produksi lokal hanya membuktikan penolakan. Tidak ada CI/check-run di repo ini; tidak ada klaim "CI hijau".
-- **Kandidat sinyal** memindai ≤ 250 sinyal terbaru (take × 5) lalu menyaring; sinyal layak yang lebih tua dari jendela itu tidak tampil (hanya petunjuk; draft tetap menilai). Tanpa indeks/migrasi baru.
+- **Kandidat sinyal** (sesudah revisi 1): status OPEN/ACKNOWLEDGED disaring di query; jendela tetap ≤ 250 sinyal terbaru (take × 5). Sinyal berstatus layak tetapi jenis tak didukung masih dapat memakan jendela dan menutupi kandidat layak yang lebih lama. Hanya petunjuk; draft tetap menilai ulang. Tanpa indeks/migrasi baru.
 - **Kandidat kontak** menilai ≤ 200 kontak ACTIVE per permintaan.
 - **Entri manifest H untuk PR #29/#30/2a-G** belum ditambahkan (tidak ada di 19 path); dicatat untuk PR kode berikutnya bila diperlukan.
 - `check-validator-remediasi` 61/9 tetap baseline historis; tidak diperbaiki.
