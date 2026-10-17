@@ -385,9 +385,17 @@ try {
     const fS = await pesanFixture(A, 'menunggu')
     const { p: pS } = await bukaDetail(cxK, fS.mid)
     await AP.setujuiPesanKlien(A.ctx.checker2, { approvalRequestId: fS.aid, proposalHash: fS.fp })
+    const aS0 = await adm.tahApprovalRequest.findFirst({ where: { id: fS.aid } })
+    const postSetujuiS = () => jaringan.filter((r) => r.metode === 'POST' && new URL(r.url).pathname === `${API}/approvals/${fS.aid}/approve`).length
+    const postSebelumS = postSetujuiS()
     await klikAksi(pS, 'SETUJUI')
     await tungguHasil(pS)
-    cek('approval sudah diputuskan pengguna lain → "sudah diputuskan" ditampilkan; data dimuat ulang (APPROVED)', /sudah diputuskan/i.test(await teks(pS, '[data-testid="hasil-aksi"]')) && (await pS.locator(`${PANEL}[data-state="APPROVED"]`).count()) === 1)
+    // Teks hasil tampil SEBELUM muat ulang selesai (setHasil lalu await load()), dan 'networkidle' adalah event sekali per
+    // navigasi (bisa sudah lewat sebelum klik) — tunggu KONDISI panel APPROVED dengan batas waktu eksplisit, bukan jeda tetap.
+    const panelSegar = await pS.locator(`${PANEL}[data-state="APPROVED"]`).waitFor({ timeout: 30000 }).then(() => true, () => false)
+    cek('approval sudah diputuskan pengguna lain → "sudah diputuskan" ditampilkan; data dimuat ulang (APPROVED)', /sudah diputuskan/i.test(await teks(pS, '[data-testid="hasil-aksi"]')) && panelSegar && (await pS.locator(`${PANEL}[data-state="APPROVED"]`).count()) === 1)
+    const aS1 = await adm.tahApprovalRequest.findFirst({ where: { id: fS.aid } })
+    cek('klik pada approval yang sudah diputuskan: TEPAT 1 POST, tanpa mutasi kedua (versi, status, pemutus = checker lain tetap)', postSetujuiS() - postSebelumS === 1 && aS1.version === aS0.version && aS1.status === 'APPROVED' && aS1.decidedByUserId === A.ctx.checker2.userId, `${postSetujuiS() - postSebelumS} POST; versi ${aS0.version}→${aS1.version}`)
     const fU = await pesanFixture(A, 'pratinjau')
     const { p: pU } = await bukaDetail(cxP, fU.mid)
     let dicegat = 0
