@@ -2,7 +2,7 @@
 //
 // Jalankan: node prisma/check-wa2a-g-static.mjs   (tanpa DB; HTTP: check-wa2a-g-api.mjs, produksi: check-wa2a-g-prod.mjs,
 //           peramban: check-wa2a-g-ui.mjs)
-//           WA2A_FASE=GUI WA2A_BUKTI=1 node prisma/check-wa2a-g-static.mjs   (bukti lingkup PR UI, tree bersih)
+//           WA2A_BUKTI=1 node prisma/check-wa2a-g-static.mjs   (mode bawaan; fase GUI sudah merged, WA2A_FASE=GUI ditolak)
 //
 // Lapis:
 //   R. route — PERSIS 10 berkas & metode yang disetujui; tipis (withTenant, tanpa tenantId/prisma/forTenant/env/
@@ -13,8 +13,8 @@
 //   N. tanpa Send — tidak ada route kirim, successKey, provider, webhook.
 //   U. UI — 2 halaman (pagar sesi + bolehAksesWa2 → notFound), 3 komponen client tanpa impor service, fetch hanya ke API
 //      pesan klien, tombol dari aksiTersedia, revisi memakai contactId detail, label BELUM DIKIRIM, tanpa Send/Sidebar.
-//   L. lingkup (prisma/wa2a-lingkup.mjs) — I/H/P + fase.G (PR #31) + faseAktif.GUI PERSIS (literal di sini, independen
-//      dari manifest).
+//   L. lingkup (prisma/wa2a-lingkup.mjs) — I/H/P + fase.G (PR #31) + fase.GUI (PR #33) PERSIS (literal di sini, independen
+//      dari manifest); faseAktif kosong.
 
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
@@ -304,7 +304,7 @@ const diffShell = bL?.ok ? execFileSync('git', ['diff', '--name-only', bL.sha, '
 cek('Sidebar, layout (app), dan halaman Automation Hub tidak berubah terhadap basis', diffShell === '', diffShell)
 
 // ============================================================================ L
-bagian('[L] Lingkup (prisma/wa2a-lingkup.mjs) — I/H/P + fase.G + faseAktif.GUI')
+bagian('[L] Lingkup (prisma/wa2a-lingkup.mjs) — I/H/P + fase.G + fase.GUI (merged)')
 const L = lapisLingkup(AKAR, { fase: [], env: process.env })
 for (const i of L.info) console.log(`  ℹ️  ${i}`)
 for (const h of L.hasil) cek(h.nama, h.ok, h.detail)
@@ -313,7 +313,10 @@ cek('manifest i1.diizinkan = PERSIS 10 route + 2 halaman (literal); tanpa kompon
 cek('fase.G (PR #31) tercatat: 19 berkas = allowlist API literal; merge/basis/kepala sesuai', JSON.stringify(m?.fase?.G?.berkas ?? []) === JSON.stringify(IZIN_G) && m?.fase?.G?.pr === 31 && m.fase.G.merge === 'fa0ad5992bba45967271cf943f12e146a95ed142' && m.fase.G.basis === '6a064ea585321440d0cf71812465419495f230a8' && m.fase.G.kepala === 'ec7fc9a72d535c20d1e5a527459c0cda29af0574')
 const hG = m ? periksaRekaman(AKAR, 'G', m.fase.G) : []
 cek('H G: induk merge, tree, dan diff basis→kepala diverifikasi dari git', hG.length === 3 && hG.every((h) => h.ok), hG.filter((h) => !h.ok).map((h) => h.nama).join('; '))
-cek('faseAktif hanya GUI; izin PERSIS 14 path literal; jangkar = uji UI + halaman daftar', Object.keys(m?.faseAktif ?? {}).join() === 'GUI' && JSON.stringify(m.faseAktif.GUI.izin) === JSON.stringify(IZIN_GUI) && IZIN_GUI.length === 14 && JSON.stringify([...m.faseAktif.GUI.jangkar].sort()) === JSON.stringify(JANGKAR_GUI))
+cek('fase.GUI (PR #33) tercatat: 14 berkas = allowlist UI literal (memuat kedua jangkar lama); merge/basis/kepala sesuai', JSON.stringify(m?.fase?.GUI?.berkas ?? []) === JSON.stringify(IZIN_GUI) && IZIN_GUI.length === 14 && JANGKAR_GUI.every((p) => m.fase.GUI.berkas.includes(p)) && m.fase.GUI.pr === 33 && m.fase.GUI.merge === '93fb95e30835817c3e7b9ee5d0294795282e821f' && m.fase.GUI.basis === 'c1003d5fe01bac21acce30a8dffebc5061cbe468' && m.fase.GUI.kepala === '5b775e4375d7dad8a7b7b570f69d1e6ac6439e23')
+const hGUI = m?.fase?.GUI ? periksaRekaman(AKAR, 'GUI', m.fase.GUI) : []
+cek('H GUI: induk merge, tree, dan diff basis→kepala diverifikasi dari git', hGUI.length === 3 && hGUI.every((h) => h.ok), hGUI.filter((h) => !h.ok).map((h) => `${h.nama}: ${h.detail}`).join('; '))
+cek('faseAktif kosong — tidak ada fase aktif yang dapat diklaim', Object.keys(m?.faseAktif ?? {}).length === 0)
 
 console.log(`\n${gagal === 0 ? '✅ SEMUA LULUS' : '❌ ADA YANG GAGAL'} — lulus ${lulus}, gagal ${gagal}`)
 process.exit(gagal === 0 ? 0 : 1)

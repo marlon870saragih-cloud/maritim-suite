@@ -117,11 +117,13 @@
         "src/services/whatsapp/wa-message-read.service.ts",
         "src/services/whatsapp/wa2-access.ts"
       ]
-    }
-  },
-  "faseAktif": {
+    },
     "GUI": {
-      "izin": [
+      "pr": 33,
+      "merge": "93fb95e30835817c3e7b9ee5d0294795282e821f",
+      "basis": "c1003d5fe01bac21acce30a8dffebc5061cbe468",
+      "kepala": "5b775e4375d7dad8a7b7b570f69d1e6ac6439e23",
+      "berkas": [
         "docs/TAH-CURRENT-CHECKPOINT.md",
         "docs/whatsapp/WA-2a-G-UI-EVIDENCE.md",
         "prisma/check-wa2a-g-api.mjs",
@@ -136,13 +138,10 @@
         "src/components/automation/ClientMessageWorkspace.tsx",
         "src/components/automation/client-message-shared.tsx",
         "src/services/whatsapp/wa-message-read.service.ts"
-      ],
-      "jangkar": [
-        "prisma/check-wa2a-g-ui.mjs",
-        "src/app/(app)/automation/client-messages/page.tsx"
       ]
     }
   },
+  "faseAktif": {},
   "i1": {
     "akar": [
       "src/app",
@@ -265,6 +264,11 @@
       "basis": "c1003d5fe01bac21acce30a8dffebc5061cbe468",
       "path": "prisma/check-wa2a-lingkup.mjs",
       "blob": "d6cdbd04e69e4aa19d0714e3c5d19c1e2453ae41"
+    },
+    {
+      "basis": "c787078233f9f4da721ededfe9b67800aeaa12ca",
+      "path": "prisma/check-wa2a-lingkup.mjs",
+      "blob": "fe545789fcb1193bc00ea4a03a75c21bd632b53d"
     }
   ]
 }

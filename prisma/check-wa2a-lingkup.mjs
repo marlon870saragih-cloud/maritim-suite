@@ -43,7 +43,7 @@ if (!M) {
   process.exit(1)
 }
 const idFase = Object.keys(M.fase)
-cek('manifest mencatat F1, F2, F3, PR26, F4, G dengan 68 berkas (G = PR #31, 19 berkas)', idFase.join() === 'F1,F2,F3,PR26,F4,G' && idFase.reduce((n, k) => n + M.fase[k].berkas.length, 0) === 68, idFase.map((k) => `${k}:${M.fase[k].berkas.length}`).join(' '))
+cek('manifest mencatat F1, F2, F3, PR26, F4, G, GUI dengan 82 berkas (G = PR #31, 19 berkas; GUI = PR #33, 14 berkas)', idFase.join() === 'F1,F2,F3,PR26,F4,G,GUI' && idFase.reduce((n, k) => n + M.fase[k].berkas.length, 0) === 82, idFase.map((k) => `${k}:${M.fase[k].berkas.length}`).join(' '))
 for (const id of idFase) {
   const h = L.periksaRekaman(AKAR, id, M.fase[id])
   cek(`H ${id}: rekaman lulus pada repo nyata`, h.every((x) => x.ok), h.filter((x) => !x.ok).map((x) => `${x.nama}: ${x.detail}`).join('; '))
@@ -56,7 +56,7 @@ const auto = L.git(AKAR, ['config', '--get', 'core.autocrlf'], { boleh: true })?
 console.log(`  ℹ️  core.autocrlf=${auto ?? '(tidak diset)'} — hash-object menerapkan konversi yang sama dengan git add`)
 const kom = L.perujukTransitif(AKAR, M.i1.akar, 'src/services/communication/').perujuk
 cek('I-1 tidak hampa: pemindai yang sama menemukan perujuk modul WA-1 yang diketahui (route & halaman Komunikasi)', ['src/app/api/automation/communications/candidates/route.ts', 'src/app/(app)/automation/communications/page.tsx', 'src/app/(app)/layout.tsx'].every((f) => kom[f]) && Object.keys(kom).length >= 18, `${Object.keys(kom).length} perujuk transitif WA-1`)
-// X-1 2a-G (keputusan owner): sepuluh route API (PR #31, fase G merged) + dua halaman UI fase aktif GUI (OD-20).
+// X-1 2a-G (keputusan owner): sepuluh route API (PR #31, fase G merged) + dua halaman UI (PR #33, fase GUI merged; OD-20/OD-21).
 // Komponen client tidak merujuk service. Daftar ditulis ulang di sini supaya ekspektasi tidak diambil dari pemindai
 // yang diuji maupun dari manifest yang diperiksa.
 const R2G = 'src/app/api/automation/client-messages/'
@@ -68,9 +68,12 @@ const IZIN_GUI = [...HALAMAN_GUI, 'src/components/automation/ClientMessageList.t
 const JANGKAR_GUI = ['prisma/check-wa2a-g-ui.mjs', 'src/app/(app)/automation/client-messages/page.tsx']
 const perujukNyata = Object.keys(L.perujukTransitif(AKAR, M.i1.akar, M.i1.sasaran).perujuk).sort()
 cek('I-1 repo nyata: perujuk service WA-2 = PERSIS 10 route API 2a-G + 2 halaman GUI (literal; tanpa komponen)', perujukNyata.join() === DISETUJUI_I1.join() && DISETUJUI_I1.length === 12 && !perujukNyata.some((f) => f.startsWith('src/components/')), perujukNyata.filter((f) => !DISETUJUI_I1.includes(f)).concat(DISETUJUI_I1.filter((f) => !perujukNyata.includes(f)).map((f) => `hilang: ${f}`)).join(', ') || `${perujukNyata.length} perujuk`)
-cek('X-1 manifest: i1.diizinkan = 12 path literal; fase.G = 19 berkas IZIN_G; faseAktif hanya GUI dengan izin 14 path persis dan jangkar uji UI + halaman daftar', [...M.i1.diizinkan].sort().join() === DISETUJUI_I1.join() && [...(M.fase.G?.berkas ?? [])].sort().join() === IZIN_G.join() && IZIN_G.length === 19 && Object.keys(M.faseAktif).join() === 'GUI' && [...M.faseAktif.GUI.izin].sort().join() === IZIN_GUI.join() && IZIN_GUI.length === 14 && [...M.faseAktif.GUI.jangkar].sort().join() === [...JANGKAR_GUI].sort().join())
+cek('X-1 manifest: i1.diizinkan = 12 path literal; fase.G = 19 berkas IZIN_G; fase.GUI = 14 berkas IZIN_GUI (memuat kedua jangkar lama); faseAktif KOSONG', [...M.i1.diizinkan].sort().join() === DISETUJUI_I1.join() && [...(M.fase.G?.berkas ?? [])].sort().join() === IZIN_G.join() && IZIN_G.length === 19 && [...(M.fase.GUI?.berkas ?? [])].sort().join() === IZIN_GUI.join() && IZIN_GUI.length === 14 && JANGKAR_GUI.every((p) => M.fase.GUI.berkas.includes(p)) && Object.keys(M.faseAktif ?? {}).length === 0)
+cek('fase.GUI (PR #33) tercatat dengan nilai yang disetujui owner (OD-21: expected HEAD 5b775e4)', M.fase.GUI?.pr === 33 && M.fase.GUI?.merge === '93fb95e30835817c3e7b9ee5d0294795282e821f' && M.fase.GUI?.basis === 'c1003d5fe01bac21acce30a8dffebc5061cbe468' && M.fase.GUI?.kepala === '5b775e4375d7dad8a7b7b570f69d1e6ac6439e23')
 cek('fase.G (PR #31) tercatat dengan nilai yang disetujui owner', M.fase.G?.pr === 31 && M.fase.G?.merge === 'fa0ad5992bba45967271cf943f12e146a95ed142' && M.fase.G?.basis === '6a064ea585321440d0cf71812465419495f230a8' && M.fase.G?.kepala === 'ec7fc9a72d535c20d1e5a527459c0cda29af0574')
 cek('mode fase: WA2A_FASE=G kini ditolak (fase sudah merged) — tidak bisa dipakai mengklaim lingkup baru', L.periksaModeFase(M, { WA2A_FASE: 'G' }, []).hasil.some((h) => !h.ok && /merged/.test(h.detail)))
+cek('mode fase: WA2A_FASE=GUI kini ditolak (fase sudah merged) — penutupan tidak membuka izin fase baru', L.periksaModeFase(M, { WA2A_FASE: 'GUI' }, []).hasil.some((h) => !h.ok && /merged/.test(h.detail)))
+cek('manifest: fase.GUI + faseAktif.GUI bersamaan ditolak validasi (id ganda)', L.validasiManifest(Object.assign(salin(M), { faseAktif: { GUI: { izin: IZIN_GUI, jangkar: JANGKAR_GUI } } })).some((g) => /GUI: id sama dengan fase merged/.test(g)))
 const sp = L.ekstrakSpecifier("// import a from '@/x'\n/* from '@/y' */ const s = \"from '@/z'\"; import b from './b'; export * from '../c'; const d = await import('@/d'); require('e'); import('@/' + n); obj.import('f'); Array.from('g')")
 cek('ekstrakSpecifier: komentar/string biasa diabaikan; from/import()/require literal terbaca; import() non-literal dihitung', sp.spec.join() === './b,../c,@/d,e' && sp.dinamis === 1, `${sp.spec.join()} | dinamis=${sp.dinamis}`)
 
