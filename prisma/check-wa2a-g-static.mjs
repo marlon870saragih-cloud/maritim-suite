@@ -1,7 +1,8 @@
-// Uji statis + murni WA-2a 2a-G (T1–T2) — API lokal pesan klien /api/automation/client-messages.
+// Uji statis + murni WA-2a 2a-G — API lokal pesan klien /api/automation/client-messages (T1–T2, PR #31) dan UI (T3–T4).
 //
-// Jalankan: node prisma/check-wa2a-g-static.mjs   (tanpa DB; uji HTTP: check-wa2a-g-api.mjs, produksi: check-wa2a-g-prod.mjs)
-//           WA2A_FASE=G WA2A_BUKTI=1 node prisma/check-wa2a-g-static.mjs   (bukti lingkup PR 2a-G, tree bersih)
+// Jalankan: node prisma/check-wa2a-g-static.mjs   (tanpa DB; HTTP: check-wa2a-g-api.mjs, produksi: check-wa2a-g-prod.mjs,
+//           peramban: check-wa2a-g-ui.mjs)
+//           WA2A_FASE=GUI WA2A_BUKTI=1 node prisma/check-wa2a-g-static.mjs   (bukti lingkup PR UI, tree bersih)
 //
 // Lapis:
 //   R. route — PERSIS 10 berkas & metode yang disetujui; tipis (withTenant, tanpa tenantId/prisma/forTenant/env/
@@ -10,13 +11,17 @@
 //      nomor hanya lewat samarkanNomor, field internal tidak dipilih.
 //   A. wa2-access & gerbang service baca (murni, tanpa DB) — allowlist/peran/sistem/flag/produksi.
 //   N. tanpa Send — tidak ada route kirim, successKey, provider, webhook.
-//   L. lingkup (prisma/wa2a-lingkup.mjs) — I/H/P + allowlist X-1 PERSIS (literal di sini, independen dari manifest).
+//   U. UI — 2 halaman (pagar sesi + bolehAksesWa2 → notFound), 3 komponen client tanpa impor service, fetch hanya ke API
+//      pesan klien, tombol dari aksiTersedia, revisi memakai contactId detail, label BELUM DIKIRIM, tanpa Send/Sidebar.
+//   L. lingkup (prisma/wa2a-lingkup.mjs) — I/H/P + fase.G (PR #31) + faseAktif.GUI PERSIS (literal di sini, independen
+//      dari manifest).
 
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
-import { lapisLingkup } from './wa2a-lingkup.mjs'
+import { execFileSync } from 'node:child_process'
+import { lapisLingkup, periksaRekaman } from './wa2a-lingkup.mjs'
 
 const AKAR = fileURLToPath(new URL('..', import.meta.url))
 const baca = (rel) => readFileSync(join(AKAR, rel), 'utf8')
@@ -53,6 +58,14 @@ const IZIN_G = [
   'docs/TAH-CURRENT-CHECKPOINT.md', 'docs/whatsapp/WA-2a-G-EVIDENCE.md', 'prisma/check-wa2a-g-api.mjs', 'prisma/check-wa2a-g-prod.mjs',
   'prisma/check-wa2a-g-static.mjs', 'prisma/check-wa2a-lingkup.mjs', 'prisma/wa2a-lingkup-manifest.json', ...Object.keys(RUTE), SVC, AKSES,
 ].sort()
+// UI T3–T4 (OD-20): 14 path persis; 2 halaman = satu-satunya perujuk I-1 baru (komponen tidak merujuk service).
+const HAL = ['src/app/(app)/automation/client-messages/page.tsx', 'src/app/(app)/automation/client-messages/[id]/page.tsx']
+const KOMP = ['src/components/automation/ClientMessageList.tsx', 'src/components/automation/ClientMessageWorkspace.tsx', 'src/components/automation/client-message-shared.tsx']
+const IZIN_GUI = [
+  ...HAL, ...KOMP, 'prisma/check-wa2a-g-ui.mjs', 'prisma/seed-wa2a-g-demo.mjs', 'docs/whatsapp/WA-2a-G-UI-EVIDENCE.md', 'prisma/check-wa2a-g-static.mjs',
+  'prisma/check-wa2a-lingkup.mjs', 'prisma/wa2a-lingkup-manifest.json', 'docs/TAH-CURRENT-CHECKPOINT.md', SVC, 'prisma/check-wa2a-g-api.mjs',
+].sort()
+const JANGKAR_GUI = ['prisma/check-wa2a-g-ui.mjs', 'src/app/(app)/automation/client-messages/page.tsx'].sort()
 
 // ============================================================================ R
 bagian('[R] Route API — persis, tipis, gerbang sebelum body')
@@ -252,16 +265,55 @@ cek('tidak ada path route kirim/send/webhook/dispatch', !Object.keys(RUTE).some(
 cek('kode baru tanpa successKey / provider / webhook / LLM', !/successKey|provider|webhook|anthropic|openai|llm|graph\.facebook/i.test(semuaBaru))
 cek('tidak ada direktori route lain di bawah /api/automation yang menyentuh client-messages', jelajah('src/app/api/automation').filter((p) => /client-message/i.test(p) && !p.startsWith(R)).length === 0)
 
+// ============================================================================ U
+bagian('[U] UI — halaman, komponen client, aksi, revisi opsi B')
+const IMPOR_HAL = new Set(['next/navigation', '@/components/shared/PageHeader', '@/lib/i18n-server', '@/services/context', '@/services/whatsapp/wa2-access', '@/components/automation/ClientMessageList', '@/components/automation/ClientMessageWorkspace'])
+for (const rel of HAL) {
+  const src = tanpaKomentar(baca(rel))
+  const impor = [...src.matchAll(/from\s+['"]([^'"]+)['"]/g)].map((x) => x[1])
+  const luar = impor.filter((x) => !IMPOR_HAL.has(x))
+  cek(`${rel.slice(18)}: impor hanya pagar sesi/akses, i18n, header, komponen`, luar.length === 0 && impor.includes('@/services/whatsapp/wa2-access') && impor.includes('@/services/context'), luar.join(', '))
+  const ba = src.slice(src.indexOf('export default async function'))
+  cek(`${rel.slice(18)}: requireTenant() lalu bolehAksesWa2(ctx) → notFound() sebelum render`, /const ctx = await requireTenant\(\)\s*\n\s*if \(!bolehAksesWa2\(ctx\)\) notFound\(\)/.test(ba) && ba.indexOf('notFound()') < ba.indexOf('return ('))
+  cek(`${rel.slice(18)}: tanpa prisma/forTenant/env/model WA-2a/TAH/WA-1`, !LARANG.slice(1, 7).some(([, re]) => re.test(src)) && !/prisma/i.test(src))
+  cek(`${rel.slice(18)}: force-dynamic`, /export const dynamic = 'force-dynamic'/.test(src))
+}
+const IMPOR_KOMP = new Set(['react', 'next/link', 'next/navigation', 'lucide-react', '@/lib/utils', '@/lib/i18n', './shared', './client-message-shared'])
+const srcKomp = Object.fromEntries(KOMP.map((rel) => [rel, baca(rel)]))
+for (const rel of KOMP) {
+  const mentah = srcKomp[rel]
+  const src = tanpaKomentar(mentah)
+  const impor = [...src.matchAll(/(?:from|import)\s+['"]([^'"]+)['"]/g)].map((x) => x[1])
+  const luar = impor.filter((x) => !IMPOR_KOMP.has(x))
+  cek(`${rel.slice(26)}: 'use client' dan impor tanpa @/services/prisma/modul server`, mentah.startsWith("'use client'") && luar.length === 0 && !/@\/services|@prisma|server-only|next\/headers/.test(src), luar.join(', '))
+  cek(`${rel.slice(26)}: tanpa pola terlarang (model WA-2a, TAH, WA-1, env, Send/successKey)`, !/TahApprovalRequest|tahApprovalRequest|services\/(tah|communication)|process\.env|successKey|\.(waContact|waClientMessage|waConsentState)\b/.test(src) && !/>\s*(Kirim|Send)\b|'(Kirim|Send)'/.test(src))
+}
+const sh = tanpaKomentar(srcKomp['src/components/automation/client-message-shared.tsx'])
+const daftar = tanpaKomentar(srcKomp['src/components/automation/ClientMessageList.tsx'])
+const ws = tanpaKomentar(srcKomp['src/components/automation/ClientMessageWorkspace.tsx'])
+cek('fetch hanya di client-message-shared, ke API_PESAN_KLIEN = /api/automation/client-messages (origin sendiri)', (sh.match(/\bfetch\(/g) ?? []).length === 1 && /fetch\(`\$\{API_PESAN_KLIEN\}\$\{path\}`/.test(sh) && /API_PESAN_KLIEN = '\/api\/automation\/client-messages'/.test(sh) && !/\bfetch\(/.test(daftar) && !/\bfetch\(/.test(ws))
+cek("label 'BELUM DIKIRIM — tidak ada pengiriman pada fase ini' (ID) + EN, dipakai di daftar & detail", /id: 'BELUM DIKIRIM — tidak ada pengiriman pada fase ini'/.test(sh) && /en: 'NOT SENT — no sending in this phase'/.test(sh) && /<BelumDikirimBanner/.test(daftar) && /<BelumDikirimBanner/.test(ws))
+const tombolAksi = [...ws.matchAll(/\{ada\('([A-Z_]+)'\)[^\n]*\n\s*<button[^\n]*data-aksi="([A-Z_]+)"/g)].map((x) => [x[1], x[2]])
+cek('setiap tombol aksi dijaga aksiTersedia (ada(X) → data-aksi=X), 6 aksi, tanpa aksi lain', tombolAksi.length === 6 && tombolAksi.every(([a, b]) => a === b) && (ws.match(/data-aksi=/g) ?? []).length === 6, tombolAksi.map(([a]) => a).join(','))
+cek('revisi opsi B: POST draft {signalIds[0], contactId detail} — tanpa memilih ulang kontak', /aksi\('', \{ signalId: d\.konteks\.signalIds\[0\], contactId: d\.contactId \}\)/.test(ws))
+cek('anti klik ganda (kunci ref sinkron) di detail & panel draft; setelah tidak pasti aksi dikunci sampai muat ulang', /if \(kunci\.current \|\| perluMuatUlang\) return/.test(ws) && /if \(kunci\.current \|\| !pilihSinyal \|\| !pilihKontak\) return/.test(daftar) && /if \(!r\.ok && r\.tidakPasti\) setPerluMuatUlang\(true\)/.test(ws))
+cek('tanpa pengulangan mutasi otomatis (tanpa retry/setInterval/loop panggilan POST)', !/setInterval|retry|ulangi/i.test(ws + daftar) && (ws.match(/panggilApi<[^>]*>\(path, 'POST', body\)/g) ?? []).length === 1)
+cek('isi pesan read-only & tanpa input nomor bebas', !/<textarea[^>]*isi-pesan|type="tel"|contentEditable|e164|nomor/i.test(ws + daftar))
+const bL = lapisLingkup(AKAR, { fase: [], env: {} }).basis
+const diffShell = bL?.ok ? execFileSync('git', ['diff', '--name-only', bL.sha, '--', 'src/components/layout/Sidebar.tsx', 'src/app/(app)/layout.tsx', 'src/app/(app)/automation/page.tsx'], { cwd: AKAR, encoding: 'utf8' }).trim() : 'basis tidak ada'
+cek('Sidebar, layout (app), dan halaman Automation Hub tidak berubah terhadap basis', diffShell === '', diffShell)
+
 // ============================================================================ L
-bagian('[L] Lingkup (prisma/wa2a-lingkup.mjs) — I/H/P + allowlist X-1')
+bagian('[L] Lingkup (prisma/wa2a-lingkup.mjs) — I/H/P + fase.G + faseAktif.GUI')
 const L = lapisLingkup(AKAR, { fase: [], env: process.env })
 for (const i of L.info) console.log(`  ℹ️  ${i}`)
 for (const h of L.hasil) cek(h.nama, h.ok, h.detail)
 const m = L.manifest
-cek('X-1: manifest i1.diizinkan = PERSIS 10 route di atas (literal)', JSON.stringify(m?.i1?.diizinkan ?? []) === JSON.stringify(Object.keys(RUTE).sort()))
-cek('X-1: manifest faseAktif.G.izin = PERSIS 19 path disetujui (literal)', JSON.stringify(m?.faseAktif?.G?.izin ?? []) === JSON.stringify(IZIN_G), `${m?.faseAktif?.G?.izin?.length ?? 0} path`)
-cek('X-1: jangkar G = layanan baca + uji API', JSON.stringify(m?.faseAktif?.G?.jangkar ?? []) === JSON.stringify(['prisma/check-wa2a-g-api.mjs', SVC]))
-cek('X-1: tanpa halaman/komponen UI di allowlist G', !IZIN_G.some((p) => /^src\/components\/|^src\/app\/(?!api\/)/.test(p)))
+cek('manifest i1.diizinkan = PERSIS 10 route + 2 halaman (literal); tanpa komponen', JSON.stringify(m?.i1?.diizinkan ?? []) === JSON.stringify([...Object.keys(RUTE), ...HAL].sort()) && !(m?.i1?.diizinkan ?? []).some((x) => x.startsWith('src/components/')))
+cek('fase.G (PR #31) tercatat: 19 berkas = allowlist API literal; merge/basis/kepala sesuai', JSON.stringify(m?.fase?.G?.berkas ?? []) === JSON.stringify(IZIN_G) && m?.fase?.G?.pr === 31 && m.fase.G.merge === 'fa0ad5992bba45967271cf943f12e146a95ed142' && m.fase.G.basis === '6a064ea585321440d0cf71812465419495f230a8' && m.fase.G.kepala === 'ec7fc9a72d535c20d1e5a527459c0cda29af0574')
+const hG = m ? periksaRekaman(AKAR, 'G', m.fase.G) : []
+cek('H G: induk merge, tree, dan diff basis→kepala diverifikasi dari git', hG.length === 3 && hG.every((h) => h.ok), hG.filter((h) => !h.ok).map((h) => h.nama).join('; '))
+cek('faseAktif hanya GUI; izin PERSIS 14 path literal; jangkar = uji UI + halaman daftar', Object.keys(m?.faseAktif ?? {}).join() === 'GUI' && JSON.stringify(m.faseAktif.GUI.izin) === JSON.stringify(IZIN_GUI) && IZIN_GUI.length === 14 && JSON.stringify([...m.faseAktif.GUI.jangkar].sort()) === JSON.stringify(JANGKAR_GUI))
 
 console.log(`\n${gagal === 0 ? '✅ SEMUA LULUS' : '❌ ADA YANG GAGAL'} — lulus ${lulus}, gagal ${gagal}`)
 process.exit(gagal === 0 ? 0 : 1)
