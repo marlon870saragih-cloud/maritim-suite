@@ -129,7 +129,8 @@ clone sekali pakai detached `9a9fa2e` (tree 0 entri sebelum dan sesudah); Postgr
 |---|---|---|---|
 | `check-wa2a-g-static` (`WA2A_FASE=GUI WA2A_BUKTI=1`) | **153/0** | 0 | `ui-final/g-static-GUI.txt` |
 | `check-wa2a-lingkup` (helper) | **69/0** | 0 | `ui-final/helper-lingkup.txt` |
-| `tsc --noEmit` · `next lint` | bersih · bersih | 0 · 0 | `ui-final/tsc.txt`, `lint.txt` |
+| `tsc --noEmit` | bersih (tanpa keluaran) | 0 | `ui-final/tsc.txt` |
+| `next lint` | exit 0, tanpa error; satu warning existing `ReceiptForm.tsx:118` terkait dependency `lang` (di luar scope, tidak diubah) | 0 | `ui-final/lint.txt` |
 | `check-wa2a-g-ui` `next dev` | **45/0** | 0 | `ui-final/ui-dev.txt` |
 | `check-wa2a-g-ui` flag mati | 10/0 | 0 | `ui-final/ui-flagmati.txt` |
 | `next build` (perangkap egress) | sukses; `TRAP-AKTIF` 13, `BLOCKED` 0 | 0 | `ui-final/next-build.txt` |
@@ -207,7 +208,8 @@ g-ui dev 44/0 di bawah ini (dan 44/0 pada audit `a626c5f`) dicatat **sebelum** t
 | `next build` (perangkap egress) | sukses; 10 route + 2 halaman `ƒ` dinamis; `BLOCKED` 0 | 0 |
 | `check-wa2a-g-prod` (`next start`, flag `true`, regresi API) | 20/0 | 0 |
 | `check-wa2a-g-ui` produksi lokal (`next start`, flag `true`) | **10/0** — tanpa sesi → `/login`; ADMIN & MANAJER_OPERASI → 404 di kedua halaman | 0 |
-| `tsc --noEmit` · `next lint` | bersih · bersih (1 warning lama `ReceiptForm.tsx`, di luar scope) | 0 · 0 |
+| `tsc --noEmit` | bersih | 0 |
+| `next lint` | exit 0, tanpa error; satu warning existing `ReceiptForm.tsx:118` terkait dependency `lang` (di luar scope) | 0 |
 | Egress | `BLOCKED` = 0 di keenam log server dan build; peramban 0 permintaan ke origin lain | — |
 
 **Rincian `check-wa2a-g-ui` dev (44 asersi):**
