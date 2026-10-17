@@ -1,16 +1,21 @@
 'use client'
 
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
-import { signIn } from 'next-auth/react'
+import { getSession, signIn } from 'next-auth/react'
 import { useT, LangToggle } from '@/lib/i18n'
 
 /**
  * Login gate — tema "Port Call Ledger" (kuningan + tinta + kertas). Sampul tinta gelap,
  * kartu login di atas kertas ivory, aksen kuningan. Statis (tanpa video) = ringan.
  * Bilingual ID/EN via i18n bersama. Autentikasi NextAuth (credentials).
+ *
+ * Form ber-method POST dan tombol Masuk nonaktif sampai komponen terhidrasi: submit native sebelum
+ * hidrasi (klik/Enter) tidak boleh menaruh kredensial di URL (F-1). Sukses hanya bila signIn tidak
+ * ditolak DAN sesi untuk akun yang sama terkonfirmasi (F-3): next-auth 4.24 mengembalikan penolakan
+ * CSRF sebagai ok:true tanpa error (url …/api/auth/signin?csrf=true), jadi res.ok saja tidak cukup.
  */
 export default function LoginPage() {
   const router = useRouter()
@@ -19,6 +24,11 @@ export default function LoginPage() {
   const [showPw, setShowPw] = useState(false)
   const [loading, setLoading] = useState(false)
   const [msg, setMsg] = useState<{ type: 'err' | 'ok'; text: string } | null>(null)
+  const [siap, setSiap] = useState(false)
+
+  useEffect(() => {
+    setSiap(true)
+  }, [])
 
   function safeNext(): string {
     const n = new URLSearchParams(window.location.search).get('next')
@@ -35,14 +45,32 @@ export default function LoginPage() {
       setMsg({ type: 'err', text: t.errEmpty })
       return
     }
+    if (loading) return
     setLoading(true)
     setMsg(null)
-    const res = await signIn('credentials', { email, password, redirect: false })
-    setLoading(false)
-    if (res?.error) {
-      setMsg({ type: 'err', text: t.errCred })
-      return
+    let berhasil = false
+    try {
+      const res = await signIn('credentials', { email, password, redirect: false })
+      if (res?.error) {
+        setMsg({ type: 'err', text: t.errCred })
+        return
+      }
+      if (!res || !res.ok || !urlBukanPenolakan(res.url)) {
+        setMsg({ type: 'err', text: t.errSession })
+        return
+      }
+      const sesi = await getSession()
+      if (!sesiMilik(sesi?.user?.email, email)) {
+        setMsg({ type: 'err', text: t.errSession })
+        return
+      }
+      berhasil = true
+    } catch {
+      setMsg({ type: 'err', text: t.errNetwork })
+    } finally {
+      setLoading(false)
     }
+    if (!berhasil) return
     setMsg({ type: 'ok', text: t.okMsg })
     setTimeout(() => {
       router.push(safeNext())
@@ -114,7 +142,7 @@ export default function LoginPage() {
           <h2 className="lgn-card-title">{t.cardTitle}</h2>
           <p className="lgn-subtitle">{t.cardSub}</p>
 
-          <form onSubmit={onSubmit} noValidate>
+          <form method="post" onSubmit={onSubmit} noValidate>
             {msg && (
               <div className={`lgn-msg ${msg.type}`} role="alert" aria-live="polite">
                 {msg.text}
@@ -168,7 +196,7 @@ export default function LoginPage() {
               <Link href="/register">{t.noAccount}</Link>
             </div>
 
-            <button type="submit" className="lgn-submit" disabled={loading}>
+            <button type="submit" className="lgn-submit" disabled={!siap || loading}>
               {loading && <span className="lgn-spinner" aria-hidden="true" />}
               {loading ? t.submitting : t.submit}
             </button>
@@ -251,6 +279,24 @@ const MODULES = [
   },
 ]
 
+/** URL hasil signIn bukan penolakan: ada, terurai, bukan halaman signin/error NextAuth, tanpa penanda error/csrf. */
+function urlBukanPenolakan(url: string | null | undefined): boolean {
+  if (!url) return false
+  let u: URL
+  try {
+    u = new URL(url, window.location.origin)
+  } catch {
+    return false
+  }
+  if (u.searchParams.has('error') || u.searchParams.has('csrf')) return false
+  return !u.pathname.startsWith('/api/auth/signin') && !u.pathname.startsWith('/api/auth/error')
+}
+
+/** Sesi terkonfirmasi untuk akun yang baru masuk (bukan sesi lama milik akun lain). */
+function sesiMilik(sesiEmail: string | null | undefined, email: string): boolean {
+  return !!sesiEmail && sesiEmail.trim().toLowerCase() === email.trim().toLowerCase()
+}
+
 // ===== Konten bilingual =====
 const STR = {
   id: {
@@ -266,6 +312,8 @@ const STR = {
     secure: 'Koneksi aman & terenkripsi', registerCta: 'Daftar di sini', register: 'Daftar',
     errEmpty: 'Mohon isi email dan kata sandi.', errCred: 'Email atau kata sandi salah.',
     okMsg: 'Berhasil masuk. Mengarahkan ke dashboard…',
+    errSession: 'Gagal masuk: sesi tidak dapat dibuat. Muat ulang halaman lalu coba lagi.',
+    errNetwork: 'Gagal menghubungi server. Periksa koneksi lalu coba lagi.',
     phone: 'Telp', mobile: 'HP',
   },
   en: {
@@ -281,6 +329,8 @@ const STR = {
     secure: 'Secure, encrypted connection', registerCta: 'Register here', register: 'Register',
     errEmpty: 'Please enter your email and password.', errCred: 'Incorrect email or password.',
     okMsg: 'Signed in. Redirecting to dashboard…',
+    errSession: 'Sign-in failed: the session could not be established. Reload the page and try again.',
+    errNetwork: 'Could not reach the server. Check your connection and try again.',
     phone: 'Tel', mobile: 'Mobile',
   },
 }
