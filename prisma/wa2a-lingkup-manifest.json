@@ -269,6 +269,16 @@
       "basis": "c787078233f9f4da721ededfe9b67800aeaa12ca",
       "path": "prisma/check-wa2a-lingkup.mjs",
       "blob": "fe545789fcb1193bc00ea4a03a75c21bd632b53d"
+    },
+    {
+      "basis": "e4a351eb6c908b12aad757ccff6bf9c92072903b",
+      "path": "prisma/check-comm-policy.mjs",
+      "blob": "56f8362eb8d9513c66a27fb324fe4c7a932c616c"
+    },
+    {
+      "basis": "e4a351eb6c908b12aad757ccff6bf9c92072903b",
+      "path": "prisma/check-wa2a-schema.mjs",
+      "blob": "766123ffba93318360a76386b7d6d6050369e611"
     }
   ]
 }

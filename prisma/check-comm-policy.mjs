@@ -17,7 +17,7 @@
 //  12. EGRESS & LINGKUP — nol panggilan jaringan saat jalan, scan sumber, batas Step 2A.
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import http from 'node:http'
 import https from 'node:https'
@@ -628,7 +628,7 @@ bagian('[12] Egress & lingkup Step 2A')
   cek('Step 2D R1: registry TAH lama tak memuat WA_INTERNAL_FAKE_TEST / CLIENT_WA_UPDATE (kontrak beku utuh)', !JENIS_APPROVAL_TAH.some((j) => ['WA_INTERNAL_FAKE_TEST', 'CLIENT_WA_UPDATE'].includes(j.kind)))
   const pembuatApproval = readdirSync(join(AKAR, 'src'), { recursive: true })
     .filter((f) => /\.(ts|tsx)$/.test(f))
-    .map((f) => `src/${f}`)
+    .map((f) => `src/${f.split(sep).join('/')}`)
     .filter((f) => /tahApprovalRequest\.create\(/.test(baca(f)))
   // WA-2a Step 2F F4 (pengecualian E1 disetujui owner): + TEPAT satu pembuat WA-2 ber-TTL (CLIENT_WA_UPDATE) — bukan wildcard.
   cek('Step 2D R1: pembuat TahApprovalRequest = PERSIS service approval WA-1 + service approval pesan klien WA-2 (F4)', pembuatApproval.sort().join() === ['src/services/communication/communication-approval.service.ts', 'src/services/whatsapp/wa-message-approval.service.ts'].join(), pembuatApproval.join())
