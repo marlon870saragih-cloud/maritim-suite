@@ -3,8 +3,9 @@
 **Status SG-05: OPEN.** Dokumen ini tidak menutup SG-05 dan tidak mengubah tenggat yang berlaku.
 
 - **Dasar:** keputusan owner **D-3** (OD-32): izin implementasi A1 berdasarkan rancangan opsi A v2. A1 terdiri dari tepat tiga path: dokumen ini, `prisma/check-sg05-batas-fixture.mjs`, dan `docs/TAH-CURRENT-CHECKPOINT.md`.
-- **Baseline:** `main` `23ec4e8f59904af9e9827c3a57953abe18874d4a` (merge PR #39).
-- **Belum diputuskan owner:** D-1 (penyimpangan), D-2 (penyelarasan), D-2b (batas fase), dan D-4 (desain A2). Semua isi bertanda **USULAN** di bawah ini menunggu keputusan tersebut dan **bukan** keputusan.
+- **Baseline:** `main` `23ec4e8f59904af9e9827c3a57953abe18874d4a` (merge PR #39) saat dokumen dibuat; A1 merged di `ab4dac7628683755d301c7620613f1b125fd7987` (PR #40).
+- **Keputusan owner:** D-1 (OD-33), D-2 (OD-34), D-2b (OD-35), dan D-4 (OD-36) **DISETUJUI** — dilaporkan owner dari sesi ChatGPT Work sesudah merge PR #40 (2026-10-18 14:21 UTC); tanggal persis keputusan tidak tercatat di repository; disinkronkan ke repository melalui pembaruan ini. Persyaratan di bawah berlaku; isinya tidak berubah dari versi usulan. Keputusan ini **bukan** izin implementasi A2, F-II, atau WA-3.
+- **Status bukti (per `ab4dac7`):** P-1 tersedia (keputusan + uji statis §5, Linux 55/0; Windows sungguhan belum diuji); P-2 belum (A2 belum diimplementasikan/diuji); P-3 belum (jalur Send F-II belum ada). **SG-05 tetap OPEN.**
 - **Penerimaan demo WA-2a 2a-G (OD-30) tetap berlaku.** Dokumen ini tidak membatalkan atau memperluas syarat penerimaan itu.
 - **Istilah:** "tanpa pengiriman WhatsApp nyata" berarti tidak ada panggilan ke provider WhatsApp dan tidak ada pesan ke nomor nyata. Istilah ini **bukan** klaim bahwa aplikasi tidak menghasilkan lalu lintas jaringan.
   - F-6: `next dev` mengunduh Google Fonts.
@@ -49,11 +50,11 @@
   - 22 berkas di luar zona WA-1 menjangkau `comm-fixture.ts` secara modul, dan semuanya lewat `wa1-bridge.ts → communication.service.ts`.
   - Simbol fixture tidak diteruskan bridge. Hal ini dijaga uji statis §5.
 
-## 4. Syarat penutupan SG-05 (USULAN — menunggu D-1/D-2)
+## 4. Syarat penutupan SG-05 (DISETUJUI — D-1/OD-33, D-2/OD-34)
 
 SG-05 hanya boleh berubah menjadi CLOSED bila **ketiga** bagian berikut terpenuhi **dan** owner menyetujui penutupannya. Persetujuan atas suatu kewajiban bukan bukti bahwa kewajiban itu terpenuhi.
 
-### P-1 — penyimpangan fixture WA-1, diterima sementara (USULAN; keputusan D-1)
+### P-1 — penyimpangan fixture WA-1, diterima sementara (DISETUJUI — D-1/OD-33; bukti tersedia, lihat status di bawah)
 
 | Item | Isi |
 |---|---|
@@ -61,9 +62,10 @@ SG-05 hanya boleh berubah menjadi CLOSED bila **ketiga** bagian berikut terpenuh
 | Batas berlaku | Hanya simulasi FAKE: non-produksi, flag WA-1, allowlist Automation, provider FAKE, fixture hanya di zona WA-1 |
 | Berakhir otomatis bila | Fixture dipakai di luar zona WA-1, provider bukan FAKE, atau WA-1 diaktifkan di produksi |
 | Bukti pendukung | Uji statis §5 lulus di `main` dengan semua kontrol mutasi terdeteksi |
+| Status bukti | Tersedia: OD-33 + uji statis §5 di `main` `ab4dac7` (Linux 55/0). Batas: Windows sungguhan belum diuji; cakupan hanya batas fixture di `src/` |
 | Status SG-05 | Tetap OPEN |
 
-### P-2 — kesiapan fungsi revalidasi pra-kirim A2 dan uji mandirinya (USULAN pekerjaan pra-integrasi baru; desain menunggu D-4)
+### P-2 — kesiapan fungsi revalidasi pra-kirim A2 dan uji mandirinya (pekerjaan pra-integrasi baru; penyusunan rancangan disetujui D-4/OD-36; implementasi belum disetujui; bukti belum ada)
 
 A2 adalah pekerjaan baru. A2 **bukan** perluasan syarat penerimaan WA-2.
 
@@ -79,7 +81,7 @@ Usulan isinya: fungsi baca/kunci tanpa provider, tanpa Send, dan tanpa menulis `
 
 **Bukti:** uji runtime di DB sekali pakai. Uji ini menulis data uji, jadi perlu izin terpisah. **Status SG-05 setelah P-2: tetap OPEN.**
 
-### P-3 — bukti integrasi di jalur Send (hanya dapat dipenuhi setelah jalur Send ada)
+### P-3 — bukti integrasi di jalur Send (hanya dapat dipenuhi setelah jalur Send ada; F-II diizinkan secara prinsip D-2b/OD-35, implementasi belum disetujui; bukti belum ada)
 
 Semua butir harus **teramati**, bukan dijanjikan:
 
@@ -181,19 +183,21 @@ Semua butir harus **teramati**, bukan dijanjikan:
   - pemeriksa sintaks mendeteksi kerusakan.
 - **Cakupan lingkungan.** Bukti dijalankan di **Linux**. CRLF diuji dengan input CRLF dan dengan emulasi checkout `core.autocrlf=true`. Ketiadaan executable `mkdir` diemulasikan dengan `PATH` minimal. Keduanya **bukan bukti bahwa suite lulus di Windows**.
 
-## 6. Batas fase (USULAN — keputusan D-2b)
+## 6. Batas fase (DISETUJUI — D-2b/OD-35)
 
-Teks yang ada tidak menjelaskan apakah membangun Send dengan provider FAKE termasuk "WA-3"/"integrasi nyata". **Sampai owner memutuskan, tafsir konservatif berlaku:** pekerjaan itu dianggap bagian WA-3 dan tidak dimulai.
+D-2b (OD-35): jalur FAKE/loopback non-produksi **boleh dikembangkan** untuk bukti integrasi sebelum SG-05 ditutup, tanpa provider resmi, nomor nyata, kredensial nyata, atau pengiriman WhatsApp. Setiap implementasi (A2, F-II) tetap memerlukan persetujuan scope terpisah. Kesepadanan dengan Y-4 (§7): rumusan D-2b tidak menyebut "aktivasi flag nyata"; syarat Y-4 itu tetap berlaku sebagai batas teknis sampai owner menyatakan lain.
 
-| Batas | Isi | Usulan |
+| Batas | Isi | Status |
 |---|---|---|
-| F-I Persiapan integrasi | Desain, A1, A2 (fungsi + uji mandiri); tanpa kode Send/provider/kredensial | Boleh dengan SG-05 OPEN bila owner menyatakan F-I bukan bagian WA-3 |
-| F-II Implementasi tanpa pengiriman nyata | Kode jalur Send + klaim + revalidasi; provider FAKE/loopback; non-produksi; tanpa kredensial/nomor nyata; menghasilkan bukti P-3 | Menunggu keputusan: (a) dikecualikan dari larangan lewat Y-4, atau (b) tenggat tetap dan menunggu definisi lain |
+| F-I Persiapan integrasi | Desain, A1, A2 (fungsi + uji mandiri); tanpa kode Send/provider/kredensial | Boleh dengan SG-05 OPEN (A1 merged, OD-32; rancangan A2 disetujui, OD-36); implementasi A2 memerlukan persetujuan scope |
+| F-II Implementasi tanpa pengiriman nyata | Kode jalur Send + klaim + revalidasi; provider FAKE/loopback; non-produksi; tanpa kredensial/nomor nyata; menghasilkan bukti P-3 | Disetujui secara prinsip (Y-4, OD-35); implementasi memerlukan persetujuan scope terpisah |
 | F-III Izin kirim pesan nyata | Provider resmi, kredensial, nomor nyata | Wajib SG-05 CLOSED (P-1 + P-2 + P-3 + persetujuan owner) |
 
-## 7. Penyelarasan persyaratan (USULAN — keputusan D-2/D-2b; PRD-WA-1 tidak diedit karena beku)
+WA-3 = provider WhatsApp resmi, template resmi, pesan nyata ke nomor internal, dan webhook status nyata; memerlukan scope dan persetujuan terpisah. A2 dan F-II bukan WA-3.
 
-| # | Teks yang berlaku | Usulan | Alasan | Bukti yang tetap wajib |
+## 7. Penyelarasan persyaratan (DISETUJUI — D-2/OD-34, D-2b/OD-35; PRD-WA-1 tidak diedit karena beku)
+
+| # | Teks yang berlaku | Penyelarasan yang disetujui | Alasan | Bukti yang tetap wajib |
 |---|---|---|---|---|
 | Y-1 | PRD-WA-1:382 — "terkait tenant uji" untuk fixture | Tidak diganti; dicatat sebagai penyimpangan P-1(a) | Fixture hanya simulasi FAKE; mengubahnya berarti mengubah kode beku | Uji §5 lulus terus; batas berlaku P-1 |
 | Y-2 | PRD-WA-1:382 — kolom "Approve, Send" untuk fixture | Tidak diganti; dicatat sebagai penyimpangan P-1(b) | Kode beku; fixture imutabel; sidik snapshot mencakup penerima | Sama dengan Y-1 |
@@ -204,8 +208,8 @@ Teks yang ada tidak menjelaskan apakah membangun Send dengan provider FAKE terma
 
 | ID | Keputusan | Status |
 |---|---|---|
-| D-1 | Penyimpangan P-1(a)/(b) dengan batas berlaku §4 | **Belum diputuskan** |
-| D-2 | Penyelarasan Y-1–Y-3 (SG-05R) | **Belum diputuskan** |
-| D-2b | Batas fase / Y-4 | **Belum diputuskan** |
+| D-1 | Penyimpangan P-1(a)/(b) dengan batas berlaku §4 | **Disetujui — OD-33** (dilaporkan owner sesudah merge PR #40) |
+| D-2 | Penyelarasan Y-1–Y-3 (SG-05R) | **Disetujui — OD-34** (dilaporkan owner sesudah merge PR #40) |
+| D-2b | Batas fase / Y-4 | **Disetujui — OD-35** (dilaporkan owner sesudah merge PR #40; syarat Y-4 "tanpa aktivasi flag nyata" tetap berlaku; implementasi F-II belum diizinkan) |
 | D-3 | Izin implementasi A1 (tepat tiga path) | **Disetujui — OD-32** (implementasi, uji statis + mutasi terisolasi, commit, push biasa, draft PR; merge memerlukan persetujuan terpisah) |
-| D-4 | Izin desain A2 | **Belum diputuskan** |
+| D-4 | Penyusunan rancangan A2 | **Disetujui — OD-36** (dilaporkan owner sesudah merge PR #40; rancangan saja, implementasi belum diizinkan) |
