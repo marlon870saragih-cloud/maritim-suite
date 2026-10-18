@@ -6,6 +6,7 @@
 - **Baseline:** `main` `23ec4e8f59904af9e9827c3a57953abe18874d4a` (merge PR #39) saat dokumen dibuat; A1 merged di `ab4dac7628683755d301c7620613f1b125fd7987` (PR #40).
 - **Keputusan owner:** D-1 (OD-33), D-2 (OD-34), D-2b (OD-35), dan D-4 (OD-36) **DISETUJUI** — dilaporkan owner dari sesi ChatGPT Work sesudah merge PR #40 (2026-10-18 14:21 UTC); tanggal persis keputusan tidak tercatat di repository; disinkronkan ke repository melalui pembaruan ini. Persyaratan di bawah berlaku; isinya tidak berubah dari versi usulan. Keputusan ini **bukan** izin implementasi A2, F-II, atau WA-3.
 - **Status bukti (per `ab4dac7`):** P-1 tersedia (keputusan + uji statis §5, Linux 55/0; Windows sungguhan belum diuji); P-2 belum (A2 belum diimplementasikan/diuji); P-3 belum (jalur Send F-II belum ada). **SG-05 tetap OPEN.**
+- **Status bukti P-2 (pembaruan A2, OD-37):** bukti teknis P-2 tersedia di Linux pada draft PR A2 (belum merged) — uji statis `prisma/check-wa2a-prakirim.mjs` 52/0 dan uji DB sekali pakai `prisma/check-wa2a-prakirim-db.mjs` 123/0; Windows belum diuji; celah tercatat di [WA-2a-A2-EVIDENCE.md](WA-2a-A2-EVIDENCE.md) §5. P-3 belum. **SG-05 tetap OPEN.**
 - **Penerimaan demo WA-2a 2a-G (OD-30) tetap berlaku.** Dokumen ini tidak membatalkan atau memperluas syarat penerimaan itu.
 - **Istilah:** "tanpa pengiriman WhatsApp nyata" berarti tidak ada panggilan ke provider WhatsApp dan tidak ada pesan ke nomor nyata. Istilah ini **bukan** klaim bahwa aplikasi tidak menghasilkan lalu lintas jaringan.
   - F-6: `next dev` mengunduh Google Fonts.
@@ -65,7 +66,7 @@ SG-05 hanya boleh berubah menjadi CLOSED bila **ketiga** bagian berikut terpenuh
 | Status bukti | Tersedia: OD-33 + uji statis §5 di `main` `ab4dac7` (Linux 55/0). Batas: Windows sungguhan belum diuji; cakupan hanya batas fixture di `src/` |
 | Status SG-05 | Tetap OPEN |
 
-### P-2 — kesiapan fungsi revalidasi pra-kirim A2 dan uji mandirinya (pekerjaan pra-integrasi baru; penyusunan rancangan disetujui D-4/OD-36; implementasi belum disetujui; bukti belum ada)
+### P-2 — kesiapan fungsi revalidasi pra-kirim A2 dan uji mandirinya (pekerjaan pra-integrasi baru; rancangan D-4/OD-36; implementasi disetujui OD-37; bukti teknis Linux tersedia di draft PR A2, belum merged)
 
 A2 adalah pekerjaan baru. A2 **bukan** perluasan syarat penerimaan WA-2.
 
@@ -80,6 +81,8 @@ Usulan isinya: fungsi baca/kunci tanpa provider, tanpa Send, dan tanpa menulis `
 - R8: sumber/kandidat.
 
 **Bukti:** uji runtime di DB sekali pakai. Uji ini menulis data uji, jadi perlu izin terpisah. **Status SG-05 setelah P-2: tetap OPEN.**
+
+**Status bukti P-2 (OD-37):** `src/services/whatsapp/wa-prakirim.service.ts` + uji statis 52/0 + uji DB sekali pakai 123/0 (izin uji DB B-3/O-10), Linux saja; rincian, batas jaringan, dan celah (Windows belum diuji; X-5 dan cabang e164/party tak tercapai lewat DB; token dalam-proses; tanpa TTL APPROVED; bukan klaim/exactly-once) di [WA-2a-A2-EVIDENCE.md](WA-2a-A2-EVIDENCE.md). Belum merged; merge memerlukan keputusan owner terpisah.
 
 ### P-3 — bukti integrasi di jalur Send (hanya dapat dipenuhi setelah jalur Send ada; F-II diizinkan secara prinsip D-2b/OD-35, implementasi belum disetujui; bukti belum ada)
 
