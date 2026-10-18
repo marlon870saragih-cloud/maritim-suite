@@ -1,7 +1,7 @@
 # WA-2a 2a-G — Panduan demo & penerimaan owner (Windows / PowerShell)
 
 > **Status:** kit demo untuk **persiapan** penerimaan owner (T5/G-12). Ini **bukan** penerimaan produk.
-> Semua keputusan pada §8 tetap **BELUM DINILAI** sampai owner memutuskan. Pertanyaan kebijakan Q-1 (§8) menunggu owner.
+> **Keputusan yang sudah tercatat:** run uji coba Windows/Edge 18 Oktober 2026 dinilai owner (OD-30 di `docs/TAH-CURRENT-CHECKPOINT.md`): A-01–A-09 Sesuai, A-10 Diterima, Q-1 dijawab **boleh**. Tabel §8 dan isian `catatan-penerimaan.md` dari Blok 2 adalah **templat kosong untuk run berikutnya**; status awalnya BELUM DINILAI dan tidak mengubah keputusan yang sudah tercatat.
 >
 > **Batas:**
 > - lokal, data **sintetis**, **tanpa Send**;
@@ -11,7 +11,7 @@
 > Kode aplikasi yang didemokan: `main` @ `1b20baa1ac83e3ab2689bff4a77f290fc2aadd91` (merge PR #38, perbaikan login; PR #37 sudah termasuk).
 >
 > **Status verifikasi panduan:**
-> - **Windows/PowerShell/Edge: satu run uji coba oleh owner (18 Oktober 2026), bukan run penerimaan bersih.** Blok 0–6, D1–D16, dan pembersihan 10a–10f dijalankan di laptop owner (Windows, PowerShell 7.6.7, Node 24.16.0, PostgreSQL 16.14, Edge) dan berakhir `[OK]`; temuan **F-6** (§9). Satu run bukan statistik; Windows PowerShell 5.1 belum dijalankan.
+> - **Windows/PowerShell/Edge: satu demo uji coba oleh owner (18 Oktober 2026), bukan run penerimaan bersih** (laptop owner: PowerShell 7.6.7, Node 24.16.0, PostgreSQL 16.14, Edge). Blok 0–6 dan pembersihan 10a–10f berakhir `[OK]`; D1–D15 sesuai "Harus terlihat"; **D16 dijalankan tetapi kriterianya tidak terpenuhi** (`BLOCKED=20`, F-6), pengecualian diterima owner (OD-30). Satu run bukan statistik. **Tetap terbatas:** Windows PowerShell 5.1, skenario yang tidak diperagakan (kedaluwarsa, lintas tenant, penolakan server untuk self-approval, status tidak pasti/timeout login), dan suite uji otomatis repo di Windows (mis. `check-login-ui`, g-ui) **belum dijalankan**.
 > - Bukti Linux pada §9 (Chromium, bukan Edge) **tidak** menggantikan uji Windows/Edge.
 
 ## Mulai di sini
@@ -33,7 +33,7 @@
 2. Sesudah "Berhasil masuk…", **halaman tujuan dimuat ulang penuh** (layar dapat berkedip putih sebentar). Itu normal.
 3. Bila tampil **"Status masuk tidak dapat dipastikan…"**: aplikasi **tidak** mencoba ulang sendiri. Muat ulang halaman (F5), lalu periksa sesi (§6.3). Jangan klik Masuk lagi sebelum memeriksa.
 
-Hasil uji teknis (§9) **bukan** penerimaan. A-01–A-10 tetap **BELUM DINILAI** sampai Anda mencoba dan memutuskan.
+Hasil uji teknis (§9) **bukan** penerimaan. Untuk run baru, lembar A-01–A-10 mulai dari **BELUM DINILAI** sampai owner mencoba dan memutuskan. Keputusan atas run 18 Oktober 2026 sudah tercatat di OD-30 (checkpoint).
 
 # A. Persiapan teknis
 
@@ -380,7 +380,7 @@ Blok ini menyimpan PID dan waktu mulai proses server. Blok baru selesai `[OK]` h
 - penanda perangkap egress muncul;
 - listener port 3000 hanya di 127.0.0.1 dan dimiliki proses server itu atau turunannya.
 
-Server dijalankan dengan jendela tersembunyi (`-WindowStyle Hidden`). Apakah jendela benar-benar tersembunyi saat keluaran dialihkan ke berkas **belum diuji** di Windows. Bila tetap muncul jendela konsol kosong, **jangan ditutup**; server dihentikan di §10.
+Server dijalankan dengan jendela tersembunyi (`-WindowStyle Hidden`). Pada demo owner 18 Oktober 2026 (PowerShell 7.6.7) tidak muncul jendela konsol tambahan; di Windows PowerShell 5.1 belum diuji. Bila tetap muncul jendela konsol kosong, **jangan ditutup**; server dihentikan di §10.
 
 ```powershell
 . { try {
@@ -463,7 +463,7 @@ Setiap jendela punya cookie sendiri. **Login satu akun per jendela**, dan selalu
 6. Buka `http://127.0.0.1:3000/automation/client-messages`. Sebelum mengklik apa pun, tunggu sampai tulisan "Memuat…" hilang dan daftar atau keterangan "kosong" tampil.
 
 **Batas indikator tombol Masuk:**
-- Tombol aktif berarti komponen login **sudah aktif di peramban** (PR #37, F-1). Form juga memakai `method="post"`, sehingga pengiriman sebelum halaman siap tidak menaruh sandi di URL. Perilaku ini diuji di Chromium Linux (§9), **belum** di Edge Windows.
+- Tombol aktif berarti komponen login **sudah aktif di peramban** (PR #37, F-1). Form juga memakai `method="post"`, sehingga pengiriman sebelum halaman siap tidak menaruh sandi di URL. Perilaku ini diuji otomatis di Chromium Linux (§9) dan teramati sekali secara manual di Edge Windows (demo owner 18 Oktober 2026: login bersesi, `URL-dengan-password=0`); uji otomatis login di Edge/Windows belum dijalankan.
 - Halaman login menunggu permintaan `/api/auth/*` lain selesai sebelum mengambil token CSRF (PR #38). Penantian ini tidak terlihat oleh Anda dan tidak perlu ditunggu secara manual.
 - Indikator **tidak** menjamin login berhasil. Satu-satunya bukti sesi adalah langkah 5.
 
@@ -548,6 +548,8 @@ Blok ini hanya membaca log dan mencetak **jumlah**. Isi log dan URL tidak ditamp
 
 ## 8. Daftar periksa penerimaan
 
+**Templat untuk run berikutnya.** Kolom hasil dan keputusan di bawah sengaja kosong (BELUM DINILAI). Keputusan owner atas run uji coba 18 Oktober 2026 **tidak** ditulis di tabel ini; keputusan itu tercatat di OD-30 (checkpoint).
+
 Isi daftar ini di `catatan-penerimaan.md` di folder catatan.
 - Kolom "Bukti otomatis" mencatat uji yang **sudah ada**. Bukti itu tidak menggantikan peragaan atau penilaian owner.
 - Kolom keputusan diisi owner.
@@ -566,7 +568,7 @@ Isi daftar ini di `catatan-penerimaan.md` di folder catatan.
 | A-09 | Tidak ada tombol, kesan, atau jalur pengiriman nyata; tanpa egress dari server aplikasi | g-static (tanpa route kirim/provider); g-ui (origin peramban, Chromium otomatis); perangkap egress server | D8, D16 (egress peramban **tidak** dipantau, §9) | | | **BELUM DINILAI** |
 | A-10 | Keputusan akhir owner: diterima / diterima dengan catatan / ditolak, beserta daftar temuan | — | — | | | **BELUM DINILAI** |
 
-**Q-1 — pertanyaan kebijakan untuk owner** (teramati; bukan cacat yang dinyatakan; **menunggu owner**): pada status Menunggu approval, **peminta** dan **pencatat bukti (manajer)** dapat memilih **Batalkan pesan**, meski tidak dapat menyetujui. Apakah ini sesuai kebijakan PT TSM? Nilai di A-05/A-06.
+**Q-1 — pertanyaan kebijakan untuk owner** (teramati; bukan cacat yang dinyatakan; **dijawab owner: boleh — OD-30, 18 Oktober 2026**; isian "BELUM DIJAWAB" di `catatan-penerimaan.md` dari Blok 2 adalah templat run baru): pada status Menunggu approval, **peminta** dan **pencatat bukti (manajer)** dapat memilih **Batalkan pesan**, meski tidak dapat menyetujui. Apakah ini sesuai kebijakan PT TSM? Nilai di A-05/A-06.
 
 **Kesesuaian operasional** adalah penilaian owner, dan tidak dibuktikan oleh uji. Contoh pertanyaannya: apakah peran sesuai organisasi PT TSM, apakah kata-kata pesan tepat, dan apakah alur kerja ini dipakai staf.
 
@@ -585,7 +587,7 @@ Bagian ini adalah bukti **teknis**. Bukti ini bukan penerimaan owner dan tidak m
 - **Tidak dijalankan pada v4:**
   - D10–D14 (batal, tolak, revisi); bukti tetap dari run historis di bawah dan uji g-ui;
   - status "tidak pasti", penolakan CSRF, dan batas waktu; bukti ada di uji `check-login-ui` PR #38 (pra-merge, dilaporkan di PR, tidak diukur ulang di sini);
-  - Edge dan Windows.
+  - Edge dan Windows pada verifikasi Linux ini (demo Windows/Edge owner tercatat terpisah di bawah).
 - **Pembersihan (urutan §10, padanan Linux):**
   - identitas PID dan waktu mulai diverifikasi sebelum menghentikan;
   - tidak ada proses dari folder demo; `pg_ctl status` exit 3; port 3000 dan 55433 bebas;
@@ -618,9 +620,10 @@ Bagian ini adalah bukti **teknis**. Bukti ini bukan penerimaan owner dan tidak m
 **Windows: satu run uji coba oleh owner (18 Oktober 2026).** Laptop owner: Windows, PowerShell 7.6.7 (Windows Terminal), Node 24.16.0, npm 11.13.0, Git 2.55.0, binary PostgreSQL 16.14, Edge. Blok 0–4 dijalankan dengan panduan identik (SHA-256 berkas sama) lewat asisten lain; Blok 5–10f dari panduan ini. Hasil yang dilaporkan owner lewat tangkapan layar:
 - Blok 0–6 `[OK]`; Blok 5 tanpa jendela konsol tambahan (`-WindowStyle Hidden` bekerja); server PID tercatat, klaster 127.0.0.1:55433.
 - Login pertama sesudah server dingin dan login semua peran: bersesi, tanpa STOP; `URL-dengan-password=0`.
-- D1–D16 sesuai kolom "Harus terlihat", **kecuali D16**: `TRAP-AKTIF=185 BLOCKED=20` — semuanya `tls fonts.googleapis.com:443` (**F-6**). Karena itu run ini dicatat **uji coba**, bukan run penerimaan bersih; owner memilih melanjutkan.
+- D1–D15 sesuai kolom "Harus terlihat".
+- **D16 dijalankan, kriteria tidak terpenuhi:** `TRAP-AKTIF=185 BLOCKED=20 URL-dengan-password=0` — semua BLOCKED `tls fonts.googleapis.com:443` (**F-6**). Karena itu run ini dicatat **uji coba**, bukan run penerimaan bersih; owner memilih melanjutkan dan menerima F-6 sebagai pengecualian (OD-30).
 - Pembersihan 10a–10f `[OK]`: proses dihentikan berdasarkan PID + waktu mulai; `pg_ctl` exit 3; Edge demo tertutup; bukti tersamar disalin; folder demo dihapus setelah `HAPUS`; folder catatan tetap.
-- Tidak dijalankan: Windows PowerShell 5.1, kedaluwarsa approval, lintas tenant, penolakan server untuk self-approval (hanya UI).
+- Tidak dijalankan (tetap terbatas): Windows PowerShell 5.1; kedaluwarsa approval; lintas tenant; penolakan server untuk self-approval (hanya UI); status login "tidak pasti"/timeout; suite uji otomatis repo di Windows/Edge (mis. `check-login-ui`, g-ui, DB/HTTP). Run ini **tidak** membuktikan seluruh suite lulus di Windows.
 
 **Bukti reviewer Windows** (dilaporkan reviewer; arsipnya tidak diperiksa ulang penyusun):
 - Parser Windows PowerShell 5.1.26100.9711 dan PowerShell 7.6.5 menguraikan 16 blok panduan **versi sebelumnya** dengan 0 galat sintaks.
@@ -639,7 +642,7 @@ Bagian ini adalah bukti **teknis**. Bukti ini bukan penerimaan owner dan tidak m
 - PR #38 menunggu permintaan `/api/auth/*` selesai sebelum mengambil token CSRF, membuat percobaan login dapat dibatalkan, menampilkan status "tidak pasti" tanpa coba-ulang otomatis, dan memuat penuh halaman tujuan sesudah sukses.
 - **Bukti pra-merge PR #38 (dilaporkan di PR #38, tidak diukur ulang di sini):** `check-login-ui` 61/0 pada `next dev` ×3 dan `next start` ×2. Login sah pertama sesudah server dingin berhasil di kelima run. Linux, Chromium 141 headless.
 - **Bukti kit v4:** login pertama sesudah server dingin berhasil dengan satu klik (lihat atas). Satu run, bukan statistik.
-- **Belum dibuktikan:** perilaku yang sama di **Edge Windows**. Karena itu aturan STOP §6.3 tetap berlaku penuh.
+- **Edge Windows:** satu demo owner (18 Oktober 2026) — login pertama sesudah server dingin dan login semua peran bersesi, tanpa STOP. Satu run, bukan statistik; uji `check-login-ui` di Edge/Windows belum dijalankan. Karena itu aturan STOP §6.3 tetap berlaku penuh.
 
 **F-6 — Google Fonts dari server `next dev`:** `src/app/layout.tsx` memakai `next/font/google`. Dalam `next dev`, server mengunduh font dari `fonts.googleapis.com`. Tanpa proxy (laptop owner) perangkap memblokirnya (BLOCKED=20) dan aplikasi memakai font cadangan; dengan proxy loopback (container Linux) unduhan lolos tanpa tercatat. Ini bukan jalur WhatsApp dan tidak membawa data aplikasi, tetapi tetap egress dari proses server. Keputusan owner: diterima apa adanya untuk demo lokal (OD-30). Akibatnya D16 (`BLOCKED`=0) **tidak** dapat terpenuhi selama aplikasi memakai `next/font/google`.
 
