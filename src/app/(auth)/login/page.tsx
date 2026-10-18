@@ -1,10 +1,8 @@
 'use client'
 
-import { useEffect, useState, type FormEvent } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { getSession, signIn } from 'next-auth/react'
 import { useT, LangToggle } from '@/lib/i18n'
 
 /**
@@ -16,18 +14,39 @@ import { useT, LangToggle } from '@/lib/i18n'
  * hidrasi (klik/Enter) tidak boleh menaruh kredensial di URL (F-1). Sukses hanya bila signIn tidak
  * ditolak DAN sesi untuk akun yang sama terkonfirmasi (F-3): next-auth 4.24 mengembalikan penolakan
  * CSRF sebagai ok:true tanpa error (url …/api/auth/signin?csrf=true), jadi res.ok saja tidak cukup.
+ *
+ * Race login pertama: permintaan /api/auth/* yang dikirim TANPA cookie CSRF (mis. sesi awal SessionProvider, dua kali
+ * di Strict Mode dev) menerbitkan cookie CSRF baru saat responsnya tiba. Bila tiba sesudah token diambil, token body ≠
+ * cookie dan NextAuth menolak. Token baru diambil sesudah tidak ada permintaan /api/auth/* yang masih berjalan
+ * (dilacak sejak efek halaman ini, yang berjalan sebelum efek SessionProvider induknya).
+ *
+ * Siklus percobaan: signIn() next-auth 4.24 tidak dapat dibatalkan (tanpa AbortSignal), jadi halaman ini menjalankan
+ * langkah yang sama dengan signIn credentials 4.24 — GET /api/auth/providers, GET /api/auth/csrf, POST /api/auth/callback/credentials
+ * (json=true), GET /api/auth/session — masing-masing dengan AbortSignal milik percobaan. Pembatalan (batas waktu,
+ * meninggalkan halaman) diperiksa tepat sebelum callback dikirim, sehingga percobaan yang batal tidak pernah mengirim
+ * callback. Bila callback SUDAH terkirim lalu dibatalkan, server mungkin tetap memprosesnya: status dilaporkan tidak
+ * pasti, tanpa klaim berhasil/gagal. Sesudah sukses, halaman dimuat penuh (window.location) agar SessionProvider tab
+ * ini membaca sesi baru — sinkronisasi tab yang sama hanya dilakukan oleh signIn().
  */
 export default function LoginPage() {
-  const router = useRouter()
   const t = useT(STR)
 
   const [showPw, setShowPw] = useState(false)
   const [loading, setLoading] = useState(false)
   const [msg, setMsg] = useState<{ type: 'err' | 'ok'; text: string } | null>(null)
   const [siap, setSiap] = useState(false)
+  const aktif = useRef<AbortController | null>(null)
+  const pindah = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
+    const lepasPelacak = pasangPelacakAuth()
     setSiap(true)
+    return () => {
+      lepasPelacak()
+      aktif.current?.abort()
+      aktif.current = null
+      if (pindah.current) clearTimeout(pindah.current)
+    }
   }, [])
 
   function safeNext(): string {
@@ -45,37 +64,34 @@ export default function LoginPage() {
       setMsg({ type: 'err', text: t.errEmpty })
       return
     }
-    if (loading) return
+    if (aktif.current) return
+    const ctrl = new AbortController()
+    aktif.current = ctrl
     setLoading(true)
     setMsg(null)
-    let berhasil = false
+    const jejak = { callbackTerkirim: false }
+    const waktu = setTimeout(() => ctrl.abort(), BATAS_PERCOBAAN_MS)
+    let hasil: HasilMasuk
     try {
-      const res = await signIn('credentials', { email, password, redirect: false })
-      if (res?.error) {
-        setMsg({ type: 'err', text: t.errCred })
-        return
-      }
-      if (!res || !res.ok || !urlBukanPenolakan(res.url)) {
-        setMsg({ type: 'err', text: t.errSession })
-        return
-      }
-      const sesi = await getSession()
-      if (!sesiMilik(sesi?.user?.email, email)) {
-        setMsg({ type: 'err', text: t.errSession })
-        return
-      }
-      berhasil = true
+      hasil = await masuk(email, password, ctrl.signal, jejak)
     } catch {
-      setMsg({ type: 'err', text: t.errNetwork })
+      // Sesudah callback terkirim, galat apa pun (batal, jaringan, verifikasi sesi) tidak memastikan hasil di server.
+      hasil = jejak.callbackTerkirim ? 'tidakPasti' : 'jaringan'
     } finally {
-      setLoading(false)
+      clearTimeout(waktu)
     }
-    if (!berhasil) return
+    if (aktif.current !== ctrl) return // ditinggalkan (halaman dilepas): jangan tampilkan hasil atau pindah halaman
+    if (hasil !== 'ok') {
+      aktif.current = null
+      setLoading(false)
+      const teks = { cred: t.errCred, sesi: t.errSession, jaringan: t.errNetwork, tidakPasti: t.errUncertain }[hasil]
+      setMsg({ type: 'err', text: teks })
+      return
+    }
+    // Sukses: penjaga (aktif) dan tombol nonaktif DIPERTAHANKAN sampai halaman berganti, sehingga tidak ada percobaan
+    // kedua selama jeda pengalihan. Cleanup unmount tetap membatalkan timer dan melepas penjaga.
     setMsg({ type: 'ok', text: t.okMsg })
-    setTimeout(() => {
-      router.push(safeNext())
-      router.refresh()
-    }, 600)
+    pindah.current = setTimeout(() => window.location.assign(safeNext()), 600)
   }
 
   return (
@@ -279,6 +295,129 @@ const MODULES = [
   },
 ]
 
+const BATAS_TENANG_MS = 20_000
+const BATAS_PERCOBAAN_MS = 30_000
+const API_AUTH = '/api/auth'
+
+/** Jumlah permintaan /api/auth/* yang sedang berjalan di halaman login, dan pendengar saat jumlahnya berubah. */
+let authBerjalan = 0
+const pendengarAuth = new Set<() => void>()
+
+/** Bungkus window.fetch selama halaman login terpasang untuk menghitung permintaan /api/auth/* yang berjalan. */
+function pasangPelacakAuth(): () => void {
+  const asli = window.fetch
+  const dilacak: typeof window.fetch = (input, init) => {
+    let jalur = ''
+    try {
+      jalur = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, window.location.href).pathname
+    } catch {}
+    if (!jalur.startsWith(`${API_AUTH}/`)) return asli.call(window, input, init)
+    authBerjalan++
+    const selesai = () => {
+      authBerjalan--
+      pendengarAuth.forEach((f) => f())
+    }
+    try {
+      return asli.call(window, input, init).finally(selesai)
+    } catch (e) {
+      selesai()
+      throw e
+    }
+  }
+  window.fetch = dilacak
+  return () => {
+    if (window.fetch === dilacak) window.fetch = asli
+  }
+}
+
+/** true bila tidak ada permintaan /api/auth/* yang berjalan, false bila batas waktu lewat; ditolak bila dibatalkan. */
+function tungguAuthTenang(ms: number, signal: AbortSignal): Promise<boolean> {
+  if (signal.aborted) return Promise.reject(new DOMException('dibatalkan', 'AbortError'))
+  if (authBerjalan === 0) return Promise.resolve(true)
+  return new Promise((selesai, batal) => {
+    const lepas = () => {
+      clearTimeout(waktu)
+      pendengarAuth.delete(cek)
+      signal.removeEventListener('abort', dibatalkan)
+    }
+    const cek = () => {
+      if (authBerjalan !== 0) return
+      lepas()
+      selesai(true)
+    }
+    const dibatalkan = () => {
+      lepas()
+      batal(new DOMException('dibatalkan', 'AbortError'))
+    }
+    const waktu = setTimeout(() => {
+      lepas()
+      selesai(false)
+    }, ms)
+    pendengarAuth.add(cek)
+    signal.addEventListener('abort', dibatalkan)
+  })
+}
+
+type HasilMasuk = 'ok' | 'cred' | 'sesi' | 'jaringan' | 'tidakPasti'
+
+async function ambilJson(jalur: string, signal: AbortSignal, init: RequestInit = {}): Promise<{ ok: boolean; data: unknown }> {
+  const res = await fetch(`${API_AUTH}${jalur}`, { ...init, signal })
+  return { ok: res.ok, data: await res.json() }
+}
+
+/**
+ * Login credentials dengan langkah yang sama seperti signIn() next-auth 4.24, tetapi dapat dibatalkan, lalu verifikasi
+ * sesi akun yang sama (F-3). Melempar AbortError bila dibatalkan; jejak.callbackTerkirim menandai bahwa POST callback
+ * sudah dikirim sehingga hasil server tidak dapat dipastikan dari sisi klien.
+ */
+async function masuk(email: string, password: string, signal: AbortSignal, jejak: { callbackTerkirim: boolean }): Promise<HasilMasuk> {
+  if (!(await tungguAuthTenang(BATAS_TENANG_MS, signal))) return 'sesi'
+  const penyedia = await ambilJson('/providers', signal)
+  if (!penyedia.ok || !(penyedia.data as Record<string, unknown> | null)?.credentials) return 'sesi'
+  const csrf = await ambilJson('/csrf', signal)
+  const csrfToken = (csrf.data as { csrfToken?: unknown } | null)?.csrfToken
+  if (!csrf.ok || typeof csrfToken !== 'string' || !csrfToken) return 'sesi'
+  if (signal.aborted) throw new DOMException('dibatalkan', 'AbortError') // percobaan yang sudah batal TIDAK mengirim callback
+  jejak.callbackTerkirim = true
+  const cb = await ambilJson('/callback/credentials', signal, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ email, password, csrfToken, callbackUrl: window.location.href, json: 'true' }),
+  })
+  // Sesudah callback terkirim, hanya penolakan EKSPLISIT yang memberi hasil pasti: URL error (sandi salah) atau URL
+  // penolakan NextAuth (CSRF/signin/error). Respons yang gagal atau tidak dapat diverifikasi (HTTP galat, tanpa url)
+  // tidak membuktikan server menolak — sesi mungkin sudah dibuat — jadi statusnya tidak pasti.
+  const url = (cb.data as { url?: unknown } | null)?.url
+  const urlSah = typeof url === 'string' && url !== '' && urlTerurai(url)
+  if (urlSah && urlPunyaError(url)) return 'cred'
+  if (urlSah && !urlBukanPenolakan(url)) return 'sesi'
+  if (!cb.ok || !urlSah) return 'tidakPasti'
+  const sesi = await ambilJson('/session', signal)
+  if (!sesi.ok) return 'tidakPasti'
+  const sesiEmail = (sesi.data as { user?: { email?: unknown } } | null)?.user?.email
+  // Respons sesi yang sah tetapi tanpa akun ini (kosong atau akun lain) = sesi akun ini memang tidak ada (F-3).
+  return typeof sesiEmail === 'string' && sesiMilik(sesiEmail, email) ? 'ok' : 'sesi'
+}
+
+/** URL dapat diurai relatif terhadap origin halaman. */
+function urlTerurai(url: string): boolean {
+  try {
+    new URL(url, window.location.origin)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** URL respons callback memuat parameter error (mis. CredentialsSignin) — padanan res.error pada signIn(). */
+function urlPunyaError(url: string): boolean {
+  try {
+    return new URL(url, window.location.origin).searchParams.has('error')
+  } catch {
+    return false
+  }
+}
+
 /** URL hasil signIn bukan penolakan: ada, terurai, bukan halaman signin/error NextAuth, tanpa penanda error/csrf. */
 function urlBukanPenolakan(url: string | null | undefined): boolean {
   if (!url) return false
@@ -314,6 +453,7 @@ const STR = {
     okMsg: 'Berhasil masuk. Mengarahkan ke dashboard…',
     errSession: 'Gagal masuk: sesi tidak dapat dibuat. Muat ulang halaman lalu coba lagi.',
     errNetwork: 'Gagal menghubungi server. Periksa koneksi lalu coba lagi.',
+    errUncertain: 'Status masuk tidak dapat dipastikan karena koneksi terputus. Muat ulang halaman untuk memeriksa sebelum mencoba lagi.',
     phone: 'Telp', mobile: 'HP',
   },
   en: {
@@ -331,6 +471,7 @@ const STR = {
     okMsg: 'Signed in. Redirecting to dashboard…',
     errSession: 'Sign-in failed: the session could not be established. Reload the page and try again.',
     errNetwork: 'Could not reach the server. Check your connection and try again.',
+    errUncertain: 'Sign-in status could not be confirmed because the connection was interrupted. Reload the page to check before trying again.',
     phone: 'Tel', mobile: 'Mobile',
   },
 }
