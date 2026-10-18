@@ -19,9 +19,10 @@
 // yang sama dengan ekstrakSpecifier). S-4 adalah HEURISTIK TEKS atas satu berkas, bukan call graph (lihat S-4).
 
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { basename, join, posix, resolve, sep } from 'node:path'
+import { basename, dirname, join, posix, resolve, sep } from 'node:path'
+import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { randomBytes } from 'node:crypto'
 import { ekstrakSpecifier, perujukTransitif } from './wa2a-lingkup.mjs'
@@ -359,7 +360,7 @@ const hasilRepo = periksa(AKAR)
 for (const x of hasilRepo) cek(`${x.id} ${x.nama}`, x.ok, x.detail)
 
 // ============================================================================ M
-bagian('[M] Kontrol mutasi pada clone sementara')
+bagian('[K] Clone sementara untuk uji helper (U) dan kontrol mutasi (M)')
 const TMP = mkdtempSync(join(tmpdir(), 'sg05-batas-'))
 const PENANDA = join(TMP, '.sg05-batas-penanda')
 const TOKEN = randomBytes(8).toString('hex')
@@ -371,34 +372,111 @@ function pulih() {
   gk(['checkout', '-q', '--', '.'])
   gk(['clean', '-fdq'])
 }
+/** Path native di DALAM clone; path yang keluar dari clone (mis. `../x`) ditolak sebelum operasi apa pun. */
+function jalurKlon(rel) {
+  const p = resolve(K, ...rel.split('/'))
+  if (!p.startsWith(resolve(K) + sep)) throw new Error(`path di luar clone ditolak: ${rel}`)
+  return p
+}
+const eolBerkas = (s) => (/\r\n/.test(s) && !/(^|[^\r])\n/.test(s) ? '\r\n' : '\n')
+/** Teks sisipan mengikuti EOL berkas sasaran (LF atau CRLF) agar format baris tidak tercampur. */
+const ikutEol = (isi, eol) => (eol === '\r\n' ? isi.replace(/\r?\n/g, '\r\n') : isi)
 function ganti(rel, dari, ke) {
-  const p = join(K, rel)
+  const p = jalurKlon(rel)
   const s = readFileSync(p, 'utf8')
   if (!s.includes(dari)) throw new Error(`mutasi tidak dapat diterapkan: pola tidak ada di ${rel}`)
-  writeFileSync(p, s.replace(dari, ke))
+  writeFileSync(p, s.replace(dari, ikutEol(ke, eolBerkas(s))))
 }
-const tambah = (rel, isi) => writeFileSync(join(K, rel), readFileSync(join(K, rel), 'utf8') + isi)
-const baru = (rel, isi) => {
-  execFileSync('mkdir', ['-p', posix.dirname(join(K, rel))])
-  writeFileSync(join(K, rel), isi)
-}
-/** Sisipkan baris di awal badan fungsi tingkat-atas `nama` (sesudah `{` pertama di akhir baris tanda tangan). */
-function sisipBadan(rel, kepala, baris) {
-  const p = join(K, rel)
+const tambah = (rel, isi) => {
+  const p = jalurKlon(rel)
   const s = readFileSync(p, 'utf8')
-  const i = s.indexOf(kepala)
-  if (i < 0) throw new Error(`mutasi tidak dapat diterapkan: ${kepala} tidak ada`)
-  const j = s.indexOf('{\n', i)
-  writeFileSync(p, `${s.slice(0, j + 2)}  ${baris}\n${s.slice(j + 2)}`)
+  writeFileSync(p, s + ikutEol(isi, eolBerkas(s)))
 }
-function mutasi(id, nama, harapGagal, fn) {
+const baru = (rel, isi) => {
+  const p = jalurKlon(rel)
+  mkdirSync(dirname(p), { recursive: true })
+  writeFileSync(p, isi)
+}
+// Awal baris yang memulai deklarasi tingkat-atas berikutnya (kolom 0) — batas potongan fungsi sasaran.
+const RE_DEKLAR_BARIS = /\r?\n(?:export\s+)?(?:declare\s+)?(?:default\s+)?(?:async\s+)?(?:function\b|class\b|const\b|let\b|var\b|type\b|interface\b|enum\b)/g
+const batasDeklarasi = (s, dari) => {
+  RE_DEKLAR_BARIS.lastIndex = dari
+  const m = RE_DEKLAR_BARIS.exec(s)
+  return m ? m.index : s.length
+}
+/**
+ * Titik sisip = sesudah `{` + EOL (LF/CRLF) pertama setelah `kepala`, dengan syarat: kepala unik dan di awal baris,
+ * `{` berada SEBELUM deklarasi tingkat-atas berikutnya, dan kurung parameter seimbang di antara kepala dan `{`.
+ * Bentuk lain (mis. tipe objek multi-baris di parameter) → galat, bukan tebakan. Bukan parser generik.
+ */
+function titikSisip(s, kepala) {
+  const i = s.indexOf(kepala)
+  if (i < 0) throw new Error(`kepala fungsi tidak ditemukan: ${kepala}`)
+  if (s.indexOf(kepala, i + 1) >= 0) throw new Error(`kepala fungsi tidak unik: ${kepala}`)
+  if (i > 0 && s[i - 1] !== '\n') throw new Error(`kepala fungsi tidak di awal baris: ${kepala}`)
+  const batas = batasDeklarasi(s, i + kepala.length)
+  const rb = /\{(\r?\n)/g
+  rb.lastIndex = i + kepala.length
+  const mb = rb.exec(s)
+  if (!mb || mb.index >= batas) throw new Error(`awal badan fungsi tidak ditemukan sebelum deklarasi berikutnya: ${kepala}`)
+  const tanda = s.slice(i, mb.index)
+  if ((tanda.match(/\(/g) ?? []).length !== (tanda.match(/\)/g) ?? []).length) throw new Error(`kurung parameter tidak seimbang sebelum '{' (bentuk tidak didukung): ${kepala}`)
+  return { i, k: mb.index + 1 + mb[1].length, eol: mb[1], batas }
+}
+/** Sisipkan satu baris di awal badan fungsi tingkat-atas `kepala`. Gagal SEBELUM menulis bila titik tidak pasti. */
+function sisipBadan(rel, kepala, baris) {
+  if (/[\r\n]/.test(baris)) throw new Error('baris sisipan harus satu baris')
+  const p = jalurKlon(rel)
+  const s = readFileSync(p, 'utf8')
+  const t = titikSisip(s, kepala)
+  const sisip = `  ${baris}${t.eol}`
+  writeFileSync(p, s.slice(0, t.k) + sisip + s.slice(t.k))
+  return { rel, kepala, sebelum: s, k: t.k, sisip }
+}
+/** Bukti mutasi sisip sah: berkas = sebelum + TEPAT satu baris di titik k; k di dalam potongan fungsi sasaran; EOL tidak tercampur. */
+function validasiSisip(b) {
+  const sesudah = readFileSync(jalurKlon(b.rel), 'utf8')
+  if (sesudah !== b.sebelum.slice(0, b.k) + b.sisip + b.sebelum.slice(b.k)) return 'isi berkas ≠ isi sebelum + satu baris sisipan'
+  const i = b.sebelum.indexOf(b.kepala)
+  const batas = batasDeklarasi(b.sebelum, i + b.kepala.length)
+  if (!(i >= 0 && b.k > i + b.kepala.length && b.k <= batas)) return 'titik sisip di luar potongan fungsi sasaran'
+  if (!/\{\r?\n$/.test(b.sebelum.slice(0, b.k))) return 'titik sisip bukan tepat sesudah `{` + EOL'
+  if (eolBerkas(b.sebelum) === '\r\n' && eolBerkas(sesudah) !== '\r\n') return 'EOL berkas CRLF menjadi campur'
+  return null
+}
+let ts = null
+/** Galat sintaks (TypeScript dari devDependency repo; bukan dependency baru). Tidak tersedia → galat (gagal tertutup). */
+function galatSintaks(rel) {
+  if (!ts) {
+    try {
+      ts = createRequire(join(AKAR, 'package.json'))('typescript')
+    } catch {
+      throw new Error('typescript (devDependency repo) tidak dapat dimuat — jalankan `npm install` (cek sintaks M4 gagal tertutup)')
+    }
+  }
+  const o = ts.transpileModule(readFileSync(jalurKlon(rel), 'utf8'), { fileName: basename(rel), reportDiagnostics: true, compilerOptions: { jsx: ts.JsxEmit.Preserve } })
+  return (o.diagnostics ?? []).map((d) => ts.flattenDiagnosticMessageText(d.messageText, ' '))
+}
+/**
+ * `opsi.tepat`: aturan yang gagal harus PERSIS [harapGagal] (bukan efek samping aturan lain).
+ * `opsi.sintaks`: berkas yang harus tetap bebas galat sintaks sesudah mutasi (kerusakan sintaks ≠ deteksi).
+ * `fn` boleh mengembalikan bukti sisip (`sisipBadan`) yang divalidasi sebelum aturan dinilai.
+ */
+function mutasi(id, nama, harapGagal, fn, opsi = {}) {
   try {
     pulih()
-    fn()
+    const bukti = [fn()].flat().filter((x) => x && x.sisip !== undefined)
+    const salah = bukti.map(validasiSisip).filter(Boolean)
+    if (salah.length) throw new Error(`mutasi tidak sah: ${salah.join('; ')}`)
+    for (const rel of opsi.sintaks ?? []) {
+      const g = galatSintaks(rel)
+      if (g.length) throw new Error(`mutasi merusak sintaks ${rel}: ${g[0]}`)
+    }
     const r = periksa(K)
     const gagalId = [...new Set(r.filter((x) => !x.ok).map((x) => x.id))]
-    if (harapGagal === null) cek(`${id} (kontrol positif) ${nama}`, gagalId.length === 0, gagalId.length ? `gagal: ${gagalId.join(',')}` : 'semua aturan lulus')
-    else cek(`${id} ${nama} → ditangkap ${harapGagal}`, gagalId.includes(harapGagal), `aturan gagal: ${gagalId.join(',') || '(tidak ada)'}`)
+    const tambahan = [bukti.length ? `sisip ${bukti.length}× di badan sasaran (divalidasi)` : '', opsi.sintaks ? 'sintaks utuh' : ''].filter(Boolean).join('; ')
+    if (harapGagal === null) cek(`${id} (kontrol positif) ${nama}`, gagalId.length === 0, (gagalId.length ? `gagal: ${gagalId.join(',')}` : 'semua aturan lulus') + (tambahan ? `; ${tambahan}` : ''))
+    else cek(`${id} ${nama} → ditangkap ${harapGagal}${opsi.tepat ? ' SAJA' : ''}`, opsi.tepat ? sama(gagalId, [harapGagal]) : gagalId.includes(harapGagal), `aturan gagal: ${gagalId.join(',') || '(tidak ada)'}${tambahan ? `; ${tambahan}` : ''}`)
   } catch (e) {
     cek(`${id} ${nama}`, false, `galat: ${e.message.split('\n')[0]}`)
   }
@@ -410,6 +488,92 @@ try {
   gk(['clone', '-q', '--shared', AKAR, K], TMP)
   console.log(`  ℹ️  clone sementara ${TMP} pada ${gk(['rev-parse', 'HEAD']).trim().slice(0, 12)} (HEAD ter-commit repo kerja)`)
 
+  bagian('[U] Helper mutasi (di dalam clone)')
+  const uji = (id, nama, fn) => {
+    try {
+      pulih()
+      const [ok, detail] = fn()
+      cek(`${id} ${nama}`, ok, detail)
+    } catch (e) {
+      cek(`${id} ${nama}`, false, `galat: ${e.message.split('\n')[0]}`)
+    }
+  }
+  const galatDari = (fn) => {
+    try {
+      fn()
+      return null
+    } catch (e) {
+      return e.message
+    }
+  }
+  const CONTOH = 'export function a(x: number): number {\n  return x\n}\nexport async function b(y: string): Promise<string> {\n  return y\n}\n'
+  const HARAP_B = 'export function a(x: number): number {\n  return x\n}\nexport async function b(y: string): Promise<string> {\n  void 0\n  return y\n}\n'
+  const tulis = (rel, isi) => (baru(rel, isi), rel)
+  const isi = (rel) => readFileSync(jalurKlon(rel), 'utf8')
+  uji('U-1', 'baru(): direktori bertingkat dibuat dengan mkdirSync rekursif (path native, tanpa shell)', () => {
+    baru('uji-sg05/a/b/c/d.ts', 'export {}\n')
+    return [existsSync(jalurKlon('uji-sg05/a/b/c/d.ts')) && isi('uji-sg05/a/b/c/d.ts') === 'export {}\n', jalurKlon('uji-sg05/a/b/c/d.ts').slice(resolve(K).length)]
+  })
+  uji('U-2', 'baru()/ganti()/sisipBadan(): path keluar clone ditolak, tidak ada berkas dibuat', () => {
+    const luar = resolve(K, '..', 'sg05-keluar.ts')
+    const g = [galatDari(() => baru('../sg05-keluar.ts', 'x')), galatDari(() => ganti('../sg05-keluar.ts', 'a', 'b')), galatDari(() => sisipBadan('../sg05-keluar.ts', 'x', 'y'))]
+    return [g.every((m) => /di luar clone/.test(m ?? '')) && !existsSync(luar), g.join(' | ')]
+  })
+  uji('U-3', 'sisipBadan() LF: baris masuk tepat di awal badan fungsi sasaran (fungsi kedua), sisa berkas identik', () => {
+    const r = tulis('uji-sg05/lf.ts', CONTOH)
+    const b = sisipBadan(r, 'export async function b(', 'void 0')
+    return [isi(r) === HARAP_B && validasiSisip(b) === null, JSON.stringify(isi(r).slice(b.k - 3, b.k + b.sisip.length))]
+  })
+  uji('U-4', 'sisipBadan() CRLF: titik ditemukan (algoritma lama `{\\n` = -1), sisipan ber-EOL CRLF, tanpa LF tunggal', () => {
+    const crlf = CONTOH.replace(/\n/g, '\r\n')
+    const r = tulis('uji-sg05/crlf.ts', crlf)
+    const lama = crlf.indexOf('{\n', crlf.indexOf('export async function b('))
+    const b = sisipBadan(r, 'export async function b(', 'void 0')
+    return [lama === -1 && isi(r) === HARAP_B.replace(/\n/g, '\r\n') && !/(^|[^\r])\n/.test(isi(r)) && validasiSisip(b) === null, `indexOf lama = ${lama}`]
+  })
+  uji('U-5', 'sisipBadan(): kepala tidak ditemukan → galat jelas, berkas tidak berubah', () => {
+    const r = tulis('uji-sg05/u5.ts', CONTOH)
+    const m = galatDari(() => sisipBadan(r, 'export function tidakAda(', 'void 0'))
+    return [/tidak ditemukan/.test(m ?? '') && isi(r) === CONTOH, m]
+  })
+  uji('U-6', 'sisipBadan(): kepala tidak unik → galat, berkas tidak berubah', () => {
+    const r = tulis('uji-sg05/u6.ts', CONTOH + CONTOH)
+    const m = galatDari(() => sisipBadan(r, 'export function a(', 'void 0'))
+    return [/tidak unik/.test(m ?? '') && isi(r) === CONTOH + CONTOH, m]
+  })
+  uji('U-7', 'sisipBadan(): badan sasaran tidak ada sebelum deklarasi berikutnya → galat (tidak menyisip ke fungsi lain), berkas tidak berubah', () => {
+    const src = 'export const a = (x: number) => x\nexport function b() {\n  return 1\n}\n'
+    const r = tulis('uji-sg05/u7.ts', src)
+    const m = galatDari(() => sisipBadan(r, 'export const a =', 'void 0'))
+    return [/tidak ditemukan sebelum deklarasi berikutnya/.test(m ?? '') && isi(r) === src, m]
+  })
+  uji('U-8', 'sisipBadan(): `{` + EOL di dalam parameter (kurung belum seimbang) → galat, berkas tidak berubah', () => {
+    const src = 'export function d(\n  a: {\n    x: number\n  },\n): void {\n  return\n}\n'
+    const r = tulis('uji-sg05/u8.ts', src)
+    const m = galatDari(() => sisipBadan(r, 'export function d(', 'void 0'))
+    return [/tidak seimbang/.test(m ?? '') && isi(r) === src, m]
+  })
+  uji('U-9', 'sisipBadan(): tanda tangan multi-baris dengan kurung seimbang → sisip sesudah `): void {`', () => {
+    const src = 'export function e(\n  a: number,\n): void {\n  return\n}\n'
+    const r = tulis('uji-sg05/u9.ts', src)
+    const b = sisipBadan(r, 'export function e(', 'void 0')
+    return [isi(r) === 'export function e(\n  a: number,\n): void {\n  void 0\n  return\n}\n' && validasiSisip(b) === null, '']
+  })
+  uji('U-10', 'validasiSisip(): menolak bukti bila berkas diubah di luar titik sisip', () => {
+    const r = tulis('uji-sg05/u10.ts', CONTOH)
+    const b = sisipBadan(r, 'export async function b(', 'void 0')
+    writeFileSync(jalurKlon(r), isi(r).replace('return x', 'return  x'))
+    return [validasiSisip(b) !== null, validasiSisip(b) ?? '(lolos — salah)']
+  })
+  uji('U-11', 'galatSintaks(): sumber utuh = 0 galat; sisipan yang merusak sintaks terdeteksi', () => {
+    const r = tulis('uji-sg05/u11.ts', CONTOH)
+    const nol = galatSintaks(r).length
+    sisipBadan(r, 'export async function b(', 'const = (')
+    const rusak = galatSintaks(r).length
+    return [nol === 0 && rusak > 0 && galatSintaks(SVC).length === 0, `utuh ${nol}; rusak ${rusak}`]
+  })
+
+  bagian('[M] Mutasi aturan')
   mutasi('P-01', 'clone bersih', null, () => {})
   mutasi('P-02', 'tambah dokumen saja', null, () => baru('docs/uji-sg05.md', '# uji\n'))
 
@@ -430,14 +594,37 @@ try {
   mutasi('M3-3', 'bridge `export *` dari communication.service', 'S-3', () => tambah(BRIDGE, "export * from '@/services/communication/communication.service'\n"))
   mutasi('M3-4', 'bridge memuat kode lokal pembungkus', 'S-3', () => tambah(BRIDGE, 'export const bungkus = () => 1\n'))
 
-  mutasi('M4-1', 'kunciCandidate menyebut pilihPenerimaFixture', 'S-4', () => sisipBadan(SVC, 'export async function kunciCandidate(', "void pilihPenerimaFixture('M4-1')"))
-  mutasi('M4-2', 'helper revalidasiSumber (bukan akar; terjangkau lewat rantai helper) menyebut pilihPenerimaFixture', 'S-4', () => sisipBadan(SVC, 'async function revalidasiSumber(', "void pilihPenerimaFixture('M4-2')"))
+  const SINTAKS_SVC = { sintaks: [SVC] }
+  const TEPAT_SVC = { tepat: true, sintaks: [SVC] }
+  mutasi('M4-1', 'kunciCandidate menyebut pilihPenerimaFixture', 'S-4', () => sisipBadan(SVC, 'export async function kunciCandidate(', "void pilihPenerimaFixture('M4-1')"), TEPAT_SVC)
+  mutasi('M4-2', 'helper revalidasiSumber (bukan akar; terjangkau lewat rantai helper) menyebut pilihPenerimaFixture', 'S-4', () => sisipBadan(SVC, 'async function revalidasiSumber(', "void pilihPenerimaFixture('M4-2')"), TEPAT_SVC)
   mutasi('M4-3', 'revalidasiCandidate memakai impor dari communication-send.service', 'S-4', () => {
     ganti(SVC, "import { pilihPenerimaFixture } from './comm-fixture'", "import { pilihPenerimaFixture } from './comm-fixture'\nimport { __sg05 } from './communication-send.service'")
-    sisipBadan(SVC, 'export async function revalidasiCandidate(', 'void __sg05')
-  })
-  mutasi('M4-4', 'akar siapkanDalamTx diganti nama (gagal tertutup)', 'S-4', () => ganti(SVC, 'export async function siapkanDalamTx(', 'export async function siapkanDalamTxLain('))
-  mutasi('M4-5', 'sebutan fixture di fungsi yang TIDAK terjangkau (tandaiDipratinjau)', null, () => sisipBadan(SVC, 'export async function tandaiDipratinjau(', '// pilihPenerimaFixture disebut di komentar fungsi yang tidak diteruskan bridge'))
+    return sisipBadan(SVC, 'export async function revalidasiCandidate(', 'void __sg05')
+  }, TEPAT_SVC)
+  mutasi('M4-4', 'akar siapkanDalamTx diganti nama (gagal tertutup)', 'S-4', () => ganti(SVC, 'export async function siapkanDalamTx(', 'export async function siapkanDalamTxLain('), TEPAT_SVC)
+  mutasi('M4-5', 'sebutan fixture di fungsi yang TIDAK terjangkau (tandaiDipratinjau)', null, () => sisipBadan(SVC, 'export async function tandaiDipratinjau(', '// pilihPenerimaFixture disebut di komentar fungsi yang tidak diteruskan bridge'), SINTAKS_SVC)
+  // CRLF (emulasi checkout Windows core.autocrlf=true di Linux; BUKAN bukti suite Windows lulus).
+  const keCrlf = (rel) => {
+    const p = jalurKlon(rel)
+    writeFileSync(p, readFileSync(p, 'utf8').replace(/\r?\n/g, '\r\n'))
+  }
+  mutasi('P-03', 'seluruh berkas sumber src/ diubah ke CRLF', null, () => {
+    for (const f of berkasSrc(K)) keCrlf(f)
+  }, SINTAKS_SVC)
+  mutasi('M4-1c', 'CRLF: kunciCandidate menyebut pilihPenerimaFixture (sisip mengikuti CRLF)', 'S-4', () => {
+    keCrlf(SVC)
+    return sisipBadan(SVC, 'export async function kunciCandidate(', "void pilihPenerimaFixture('M4-1c')")
+  }, TEPAT_SVC)
+  mutasi('M4-2c', 'CRLF: helper revalidasiSumber menyebut pilihPenerimaFixture', 'S-4', () => {
+    keCrlf(SVC)
+    return sisipBadan(SVC, 'async function revalidasiSumber(', "void pilihPenerimaFixture('M4-2c')")
+  }, TEPAT_SVC)
+  mutasi('M4-3c', 'CRLF: revalidasiCandidate memakai impor dari communication-send.service', 'S-4', () => {
+    keCrlf(SVC)
+    ganti(SVC, "import { pilihPenerimaFixture } from './comm-fixture'", "import { pilihPenerimaFixture } from './comm-fixture'\nimport { __sg05 } from './communication-send.service'")
+    return sisipBadan(SVC, 'export async function revalidasiCandidate(', 'void __sg05')
+  }, TEPAT_SVC)
 
   mutasi('M5-1', "string 'WA1_TEST_FIXTURE_SUCCESS' di wa-message.service", 'S-5', () => tambah(WMS, "\nexport const __x = 'WA1_TEST_FIXTURE_SUCCESS'\n"))
   mutasi('M5-2', 'template literal TEST_FIXTURE_WA_${n} di komponen client-message', 'S-5', () => tambah('src/components/automation/client-message-shared.tsx', '\nexport const __t = (n: number) => `TEST_FIXTURE_WA_${n}`\n'))

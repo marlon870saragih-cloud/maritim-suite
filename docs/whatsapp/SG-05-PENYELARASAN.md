@@ -149,11 +149,37 @@ Semua butir harus **teramati**, bukan dijanjikan:
 | M1-6 | Perujuk WA-1 yang tercatat hilang (daftar harus persis) | S-1 |
 | M2-1..M2-4 | WA-2 mengimpor `communication-send.service`; layout mengimpor `communication.service`; bridge menambah modul; `comm-access` menjangkau fixture | S-2 |
 | M3-1..M3-4 | Bridge meneruskan `buatRevisiPesan` (dengan/tanpa alias), `export *`, kode lokal | S-3 |
-| M4-1..M4-4 | Sebutan fixture di akar; di helper berantai; impor dari `communication-send.service`; akar diganti nama | S-4 |
+| M4-1..M4-4 | Sebutan fixture di akar; di helper berantai; impor dari `communication-send.service`; akar diganti nama | S-4 **saja** |
 | M4-5 | Sebutan fixture di fungsi yang tidak terjangkau | Lulus |
+| P-03 | Seluruh berkas sumber `src/` diubah ke CRLF | Lulus |
+| M4-1c..M4-3c | M4-1..M4-3 pada `communication.service.ts` ber-CRLF | S-4 **saja** |
 | M5-1, M5-2 | String dan template literal fixture di zona WA-2 | S-5 |
 | M5-3 | Token fixture hanya di komentar | Lulus |
 | M6-1..M6-3 | Layanan luar zona ke `communication-read.service`; WA-2 ke `comm-fake-provider`; WA-2 ke bridge **dan** fixture | S-6 |
+
+### 5.6 Keabsahan mutasi dan helper (revisi 1, temuan review PR #40)
+
+- **Mutasi sisip M4.** Sebuah mutasi baru dihitung sebagai deteksi bila semua syarat berikut terpenuhi:
+  - isi berkas = isi sebelum + **tepat satu** baris, disisipkan sesudah `{` + EOL di dalam potongan fungsi sasaran;
+  - EOL berkas tidak tercampur;
+  - berkas tetap **bebas galat sintaks** menurut `typescript` (devDependency repo yang sudah ada, bukan dependency baru; bila tidak dapat dimuat → gagal-tertutup);
+  - aturan yang gagal **persis** `S-4`.
+- Kerusakan sintaks **tidak** dihitung sebagai deteksi.
+- **Helper `sisipBadan`.** Mendukung LF dan CRLF. Helper gagal dengan pesan jelas **sebelum menulis** bila salah satu kondisi berikut terjadi:
+  - kepala tidak ditemukan, tidak unik, atau tidak di awal baris;
+  - awal badan tidak ada sebelum deklarasi tingkat-atas berikutnya;
+  - kurung parameter belum seimbang (mis. tipe objek multi-baris di parameter — bentuk tidak didukung).
+  Helper ini bukan parser generik.
+- **Helper berkas.** Pembuatan direktori memakai `mkdirSync(..., { recursive: true })` dengan path native, tanpa shell atau executable `mkdir`. Semua operasi mutasi ditolak bila path keluar dari clone.
+- **Uji helper U-1..U-11:**
+  - direktori bertingkat;
+  - penolakan path di luar clone;
+  - penyisipan LF dan CRLF;
+  - kepala tidak ada atau tidak unik, badan tidak ditemukan, kurung tidak seimbang (berkas tidak berubah);
+  - tanda tangan multi-baris;
+  - validasi menolak perubahan di luar titik sisip;
+  - pemeriksa sintaks mendeteksi kerusakan.
+- **Cakupan lingkungan.** Bukti dijalankan di **Linux**. CRLF diuji dengan input CRLF dan dengan emulasi checkout `core.autocrlf=true`. Ketiadaan executable `mkdir` diemulasikan dengan `PATH` minimal. Keduanya **bukan bukti bahwa suite lulus di Windows**.
 
 ## 6. Batas fase (USULAN — keputusan D-2b)
 
