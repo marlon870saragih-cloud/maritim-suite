@@ -1,5 +1,9 @@
 # SG-05 A2 / P-2 — bukti revalidasi pra-kirim (tanpa provider, tanpa Send)
 
+> **Status terkini (pasca-merge, OD-39):** A2/P-2 **MERGED** melalui [PR #42](https://github.com/marlon870saragih-cloud/maritim-suite/pull/42) — merge commit `61d5c4485747e29167574055830106fedfdc8e22` (2026-10-19 01:08:53 UTC; OD-38), parent `a9e51fcb4670bfc017030debef78f22527dc20bd` + `97acb02d0190d7f96a048f5e9ea9a6c72581282c`, tree merge `05d75054311dcd750c43f7bbd82f38b3fe7008bf` = tree HEAD yang direview, diff baseline → merge tepat enam path.
+> Batas bukti: uji DB A2 123/0, regresi DB/statis, kontrol sensitivitas, dan tsc/lint = hasil **implementer** sebelum merge (pada HEAD `97acb02`), bukan uji pasca-merge; reviewer menjalankan ulang secara independen hanya pemeriksa statis A2 dalam memori dengan sumber exact HEAD (52/0) — bukan suite lengkap dan bukan dari checkout Windows; suite lengkap Windows belum terbukti; saat verifikasi merge: 0 check-run dan 0 commit status (repo tanpa CI) — **bukan CI hijau**.
+> Isi dokumen di bawah adalah bukti pra-merge pada HEAD `97acb02` dan tidak diubah maknanya. SG-05 tetap OPEN; P-3 belum terbukti.
+
 **Status SG-05: OPEN.** Dokumen ini mencatat bukti teknis P-2 di Linux. Dokumen ini **tidak** menutup SG-05 dan **tidak** membuktikan P-3. SG-05 baru dapat ditutup bila P-1, P-2, dan P-3 terbukti dan owner menyetujui penutupan.
 
 - **Dasar keputusan:** OD-37, yaitu O-1–O-8 serta B-1, B-2/O-9, dan B-3/O-10 ([checkpoint](../TAH-CURRENT-CHECKPOINT.md) §A). Persyaratan P-2 tercantum di [SG-05-PENYELARASAN.md](SG-05-PENYELARASAN.md) §4.
@@ -221,7 +225,7 @@ Pesan dikunci **sesudah** approval, karena jalur batal mengunci approval lebih d
 |---|---|---|
 | Isi | Fungsi revalidasi pra-kirim A2 dan uji mandirinya | Send (F-II FAKE/loopback) memanggil A2 di transaksi klaim yang sama |
 | Bukti | Uji statis + DB di atas | Uji statis atas kode Send nyata + runtime dengan mutasi "panggilan dihapus"; 0 panggilan provider; klaim tunggal; idempotensi tidak replay antar-tenant |
-| Status | Bukti teknis tersedia di Linux pada blob di kepala dokumen; menunggu review PR dan keputusan merge owner | Belum ada jalur Send; implementasi F-II belum disetujui |
+| Status | Merged melalui PR #42 (`61d5c44`, OD-38); bukti teknis Linux pada blob di kepala dokumen, dengan batas bukti pada catatan status terkini | Belum ada jalur Send; implementasi F-II belum disetujui |
 
 Saat ini A2 **belum dipanggil** jalur produksi mana pun. Pemanggil pertamanya adalah F-II kelak (P-3).
 
@@ -240,10 +244,12 @@ Saat ini A2 **belum dipanggil** jalur produksi mana pun. Pemanggil pertamanya ad
 8. **Relasi approval rusak** menghasilkan FORBIDDEN tanpa perbaikan otomatis. Jalur operator untuk memperbaikinya belum ada.
 9. **Timeout transaksi pemanggil** default 5 s. Penantian kunci yang lebih lama berakhir rollback (gagal tertutup); tidak diuji khusus untuk A2. Pola ini diuji di F4.
 10. **A-9 statis** hanya kesamaan bentuk. Kesamaan hasil dibuktikan pada 23 skenario DB, bukan seluruh ruang masukan.
+11. **Stabilitas fakta sumber R8 sampai commit belum dijamin** (catatan review PR #42). Sebagian fakta sumber R8, termasuk status `MonitoringSignal`, dibaca tanpa kunci baris. Token A2 tidak boleh diklaim menjamin seluruh fakta R8 tetap stabil sampai commit. Wajib ditangani dan diuji saat integrasi klaim kirim (F-II/P-3); bukan blocker kontrak P-2, yang hanya menyatakan kelayakan saat diperiksa.
 
 ## 6. Status
 
-- **P-2:** bukti teknis tersedia (Linux, blob di kepala dokumen), dengan celah §5. Menunggu review PR A2 dan keputusan owner terpisah untuk merge.
+- **P-2:** **merged** melalui [PR #42](https://github.com/marlon870saragih-cloud/maritim-suite/pull/42) (`61d5c4485747e29167574055830106fedfdc8e22`; OD-38), dengan celah §5 dan batas bukti pada catatan status terkini. (Historis: sebelum merge, status ini "menunggu review PR A2 dan keputusan owner terpisah untuk merge".)
+- **Berikutnya (belum dimulai; masing-masing perlu keputusan owner):** keputusan TTL APPROVED sebelum F-II; scope F-II/P-3; perlindungan + uji stabilitas fakta R8 sampai commit (§5 butir 11); bukti P-3, lalu keputusan penutupan SG-05; istirahat sebelum WA-3.
 - **P-1:** tetap seperti sebelumnya.
 - **P-3:** belum.
 - **SG-05: OPEN.**
